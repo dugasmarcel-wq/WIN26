@@ -1,0 +1,33 @@
+name: Import Jovanovski Baseline
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    if: github.event.head_commit.message == 'Bootstrap Jovanovski source import'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Import pinned Jovanovski source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/jovanovski/windowslauncher.git /tmp/jovanovski
+          git -C /tmp/jovanovski checkout 46da8d75b1f36b181198d48186b5782d91ce765b
+
+          rsync -a --delete --exclude='.git' /tmp/jovanovski/ ./
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import Jovanovski Windows Launcher baseline"
+          git push origin HEAD:main
