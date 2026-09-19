@@ -8282,59 +8282,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Set welcome message based on theme
         val welcomeMessage = "Windows has updated to version $versionName, tap 'Change Log' to see what's new!\n\nIf you like what I'm building, buy me a coffee here: https://buymeacoffee.com/jovanovski.\n\nThis is a passion project from Gorjan Jovanovski, a developer who grew up with these aesthetics and prefers them over new design any day.\n\nIf you're a 80s or 90s kid, you remember these days fondly, and this is a change to relive them on a modern daily driver, in your pocket!\n\nA few tips:\n1) Tap on things that look tappable, chances are they are.\n2) Swipe back to close the active open window.\n3) Swipe up, down and right on the desktop for different actions.\n4) Long press on the desktop to change wallpapers and themes.\n5) There are multiple Windows apps in the start menu, all with their own purpose.\n\nAll the copyrighted information belongs to their respective authors, the aim here is to just recreate nostalgia for fun.\n\nThe music you're listening to from the legendary Stan LePard, rest in peace!\n\nFor any feature requests, drop me an email at hey@gorjan.rocks\n\nThanks for using Windows!"
 
-        // Function to format changelog text
+        // Release notes are intentionally local-only in WIN26.
         fun fetchChangeLogFromGitHub(callback: (String) -> Unit) {
-            Thread {
-                try {
-                    val url = URL("https://api.github.com/repos/jovanovski/windowslauncher/releases")
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.requestMethod = "GET"
-                    connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    connection.connectTimeout = 10000
-                    connection.readTimeout = 10000
-
-                    val responseCode = connection.responseCode
-                    if (responseCode == HttpURLConnection.HTTP_OK) {
-                        val response = connection.inputStream.bufferedReader().use { it.readText() }
-                        val gson = Gson()
-                        val releases = gson.fromJson(response, com.google.gson.JsonArray::class.java)
-
-                        if (releases == null || releases.size() == 0) {
-                            callback("No changelog available")
-                            return@Thread
-                        }
-
-                        val builder = StringBuilder()
-                        builder.append("Change Log\n\n")
-
-                        // Releases are already sorted from most recent to oldest by GitHub API
-                        for (i in 0 until releases.size()) {
-                            val release = releases[i].asJsonObject
-                            val name = release.get("name")?.asString ?: release.get("tag_name")?.asString ?: "Unknown Version"
-                            val body = release.get("body")?.asString ?: ""
-
-                            builder.append("$name\n")
-                            if (body.isNotEmpty()) {
-                                builder.append("$body\n")
-                            }
-
-                            if (i < releases.size() - 1) {
-                                builder.append("\n")
-                            }
-                        }
-
-                        callback(builder.toString())
-                    } else {
-                        Log.e("MainActivity", "Failed to fetch changelog: HTTP $responseCode")
-                        callback("Failed to load changelog from GitHub")
-                    }
-
-                    connection.disconnect()
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Error fetching changelog from GitHub", e)
-                    callback("Error loading changelog: ${e.message}")
-                }
-            }.start()
+            callback("Change Log\n\nVersion $versionName\n\nOnline release-note fetching is disabled for privacy.")
         }
 
         // Set welcome message with automatic link detection
