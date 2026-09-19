@@ -3,11 +3,9 @@ package rocks.gorjan.gokixp.apps.regedit
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Color
-import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Spinner
@@ -16,7 +14,6 @@ import android.widget.TableRow
 import android.widget.TextView
 import androidx.core.content.edit
 import rocks.gorjan.gokixp.R
-import java.util.concurrent.TimeUnit
 
 class RegistryEditorApp(
     private val context: Context,
@@ -24,15 +21,10 @@ class RegistryEditorApp(
     private val onShowNotification: (String, String) -> Unit,
     private val onShowAddKeyDialog: (SharedPreferences, () -> Unit) -> Unit,
     private val onExportToLocalFile: (SharedPreferences) -> Unit,
-    private val onExportToGoogleDrive: (SharedPreferences) -> Unit,
-    private val onImportFromLocalFile: () -> Unit,
-    private val onImportFromGoogleDrive: () -> Unit,
-    private val onAutoSyncChanged: (Boolean) -> Unit,
-    private val getLastSyncTime: () -> Long
+    private val onImportFromLocalFile: () -> Unit
 ) {
     private var selectedRow: TableRow? = null
     private var selectedKey: String? = null
-    private var lastSyncTextView: TextView? = null
 
     fun setupApp(contentView: View, prefs: SharedPreferences) {
         // Get references to views
@@ -303,32 +295,6 @@ class RegistryEditorApp(
             }
             .setNegativeButton("Cancel", null)
             .show()
-    }
-
-    private fun updateLastSyncText() {
-        val lastSync = getLastSyncTime()
-        val text = if (lastSync == 0L) {
-            "Never synced"
-        } else {
-            val now = System.currentTimeMillis()
-            val diffMillis = now - lastSync
-            val minutes = TimeUnit.MILLISECONDS.toMinutes(diffMillis)
-            val hours = TimeUnit.MILLISECONDS.toHours(diffMillis)
-            val days = TimeUnit.MILLISECONDS.toDays(diffMillis)
-
-            when {
-                minutes < 1 -> "Synced just now"
-                minutes < 60 -> "Synced $minutes min ago"
-                hours < 24 -> "Synced $hours hr ago"
-                days == 1L -> "Synced yesterday"
-                else -> "Synced $days days ago"
-            }
-        }
-        lastSyncTextView?.text = text
-    }
-
-    fun onSyncCompleted() {
-        updateLastSyncText()
     }
 
     fun cleanup() {
