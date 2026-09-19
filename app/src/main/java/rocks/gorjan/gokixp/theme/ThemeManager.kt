@@ -15,9 +15,7 @@ sealed class AppTheme {
      * Where the icons the user picked by hand for this theme are kept.
      *
      * One map per theme, so a choice made under one shell does not overwrite the choice
-     * made under another. Two sweeps in MainActivity read the live maps from [all] via
-     * this property; see [WP8_CUSTOM_ICONS_KEY] for the one map that is not listed there
-     * and still must not be swept.
+     * made under another.
      */
     abstract val customIconsKey: String
 
@@ -50,19 +48,6 @@ sealed class AppTheme {
             "Windows Classic" -> WindowsClassic
             "Windows Vista" -> WindowsVista
             "Windows XP" -> WindowsXP
-            // Windows Phone 8.1 ships as its own launcher now. Both spellings - the theme
-            // was called 8.1 for a while - land on Vista, which is the chrome it already
-            // drew its windows in, so the change is as small as it can be for the people
-            // who were running it.
-            //
-            // This has to be here, at the point of reading, rather than done once as a
-            // migration. The old string can re-enter preferences long after any migration
-            // would have run: `allowBackup` is on with empty rules, so it arrives with a
-            // cloud restore onto a fresh install; PrefsBackup.restore clears and replaces
-            // wholesale from a Drive sync or an imported .reg; and the Registry Editor
-            // lets it be typed in by hand. Every one of those routes reads back through
-            // here.
-            "Windows Phone 8", "Windows Phone 8.1" -> WindowsVista
             else -> WindowsXP // Default to XP if unknown
         }
 
@@ -72,21 +57,6 @@ sealed class AppTheme {
         fun all(): List<AppTheme> = listOf(WindowsXP, WindowsClassic, WindowsVista)
     }
 }
-
-/**
- * Where Windows Phone 8.1 kept the icons the user picked by hand.
- *
- * The theme is gone - it ships as its own launcher now - so there is no [AppTheme] object
- * left to hang this on, and yet the key has to outlive it. Two sweeps in MainActivity take
- * their list of live icon maps from [AppTheme.all]: purgeRetiredSystemApps, which would
- * merely stop cleaning this map, and - far worse - pruneUnusedImportedIcons, which
- * *deletes* every imported icon file no live map still points at. Left unnamed, that sweep
- * would wipe the imported icons of everyone who had been running the phone theme, on their
- * first launch after updating, before they had any chance to carry them over.
- *
- * MainActivity.RETIRED_CUSTOM_ICON_KEYS is what puts it back in front of both sweeps.
- */
-const val WP8_CUSTOM_ICONS_KEY = "custom_icons_wp8"
 
 /**
  * Centralized theme management class.
