@@ -234,7 +234,6 @@ class DialerApp(
     }
 
     /**
-     * Send SMS to a contact    /**
      * Send SMS to a contact
      */
     private fun sendMessage(phoneNumber: String) {
@@ -416,7 +415,6 @@ class DialerApp(
     }
 
     /**
-     * Cleanup when app is closed    /**
      * Cleanup when app is closed
      */
     fun cleanup() {
