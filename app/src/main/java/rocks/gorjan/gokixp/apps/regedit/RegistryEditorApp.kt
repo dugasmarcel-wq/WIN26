@@ -34,10 +34,6 @@ class RegistryEditorApp(
         val addButton = contentView.findViewById<TextView>(R.id.add_button)
         val editButton = contentView.findViewById<TextView>(R.id.edit_button)
         val deleteButton = contentView.findViewById<TextView>(R.id.delete_button)
-        // Cloud sync is disabled in WIN26. Keep the legacy controls out of the UI.
-        contentView.findViewById<View>(R.id.auto_sync_checkbox)?.visibility = View.GONE
-        contentView.findViewById<View>(R.id.last_sync_text)?.visibility = View.GONE
-
         // Disable Edit and Delete by default
         editButton.alpha = 0.5f
         editButton.isEnabled = false
