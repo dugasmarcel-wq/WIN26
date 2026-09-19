@@ -519,8 +519,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
          * Its own repository, and so its own release feed - this launcher's updater still
          * points at this launcher's releases and must not be pointed here.
          */
-        private const val WINDOWS_PHONE_LAUNCHER_URL =
-            "https://github.com/jovanovski/windowsphonelauncher/releases/latest"
         private const val KEY_SOUND_MUTED = "sound_muted"
         private const val KEY_PLAY_EMAIL_SOUND = "play_email_sound"
         private const val KEY_SHOW_NOTIFICATION_DOTS = "show_notification_dots"
@@ -8105,36 +8103,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      * the part of the phone theme that leaves the launcher entirely, and Android will
      * quietly fall back to another one without saying so.
      */
-    private fun showWindowsPhoneMovedNotice() {
-        val message = buildString {
-            append("Windows Phone 8 is now its own app.\n\n")
-            append("It has moved out of Windows Launcher so it can grow on its own, ")
-            append("and this desktop has been set back to Windows Vista.\n\n")
-            append("Your Start screen, tiles, colours and icons have been kept. ")
-            append("Install Windows Phone Launcher and it will offer to bring them across.")
-            if (isWindowsPhoneKeyboardActive()) {
-                append("\n\nYour Windows Phone keyboard moved with it, so your phone has ")
-                append("switched to another one for now.")
-            }
-            append("\n\nOpen the download page?")
-        }
-
-        showConfirmDialog("Windows Phone 8 has moved", message) {
-            runCatching {
-                startActivity(Intent(Intent.ACTION_VIEW, WINDOWS_PHONE_LAUNCHER_URL.toUri()))
-            }.onFailure {
-                Log.w("MainActivity", "Nothing on this phone opens a web page", it)
-            }
-        }
-    }
-
-    /** Whether the phone theme's keyboard is the input method currently in use. */
-    private fun isWindowsPhoneKeyboardActive(): Boolean = runCatching {
-        android.provider.Settings.Secure.getString(
-            contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD
-        )?.contains("WP81KeyboardService") == true
-    }.getOrDefault(false)
-
     private fun showWelcomeToWindows(showChangeLog: Boolean = false) {
         // Get theme preferences
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
