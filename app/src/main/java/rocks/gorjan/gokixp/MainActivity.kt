@@ -291,20 +291,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     /**
-     * Puts the wall up, or takes it down.
-     *
-     * The launcher can still be the phone's phone app and its messaging app, because the
-     * shell that had a People app, a call screen and a conversation view - Windows Phone
-     * 8.1 - moved out to its own launcher and left the roles behind. Holding either one
-     * here means every call and every text message on the device is being routed to a
-     * shell with nowhere to put it, and a message delivered to this app is a message no
-     * other app is given, so one arriving now is one nobody ever sees.
-     *
-     * So it is not a warning to be dismissed. The launcher is covered until the roles are
-     * somewhere they can be answered.
-     *
-     * Called on every resume, which is what makes it self-clearing: the way out of here is
-     * Android's own screens, and coming back from one is a resume.
+     * Prevents this launcher from silently remaining the default dialer or SMS handler
+     * when the current build does not provide those Android roles.
      */
     private fun enforceDefaultAppRoles() {
         val dialerHeld = holdsDialerRole()
@@ -7994,17 +7982,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
-    /**
-     * Tells someone who was running Windows Phone 8.1 where it went.
-     *
-     * Shown once, on the first launch after it moved out. Without it the launcher simply
-     * looks different one morning, which reads as a fault rather than a change - the
-     * whole shell is replaced, and nothing on screen would say why.
-     *
-     * The keyboard gets its own line, and only when it is actually the one in use: it is
-     * the part of the phone theme that leaves the launcher entirely, and Android will
-     * quietly fall back to another one without saying so.
-     */
+    /** Shows the local welcome/change-log window for the retained Windows themes. */
     private fun showWelcomeToWindows(showChangeLog: Boolean = false) {
         // Get theme preferences
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
