@@ -42,8 +42,9 @@ class RegistryEditorApp(
         val addButton = contentView.findViewById<TextView>(R.id.add_button)
         val editButton = contentView.findViewById<TextView>(R.id.edit_button)
         val deleteButton = contentView.findViewById<TextView>(R.id.delete_button)
-        val autoSyncCheckbox = contentView.findViewById<CheckBox>(R.id.auto_sync_checkbox)
-        lastSyncTextView = contentView.findViewById(R.id.last_sync_text)
+        // Cloud sync is disabled in WIN26. Keep the legacy controls out of the UI.
+        contentView.findViewById<View>(R.id.auto_sync_checkbox)?.visibility = View.GONE
+        contentView.findViewById<View>(R.id.last_sync_text)?.visibility = View.GONE
 
         // Disable Edit and Delete by default
         editButton.alpha = 0.5f
@@ -51,24 +52,9 @@ class RegistryEditorApp(
         deleteButton.alpha = 0.5f
         deleteButton.isEnabled = false
 
-        // Load auto-sync state
-        val autoSyncEnabled = prefs.getBoolean("auto_sync_google_drive", false)
-        autoSyncCheckbox.isChecked = autoSyncEnabled
-
-        // Update last sync text
-        updateLastSyncText()
-
-        // Handle auto-sync checkbox changes
-        autoSyncCheckbox.setOnCheckedChangeListener { _, isChecked ->
-            onSoundPlay()
-            prefs.edit { putBoolean("auto_sync_google_drive", isChecked) }
-
-            // If checking the box, show "Syncing..." and trigger sync
-            if (isChecked) {
-                lastSyncTextView?.text = "Syncing..."
-            }
-
-            onAutoSyncChanged(isChecked)
+        // Remove any persisted cloud-sync opt-in from older installations.
+        if (prefs.contains("auto_sync_google_drive")) {
+            prefs.edit { remove("auto_sync_google_drive") }
         }
 
         // Function to display all preferences
@@ -179,13 +165,13 @@ class RegistryEditorApp(
         // Export button - show choice dialog
         exportButton.setOnClickListener {
             onSoundPlay()
-            showExportChoiceDialog(prefs)
+            onExportToLocalFile(prefs)
         }
 
         // Import button - show choice dialog
         importButton.setOnClickListener {
             onSoundPlay()
-            showImportChoiceDialog(prefs)
+            onImportFromLocalFile()
         }
 
         // Add button - add new key/value pair
@@ -343,34 +329,6 @@ class RegistryEditorApp(
 
     fun onSyncCompleted() {
         updateLastSyncText()
-    }
-
-    private fun showExportChoiceDialog(prefs: SharedPreferences) {
-        android.app.AlertDialog.Builder(context, R.style.LightAlertDialog)
-            .setTitle("Export Settings")
-            .setMessage("Where would you like to export your settings?")
-            .setPositiveButton("Local File") { _, _ ->
-                onExportToLocalFile(prefs)
-            }
-            .setNegativeButton("Google Drive") { _, _ ->
-                onExportToGoogleDrive(prefs)
-            }
-            .setNeutralButton("Cancel", null)
-            .show()
-    }
-
-    private fun showImportChoiceDialog(prefs: SharedPreferences) {
-        android.app.AlertDialog.Builder(context, R.style.LightAlertDialog)
-            .setTitle("Import Settings")
-            .setMessage("Where would you like to import your settings from?")
-            .setPositiveButton("Local File") { _, _ ->
-                onImportFromLocalFile()
-            }
-            .setNegativeButton("Google Drive") { _, _ ->
-                onImportFromGoogleDrive()
-            }
-            .setNeutralButton("Cancel", null)
-            .show()
     }
 
     fun cleanup() {
