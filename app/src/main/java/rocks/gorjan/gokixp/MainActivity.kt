@@ -11556,34 +11556,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun handleAqiTap() {
-        val aqiAppPackage = "com.gorjan.airquality"
-        try {
-            val intent = packageManager.getLaunchIntentForPackage(aqiAppPackage)
-            if (intent != null) {
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                startActivity(intent)
-                Log.d("MainActivity", "Launched AQI app: $aqiAppPackage")
-            } else {
-                // App not installed, open Play Store
-                openPlayStoreForAqiApp(aqiAppPackage)
-            }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error launching AQI app", e)
-            openPlayStoreForAqiApp(aqiAppPackage)
-        }
-    }
-
-    private fun openPlayStoreForAqiApp(packageName: String) {
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=$packageName"))
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(intent)
-        } catch (e: Exception) {
-            // Play Store not available, open in browser
-            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(intent)
-        }
+        showNotification("Air quality", "Air-quality networking is disabled for privacy")
     }
 
     private fun refreshAqiData() {
@@ -11601,70 +11574,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
     
     private fun handleWeatherTempTap() {
-        Log.d("MainActivity", "🌤️ Weather temp tapped - checking for saved weather app")
-
-        // Check if a custom weather app is set
-        val weatherAppPackage = getWeatherApp()
-
-        if (weatherAppPackage != null) {
-            // Launch the saved weather app
-            Log.d("MainActivity", "📱 Launching saved weather app: $weatherAppPackage")
-            try {
-                if (isSystemApp(weatherAppPackage)) {
-                    launchSystemApp(weatherAppPackage)
-                } else {
-                    val intent = packageManager.getLaunchIntentForPackage(weatherAppPackage)
-                    if (intent != null) {
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                        startActivity(intent)
-                        Log.d("MainActivity", "✅ Successfully launched saved weather app")
-                    } else {
-                        Log.w("MainActivity", "Saved weather app not found, falling back to default")
-                        launchDefaultWeatherApp()
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error launching saved weather app, falling back to default", e)
-                launchDefaultWeatherApp()
-            }
-        } else {
-            // No custom app set, use default behavior
-            launchDefaultWeatherApp()
-        }
-    }
-
-    private fun launchDefaultWeatherApp() {
-        // Opening an installed weather app does not give this launcher location access.
-        launchGoogleWeatherApp()
-    }
-    
-    private fun launchGoogleWeatherApp() {
-        Log.d("MainActivity", "🌤️ launchGoogleWeatherApp() called")
-        try {
-            // Try to launch Google weather app directly
-            val weatherIntent = packageManager.getLaunchIntentForPackage("com.google.android.apps.weather")
-            if (weatherIntent != null) {
-                Log.d("MainActivity", "✅ Launching Google weather app")
-                weatherIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                startActivity(weatherIntent)
-                return
-            } else {
-                Log.w("MainActivity", "Google weather app not found")
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch Google weather app: ${e.message}")
-        }
-
-        // Fallback: try to open in Play Store if app not installed
-        try {
-            val playStoreIntent = Intent(Intent.ACTION_VIEW)
-            playStoreIntent.data = "market://details?id=com.google.android.apps.weather".toUri()
-            playStoreIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(playStoreIntent)
-            Log.d("MainActivity", "✅ Opened Google weather app in Play Store")
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to open Google weather app in Play Store: ${e.message}")
-        }
+        showNotification("Weather", "Weather networking is disabled for privacy")
     }
 
     private fun handleWeatherTempRefresh() {
