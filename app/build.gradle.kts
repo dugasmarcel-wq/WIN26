@@ -10,8 +10,8 @@ android {
         applicationId = "rocks.gorjan.gokixp"
         minSdk = 29
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.0.2"
+        versionCode = 1
+        versionName = "0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
