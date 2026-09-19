@@ -30,6 +30,9 @@ class PinballApp(private val context: Context) {
         webView.settings.domStorageEnabled = true
         webView.settings.loadWithOverviewMode = true
         webView.settings.useWideViewPort = true
+        // Pinball is a bundled local app, not a browser. Prevent its WebView from
+        // loading any HTTP/HTTPS resource even though the launcher keeps INTERNET for IE.
+        webView.settings.blockNetworkLoads = true
         webView.setBackgroundColor(Color.BLACK)
 
         // Load the bundled game; index.htm references 3DPinballSpaceCadet.js by
