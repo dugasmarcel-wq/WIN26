@@ -660,7 +660,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      * @return Resource ID or 0 if not found
      */
     private fun getBannerResourceId(bannerName: String): Int {
-        return BANNER_RESOURCE_MAP[bannerName] ?: 0
+        return BANNER_RESOURCE_MAP[bannerName] ?: R.drawable.start_banner_98
     }
 
 
@@ -12197,7 +12197,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun loadCurrentStartBanner(bannerFrame: android.widget.FrameLayout) {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val currentBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+        val storedBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+        val currentBanner = storedBanner.takeIf { it in START_BANNER_CYCLE } ?: "start_banner_98"
+        if (currentBanner != storedBanner) {
+            prefs.edit { putString(KEY_START_BANNER_98, currentBanner) }
+        }
 
         // Set the background using the asset image
         try {
