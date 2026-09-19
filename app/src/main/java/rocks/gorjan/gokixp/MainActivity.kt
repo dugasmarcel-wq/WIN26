@@ -9116,24 +9116,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun lockScreen() {
-        // Check Android version compatibility
-
-        if (LockScreenAccessibilityService.isServiceEnabled()) {
-            // Accessibility service is enabled, use it to lock screen
-            if (LockScreenAccessibilityService.lockScreen()) {
-                Log.d("MainActivity", "Screen locked using accessibility service")
-                return
-            } else {
-                Log.w("MainActivity", "Failed to lock screen with accessibility service")
-            }
-        } else {
-            // Accessibility service not enabled, request it
-            Toast.makeText(this,"Enable the 'Windows Launcher' accessibility service to use screen lock", Toast.LENGTH_LONG).show()
-            requestAccessibilityPermission()
-            return
-        }
-        
-        // Fallback to home screen
+        // Accessibility-based global screen locking is intentionally disabled in WIN26.
+        // Preserve the shutdown/logoff flow without requesting a privileged service.
+        showNotification("Screen Lock", "Accessibility-based screen locking is disabled")
         goToHomeScreen()
     }
     
@@ -9149,23 +9134,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
     
-    private fun requestAccessibilityPermission() {
-        try {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(intent)
-            
-            // Show additional guidance
-            Handler(Looper.getMainLooper()).postDelayed({
-                showNotification("Enable Service", "Find 'Windows Launcher' in the list and turn it ON")
-            }, 1500)
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Unable to open accessibility settings", e)
-            showNotification("Permissions needed", "Please go to Settings > Accessibility and enable Windows Launcher")
-        }
-    }
-    
-    private fun loadSavedWallpaper() {
+    private fun loadSavedWallpaper() {    private fun loadSavedWallpaper() {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         val (pathKey, uriKey) = getCurrentThemeWallpaperKeys()
 
