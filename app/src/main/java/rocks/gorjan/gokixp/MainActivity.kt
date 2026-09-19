@@ -172,10 +172,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private val BACK_GESTURE_EDGE_THRESHOLD_DP = 5 // Touch within 20dp from edge is potential back gesture
     private val BACK_GESTURE_TIMEOUT_MS = 300L // If no back gesture confirmed within 300ms, allow touch
 
-    // Update checker
-    private val updateCheckHandler = Handler(Looper.getMainLooper())
-    private var updateCheckRunnable: Runnable? = null
-    private val UPDATE_CHECK_INTERVAL = 3600000L // 1 hour in milliseconds
+    // Windows Update UI remains for visual compatibility, but automatic outbound
+    // update checks are disabled. Network access is reserved for Internet Explorer.
     private lateinit var updateIcon: LinearLayout
     private var updateDownloadLink: String? = null
     
@@ -1139,9 +1137,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Initialize app detection
         initializeAppDetection()
 
-        // Start update checker (checks immediately and then every hour)
-        startUpdateChecker()
-
         refreshDesktopIcons()
 
         // Show welcome screen if this is the first launch for this version
@@ -1946,7 +1941,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val updateItem = findViewById<LinearLayout>(R.id.windows_update_item)
             updateItem?.setOnClickListener {
                 hideStartMenu()
-                checkForUpdates(true)
+                showNotification("Windows Update", "Automatic network update checks are disabled")
             }
 
             // Setup XP/Vista-specific All Programs toggle
@@ -4003,7 +3998,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         refreshDesktopIcons()
         refreshAppListManually()
         refreshWidgetData()
-        checkForUpdates()
         Handler(Looper.getMainLooper()).postDelayed({
             playStartupSound()
         }, 1000)
@@ -11687,9 +11681,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         plus95ClickPlayer = null
         plus95ClickPlayerKey = null
 
-        // Stop update checker
-        stopUpdateChecker()
-
         // Unregister charging receiver
         chargingReceiver?.let { receiver ->
             try {
@@ -13922,133 +13913,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         notificationHideRunnable = null
     }
 
-    /**
-     * Checks for app updates from remote config
-     */
-    private fun checkForUpdates(showCheckingNotification: Boolean = false) {
-        Thread {
-            try {
-                val apiUrl = URL("https://api.github.com/repos/jovanovski/windowslauncher/releases/latest")
-                val connection = apiUrl.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    connection.disconnect()
-
-                    val gson = Gson()
-                    val release = gson.fromJson(response, com.google.gson.JsonObject::class.java)
-
-                    val latestTag = release.get("tag_name")?.asString ?: ""
-                    val isPrerelease = release.get("prerelease")?.asBoolean ?: false
-
-                    // Skip prereleases if you only want stable versions
-                    if (isPrerelease) {
-                        Log.d("MainActivity", "Skipping prerelease: $latestTag")
-                        return@Thread
-                    }
-
-                    val downloadUrl = release.get("html_url")?.asString ?: ""
-
-                    // Current app versionName (like "1.6" or "v1.6")
-                    val currentVersionName = try {
-                        val pInfo = packageManager.getPackageInfo(packageName, 0)
-                        pInfo.versionName ?: ""
-                    } catch (e: Exception) {
-                        ""
-                    }
-
-                    Log.d("MainActivity", "Current version: $currentVersionName | Latest: $latestTag")
-
-                    val latestNumeric = latestTag.trim().removePrefix("v").removePrefix("V")
-                    val currentNumeric = currentVersionName.trim().removePrefix("v").removePrefix("V")
-
-                    val updateAvailable = try {
-                        compareVersions(latestNumeric, currentNumeric) > 0
-                    } catch (e: Exception) {
-                        latestNumeric != currentNumeric // fallback simple check
-                    }
-
-                    if (updateAvailable) {
-                        runOnUiThread {
-                            updateDownloadLink = downloadUrl
-                            updateIcon.visibility = View.VISIBLE
-
-                            showNotification(
-                                "Windows Update",
-                                "A new version ($latestTag) is available. Tap to download."
-                            ) {
-                                if (downloadUrl.isNotEmpty()) {
-                                    try {
-//                                        val intent = Intent(Intent.ACTION_VIEW, downloadUrl.toUri())
-//                                        startActivity(intent)
-                                        showInternetExplorerDialog(downloadUrl)
-                                    } catch (e: Exception) {
-                                        Log.e("MainActivity", "Error opening link", e)
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        Log.d("MainActivity", "No update available")
-                        if (showCheckingNotification) {
-                            runOnUiThread {
-                                showNotification("Up to date", "No new updates available")
-                            }
-                        }
-                    }
-                } else {
-                    connection.disconnect()
-                    Log.w("MainActivity", "GitHub API failed: ${connection.responseCode}")
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error checking for updates", e)
-            }
-        }.start()
-    }
-
-    /**
-     * Simple semantic version comparator (e.g., 1.7.0 > 1.6)
-     */
-    private fun compareVersions(v1: String, v2: String): Int {
-        val parts1 = v1.split(".", "-")
-        val parts2 = v2.split(".", "-")
-        val len = maxOf(parts1.size, parts2.size)
-        for (i in 0 until len) {
-            val a = parts1.getOrNull(i)?.toIntOrNull() ?: 0
-            val b = parts2.getOrNull(i)?.toIntOrNull() ?: 0
-            if (a != b) return a.compareTo(b)
-        }
-        return 0
-    }
-
-
-    /**
-     * Starts the periodic update checker
-     */
-    private fun startUpdateChecker() {
-        // Check immediately on launch
-        checkForUpdates()
-
-        // Set up recurring check every hour
-        updateCheckRunnable = object : Runnable {
-            override fun run() {
-                checkForUpdates()
-                updateCheckHandler.postDelayed(this, UPDATE_CHECK_INTERVAL)
-            }
-        }
-        updateCheckHandler.postDelayed(updateCheckRunnable!!, UPDATE_CHECK_INTERVAL)
-    }
-
-    /**
-     * Stops the periodic update checker
-     */
-    private fun stopUpdateChecker() {
-        updateCheckRunnable?.let { updateCheckHandler.removeCallbacks(it) }
-        updateCheckRunnable = null
-    }
+    // Automatic Windows Update networking intentionally removed for privacy.
 
     private fun Int.dpToPx(): Int {
         return (this * resources.displayMetrics.density).toInt()
