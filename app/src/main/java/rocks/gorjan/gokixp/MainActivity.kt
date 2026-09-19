@@ -451,7 +451,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var profileNameView: TextView? = null
     private lateinit var screensaverManager: ScreensaverManager
 
-    private var registryEditorAppInstance: RegistryEditorApp? = null
 
     // Permission error update functions for wallpaper dialog
     private var updateEmailPermissionError: (() -> Unit)? = null
@@ -7102,19 +7101,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             onShowNotification = { title, message -> showNotification(title, message) },
             onShowAddKeyDialog = { prefs, refreshCallback -> showAddKeyDialog(prefs, refreshCallback) },
             onExportToLocalFile = { prefsToExport -> exportToLocalFile(prefsToExport) },
-            onExportToGoogleDrive = { _ ->
-                showNotification("Registry Editor", "Cloud backup is disabled; use Local File")
-            },
-            onImportFromLocalFile = { importFromLocalFile() },
-            onImportFromGoogleDrive = {
-                showNotification("Registry Editor", "Cloud backup is disabled; use Local File")
-            },
-            onAutoSyncChanged = { _ -> },
-            getLastSyncTime = { 0L }
+            onImportFromLocalFile = { importFromLocalFile() }
         )
-
-        // Store instance for auto-sync updates
-        registryEditorAppInstance = regeditApp
 
         regeditApp.setupApp(contentView, preferences)
 
@@ -7131,8 +7119,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         windowsDialog.setOnCloseListener {
             regeditApp.cleanup()
-            // Don't stop auto-sync when closing Registry Editor - it should continue running
-            registryEditorAppInstance = null
         }
 
         // Set context menu reference and show as floating window
