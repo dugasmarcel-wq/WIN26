@@ -871,17 +871,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return themeManager.getSelectedTheme() is AppTheme.WindowsClassic
     }
 
-    /**
-     * Returns true if flavour spinner should be visible (Classic theme only).
-     */
-    private fun shouldShowFlavourSpinner(theme: AppTheme? = null): Boolean {
-        var checkTheme = theme
-        if(checkTheme == null){
-            checkTheme = themeManager.getSelectedTheme()
-        }
-        return checkTheme is AppTheme.WindowsClassic
-    }
-
     // =========================================================
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -5960,9 +5949,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val previewScreensaverButton = contentView.findViewById<TextView>(R.id.preview_screensaver_button)
         val customWallpaperButton = contentView.findViewById<View>(R.id.custom_wallpaper_button)
 
-        // Set up theme spinner with appropriate layouts based on current theme.
-        // Taken from AppTheme.all() so the selector matches the supported theme set.
-        val themes = AppTheme.all().map { it.toString() }.toTypedArray()
+        // Expose only the four supported Windows shells in Appearance.
+        // Windows 95 and 98 share the stable Classic implementation internally, but
+        // "Windows Classic" itself is intentionally not shown to the user.
+        val themes = arrayOf("Windows XP", "Windows 95", "Windows 98", "Windows Vista")
         val spinnerLayoutId = themeManager.getSpinnerItemLayoutRes(currentTheme)
         val dropdownLayoutId = themeManager.getSpinnerDropdownLayoutRes(currentTheme)
 
@@ -5970,31 +5960,21 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         spinnerAdapter.setDropDownViewResource(dropdownLayoutId)
         themeSpinner.adapter = spinnerAdapter
 
-        // Set current theme
-        val currentThemeString = currentTheme.toString()
-        val themeIndex = themes.indexOf(currentThemeString)
+        val currentFlavourValue = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+        val currentThemeDisplayName = when (currentTheme) {
+            AppTheme.WindowsXP -> "Windows XP"
+            AppTheme.WindowsVista -> "Windows Vista"
+            AppTheme.WindowsClassic -> if (currentFlavourValue == "start_banner_95") "Windows 95" else "Windows 98"
+        }
+        val themeIndex = themes.indexOf(currentThemeDisplayName)
         if (themeIndex != -1) {
             themeSpinner.setSelection(themeIndex)
         }
 
-        // Set up flavour spinner
-        val flavours = arrayOf("Windows 95", "Windows 98")
-        val flavourValues = mapOf(
-            "Windows 95" to "start_banner_95",
-            "Windows 98" to "start_banner_98"
-        )
-
-        val flavourSpinnerAdapter = android.widget.ArrayAdapter(this, spinnerLayoutId, flavours)
-        flavourSpinnerAdapter.setDropDownViewResource(dropdownLayoutId)
-        flavourSpinner.adapter = flavourSpinnerAdapter
-
-        // Set current flavour from SharedPreferences
-        val currentFlavourValue = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
-        val currentFlavourName = flavourValues.entries.find { it.value == currentFlavourValue }?.key ?: "Windows 98"
-        val flavourIndex = flavours.indexOf(currentFlavourName)
-        if (flavourIndex != -1) {
-            flavourSpinner.setSelection(flavourIndex)
-        }
+        // The old flavour control is retained in the layout only to avoid destabilizing
+        // the Display Properties XML. It is permanently hidden; 95/98 are direct choices above.
+        flavourLabel.visibility = View.GONE
+        flavourSpinner.visibility = View.GONE
 
         // Set up Plus! theme spinner
         val plusThemeLabel = contentView.findViewById<TextView>(R.id.plus_theme_label)
@@ -6014,29 +5994,17 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             plusThemeSpinner.setSelection(plusIndex)
         }
 
-        // Show/hide flavour + plus spinners based on current theme
-        var flavourVisibility = if (shouldShowFlavourSpinner()) View.VISIBLE else View.GONE
-        flavourLabel.visibility = flavourVisibility
-        flavourSpinner.visibility = flavourVisibility
-        plusThemeLabel.visibility = flavourVisibility
-        plusThemeSpinner.visibility = flavourVisibility
+        // Plus! belongs to the 95/98 Classic implementation. Keep it available
+        // only while one of those two supported shells is selected.
+        var classicOptionsVisible = currentTheme is AppTheme.WindowsClassic
+        plusThemeLabel.visibility = if (classicOptionsVisible) View.VISIBLE else View.GONE
+        plusThemeSpinner.visibility = if (classicOptionsVisible) View.VISIBLE else View.GONE
 
-        // Track pending theme and flavour selections (don't apply immediately)
+        // Track pending theme/flavour selections (don't apply immediately).
+        // pendingTheme stores the internal base theme; pendingFlavour distinguishes 95/98.
         var pendingTheme: String? = null
         var pendingFlavour: String? = null
         var pendingPlus95: String? = null
-
-        // Handle flavour selection - just track it, don't apply
-        flavourSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>, view: View?, position: Int, id: Long) {
-                val selectedFlavour = flavours[position]
-                pendingFlavour = flavourValues[selectedFlavour]
-            }
-
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>) {
-                // Do nothing
-            }
-        }
 
         // Handle Plus! theme selection - just track it, don't apply
         plusThemeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
@@ -6425,19 +6393,37 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Apply fonts based on selected theme
         applyThemeFontsToDialog(contentView)
 
-        // Create the dialog container without interfering with system UI
-        // Handle theme selection - just track it and update UI, don't apply
+        // Create the dialog container without interfering with system UI.
+        // Map the four visible shells onto the three stable internal rendering engines.
         themeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>, view: View?, position: Int, id: Long) {
-                val selectedTheme = themes[position]
-                pendingTheme = selectedTheme
+                when (themes[position]) {
+                    "Windows 95" -> {
+                        pendingTheme = "Windows Classic"
+                        pendingFlavour = "start_banner_95"
+                        classicOptionsVisible = true
+                    }
+                    "Windows 98" -> {
+                        pendingTheme = "Windows Classic"
+                        pendingFlavour = "start_banner_98"
+                        classicOptionsVisible = true
+                    }
+                    "Windows Vista" -> {
+                        pendingTheme = "Windows Vista"
+                        pendingFlavour = null
+                        classicOptionsVisible = false
+                    }
+                    else -> {
+                        pendingTheme = "Windows XP"
+                        pendingFlavour = null
+                        classicOptionsVisible = false
+                    }
+                }
 
-                flavourVisibility = if (shouldShowFlavourSpinner(AppTheme.fromString(pendingTheme))) View.VISIBLE else View.GONE
-                // Update flavour spinner visibility based on selected theme
-                flavourLabel.visibility = flavourVisibility
-                flavourSpinner.visibility = flavourVisibility
-                plusThemeLabel.visibility = flavourVisibility
-                plusThemeSpinner.visibility = flavourVisibility
+                flavourLabel.visibility = View.GONE
+                flavourSpinner.visibility = View.GONE
+                plusThemeLabel.visibility = if (classicOptionsVisible) View.VISIBLE else View.GONE
+                plusThemeSpinner.visibility = if (classicOptionsVisible) View.VISIBLE else View.GONE
             }
 
             override fun onNothingSelected(parent: android.widget.AdapterView<*>) {
