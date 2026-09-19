@@ -575,7 +575,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_WINDOW_STATES = "window_states"
         private const val KEY_TAP_TO_HIDE_ICONS = "tap_to_hide_icons"
         private const val KEY_OPEN_URLS_IN_IE = "open_urls_in_ie"
-        private const val KEY_SHOW_AQI = "show_aqi"
 
         // Screensaver types
         private const val SCREENSAVER_NONE = 0
@@ -2172,10 +2171,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return prefs.getBoolean(KEY_OPEN_URLS_IN_IE, false) // Default to the system default browser
     }
 
-    fun isShowAqiEnabled(): Boolean {
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        return prefs.getBoolean(KEY_SHOW_AQI, false) // Default to off (opt-in)
-    }
+    fun isShowAqiEnabled(): Boolean = false
 
     private fun toggleCursorVisibility() {
         val isCurrentlyVisible = isCursorVisible()
@@ -6186,54 +6182,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             Log.d("MainActivity", "Open URLs in IE changed to: $isChecked")
         }
 
-        // Set up Show Air Quality checkbox (opt-in; default off)
-        showAirQualityCheckbox.isChecked = isShowAqiEnabled()
-        showAirQualityCheckbox.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit { putBoolean(KEY_SHOW_AQI, isChecked) }
-            Log.d("MainActivity", "Show air quality changed to: $isChecked")
-            val aqiContainer = findViewById<LinearLayout>(R.id.aqi_container)
-            if (isChecked) {
-                // Turned on: show cached value now and pull fresh data.
-                aqiContainer?.visibility = View.VISIBLE
-                getCachedAqi()?.let { if (isAqiDataFresh(90)) updateAqiDisplay(it) }
-                refreshAqiData()
-            } else {
-                // Turned off: hide the taskbar indicator immediately.
-                aqiContainer?.visibility = View.GONE
-            }
-            // Keep the Quick Glance tile in sync.
-            if (::quickGlanceWidget.isInitialized) {
-                quickGlanceWidget.refreshData()
-            }
-        }
-
-        // Make "AirCare" in the attribution a link to the AirCare website.
-        airQualityAttribution?.let { attribution ->
-            val fullText = "(provided by AirCare)"
-            val linkStart = fullText.indexOf("AirCare")
-            val spannable = android.text.SpannableString(fullText)
-            if (linkStart >= 0) {
-                val clickable = object : android.text.style.ClickableSpan() {
-                    override fun onClick(widget: View) {
-                        try {
-                            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(AIRCARE_URL)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            })
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "Error opening AirCare link", e)
-                        }
-                    }
-
-                    override fun updateDrawState(ds: android.text.TextPaint) {
-                        super.updateDrawState(ds)
-                        ds.color = "#0000EE".toColorInt()
-                        ds.isUnderlineText = true
-                    }
-                }
-                spannable.setSpan(clickable, linkStart, linkStart + "AirCare".length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            attribution.text = spannable
-            attribution.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+        // Air-quality data and networking are disabled in WIN26.
+        showAirQualityCheckbox.isChecked = false
+        showAirQualityCheckbox.isEnabled = false
+        findViewById<LinearLayout>(R.id.aqi_container)?.visibility = View.GONE
+        airQualityAttribution?.apply {
+            text = "(air quality disabled)"
+            movementMethod = null
         }
 
         // Set up Show Cursor checkbox
