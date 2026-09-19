@@ -7269,18 +7269,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun createAndShowDialerDialog() {
-        // Request permissions when opening dialer
-        if (checkSelfPermission(android.Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED ||
-            checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(
-                arrayOf(
-                    android.Manifest.permission.CALL_PHONE,
-                    android.Manifest.permission.READ_CONTACTS
-                ),
-                100
-            )
-        }
-
         // Create Windows-style dialog with correct theme from start
         val windowsDialog = createThemedWindowsDialog()
         windowsDialog.windowIdentifier = "system.dialer"  // Set identifier for tracking
