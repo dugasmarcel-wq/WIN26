@@ -497,27 +497,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         /** Which of [RETIRED_SYSTEM_APPS] have already been swept out of the user's arrangement. */
         private const val KEY_RETIRED_APPS_PURGED = "retired_system_apps_purged"
 
-        /**
-         * Custom-icon maps belonging to themes this launcher no longer renders.
-         *
-         * [AppTheme.all] does not list Windows Phone 8.1 - it ships as its own launcher
-         * now - and two sweeps read their list of live icon maps from it:
-         * [purgeRetiredSystemApps], which would stop cleaning the WP8 map, and - far worse -
-         * [pruneUnusedImportedIcons], which *deletes* every imported icon file no live map
-         * still points at. Left out, that sweep would wipe the imported icons of everyone
-         * who had been running the phone theme, on their first launch after updating,
-         * before they had any chance to carry them over.
-         *
-         * So the key stays named here. The theme is gone; its icons are still the user's.
-         */
-        private val RETIRED_CUSTOM_ICON_KEYS = listOf(WP8_CUSTOM_ICONS_KEY)
-
-        /**
-         * Where Windows Phone 8.1 went. Shown once to the people who were running it.
-         *
-         * Its own repository, and so its own release feed - this launcher's updater still
-         * points at this launcher's releases and must not be pointed here.
-         */
         private const val KEY_SOUND_MUTED = "sound_muted"
         private const val KEY_PLAY_EMAIL_SOUND = "play_email_sound"
         private const val KEY_SHOW_NOTIFICATION_DOTS = "show_notification_dots"
@@ -663,19 +642,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LANDSCAPE
         }
 
-        // Start banner cycling order: 98 -> me -> 2000 -> 95 -> back to 98
+        // Start banner cycling order: 98 -> 95 -> back to 98.
         private val START_BANNER_CYCLE = arrayOf(
             "start_banner_98",
-            "start_banner_me",
-            "start_banner_2000",
             "start_banner_95"
         )
 
-        // Map banner names to resource IDs
+        // Map the two retained Classic variants to resource IDs.
         private val BANNER_RESOURCE_MAP = mapOf(
             "start_banner_98" to R.drawable.start_banner_98,
-            "start_banner_me" to R.drawable.start_banner_me,
-            "start_banner_2000" to R.drawable.start_banner_2000,
             "start_banner_95" to R.drawable.start_banner_95
         )
     }
@@ -741,7 +716,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // runs while switching XP→Classic *before* the base theme flips, so getActivePlus95()
         // would still be null and we'd wrongly stage the default wallpaper. Themes that don't
         // ship a wall.jpg (e.g. the Plus! 98 set) fall back to the default Classic wallpaper.
-        val classicPath = plus95WallpaperPath(slug) ?: "wallpapers/Windows ME (m).jpg"
+        val classicPath = plus95WallpaperPath(slug) ?: "wallpapers/Windows 98 Mobile (m).jpg"
         prefs.edit {
             putString(KEY_WALLPAPER_CLASSIC_PATH, classicPath)
             remove(KEY_WALLPAPER_CLASSIC_URI)
@@ -851,7 +826,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      */
     private fun getDefaultWallpaperForCurrentTheme(): String {
         return when (themeManager.getSelectedTheme()) {
-            AppTheme.WindowsClassic -> "wallpapers/Windows ME (m).jpg"
+            AppTheme.WindowsClassic -> "wallpapers/Windows 98 Mobile (m).jpg"
             AppTheme.WindowsXP -> "wallpapers/Bliss (m).jpg"
             AppTheme.WindowsVista -> "wallpapers/Windows Vista (m).jpg" // Can be changed to Vista default later
         }
@@ -5437,8 +5412,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 // Icons chosen by hand - one set per theme - and renamed shortcuts. Both
                 // are "package:value" pairs, and a renamed one escapes the colons in the
                 // value, so the package is always what stands before the first.
-                for (key in AppTheme.all().map { it.customIconsKey } +
-                        RETIRED_CUSTOM_ICON_KEYS + KEY_CUSTOM_NAMES) {
+                for (key in AppTheme.all().map { it.customIconsKey } + KEY_CUSTOM_NAMES) {
                     purgeListedPackages(prefs, key, ";", retiring) { it.substringBefore(":") }
                 }
 
@@ -5636,7 +5610,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val files = iconsDir.listFiles() ?: return
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val inUse = (AppTheme.all().map { it.customIconsKey } + RETIRED_CUSTOM_ICON_KEYS)
+        val inUse = AppTheme.all().map { it.customIconsKey }
             .flatMap { key -> (prefs.getString(key, "") ?: "").split(";") }
             .mapNotNull { entry -> entry.substringAfter(":", "").takeIf { it.isNotEmpty() } }
             .toSet()
@@ -6001,9 +5975,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val customWallpaperButton = contentView.findViewById<View>(R.id.custom_wallpaper_button)
 
         // Set up theme spinner with appropriate layouts based on current theme.
-        // Taken from AppTheme.all() rather than written out again, so a theme that is
-        // added or retired there does not have to be remembered here too - which is
-        // exactly how "Windows Phone 8" outlived its own removal in this list once.
+        // Taken from AppTheme.all() so the selector matches the supported theme set.
         val themes = AppTheme.all().map { it.toString() }.toTypedArray()
         val spinnerLayoutId = themeManager.getSpinnerItemLayoutRes(currentTheme)
         val dropdownLayoutId = themeManager.getSpinnerDropdownLayoutRes(currentTheme)
@@ -6020,12 +5992,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
 
         // Set up flavour spinner
-        val flavours = arrayOf("Windows 95", "Windows 98", "Windows ME", "Windows 2000")
+        val flavours = arrayOf("Windows 95", "Windows 98")
         val flavourValues = mapOf(
             "Windows 95" to "start_banner_95",
-            "Windows 98" to "start_banner_98",
-            "Windows ME" to "start_banner_me",
-            "Windows 2000" to "start_banner_2000"
+            "Windows 98" to "start_banner_98"
         )
 
         val flavourSpinnerAdapter = android.widget.ArrayAdapter(this, spinnerLayoutId, flavours)
@@ -8047,8 +8017,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 when (flavor) {
                     "start_banner_95" -> R.layout.program_welcome_95
                     "start_banner_98" -> R.layout.program_welcome_98
-                    "start_banner_2000" -> R.layout.program_welcome_2000
-                    "start_banner_me" -> R.layout.program_welcome_me
                     else -> R.layout.program_welcome_98
                 }
             }
@@ -8103,8 +8071,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 when (flavor) {
                     "start_banner_95" -> Pair(R.drawable.welcome_95_welcome, R.drawable.welcome_95_change_log)
                     "start_banner_98" -> Pair(R.drawable.welcome_98_welcome, R.drawable.welcome_98_change_log)
-                    "start_banner_2000" -> Pair(R.drawable.welcome_2000_welcome, R.drawable.welcome_2000_change_log)
-                    "start_banner_me" -> Pair(R.drawable.welcome_me_welcome, R.drawable.welcome_me_change_log)
                     else -> Pair(R.drawable.welcome_98_welcome, R.drawable.welcome_98_change_log)
                 }
             }
@@ -8994,15 +8960,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if(themeManager.getSelectedTheme() is AppTheme.WindowsClassic) {
             val currentBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
             when (currentBanner) {
-                "start_banner_me", "start_banner_2000" -> {
-                    playSound(R.raw.startup_2000)
-                }
-                "start_banner_95" -> {
-                    playSound(R.raw.startup_95)
-                }
-                else -> {
-                    playSound(R.raw.startup_98)
-                }
+                "start_banner_95" -> playSound(R.raw.startup_95)
+                else -> playSound(R.raw.startup_98)
             }
         }
         else if(themeManager.getSelectedTheme() is AppTheme.WindowsVista) {
@@ -9077,15 +9036,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if(themeManager.getSelectedTheme() is AppTheme.WindowsClassic) {
             val currentBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
             when (currentBanner) {
-                "start_banner_me", "start_banner_2000" -> {
-                    playSound(R.raw.shutdown_2000)
-                }
-                "start_banner_95" -> {
-                    playSound(R.raw.shutdown_98)
-                }
-                else -> {
-                    playSound(R.raw.shutdown_98)
-                }
+                "start_banner_95", "start_banner_98" -> playSound(R.raw.shutdown_98)
+                else -> playSound(R.raw.shutdown_98)
             }
         }
         else if(themeManager.getSelectedTheme() is AppTheme.WindowsVista) {
