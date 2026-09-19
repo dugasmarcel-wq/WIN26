@@ -223,37 +223,18 @@ class DialerApp(
      */
     private fun callContact(phoneNumber: String) {
         onSoundPlay(R.raw.click)
-
-        // Check if we have CALL_PHONE permission
-        if (context.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            try {
-                val intent = Intent(Intent.ACTION_CALL)
-                intent.data = Uri.parse("tel:$phoneNumber")
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Log.e("DialerApp", "Error initiating call", e)
-                // Fallback to ACTION_DIAL which doesn't require permission
-                try {
-                    val intent = Intent(Intent.ACTION_DIAL)
-                    intent.data = Uri.parse("tel:$phoneNumber")
-                    context.startActivity(intent)
-                } catch (e2: Exception) {
-                    Log.e("DialerApp", "Error opening dialer", e2)
-                }
-            }
-        } else {
-            // Use ACTION_DIAL as fallback which opens the dialer without making the call
-            try {
-                val intent = Intent(Intent.ACTION_DIAL)
-                intent.data = Uri.parse("tel:$phoneNumber")
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Log.e("DialerApp", "Error opening dialer", e)
-            }
+        try {
+            // Let Android's dialer show the number and handle the user's confirmation.
+            val intent = Intent(Intent.ACTION_DIAL)
+            intent.data = Uri.parse("tel:$phoneNumber")
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("DialerApp", "Error opening system dialer", e)
         }
     }
 
     /**
+     * Send SMS to a contact    /**
      * Send SMS to a contact
      */
     private fun sendMessage(phoneNumber: String) {
@@ -429,65 +410,13 @@ class DialerApp(
     /**
      * Search contacts by number and T9 name pattern
      */
-    private fun searchContacts(query: String): List<ContactInfo> {
-        val contacts = mutableListOf<ContactInfo>()
-
-        // Check if we have READ_CONTACTS permission
-        if (context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            return contacts
-        }
-
-        try {
-            val cursor = context.contentResolver.query(
-                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(
-                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
-                ),
-                null,
-                null,
-                android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-            )
-
-            cursor?.use {
-                val nameIndex = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                val numberIndex = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-
-                while (it.moveToNext()) {
-                    val name = it.getString(nameIndex) ?: continue
-                    val number = it.getString(numberIndex) ?: continue
-
-                    // Clean the phone number (remove spaces, dashes, etc.)
-                    val cleanNumber = number.replace(Regex("[^0-9+]"), "")
-
-                    // Match by phone number (contains query)
-                    var numberMatches = cleanNumber.contains(query)
-
-                    // If query starts with 0, also search without the leading 0
-                    // This handles local dialing (e.g., 071545369 matches +38971545369)
-                    if (!numberMatches && query.startsWith("0") && query.length > 1) {
-                        val queryWithoutZero = query.substring(1)
-                        numberMatches = cleanNumber.contains(queryWithoutZero)
-                    }
-
-                    if (numberMatches) {
-                        contacts.add(ContactInfo(name, cleanNumber))
-                    }
-                    // Match by T9 name pattern
-                    else if (matchesT9Pattern(name, query)) {
-                        contacts.add(ContactInfo(name, cleanNumber))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("DialerApp", "Error searching contacts", e)
-        }
-
-        // Remove duplicates by name and return top 8 results
-        return contacts.distinctBy { it.name }.take(SPEED_DIAL_COUNT)
+    private fun searchContacts(@Suppress("UNUSED_PARAMETER") query: String): List<ContactInfo> {
+        // Contact-database access is intentionally disabled in WIN26.
+        return emptyList()
     }
 
     /**
+     * Cleanup when app is closed    /**
      * Cleanup when app is closed
      */
     fun cleanup() {
