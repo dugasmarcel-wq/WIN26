@@ -2,18 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!--
-        Lets the Windows Phone launcher read the setup this app is holding for it.
-
-        Signature level: the only app that can hold it is one signed with the same key, so
-        no third party can ask this app for the user's Start screen. There is no consent
-        prompt because nothing leaves the device - it is a copy from one of the author's
-        apps to another, on the same phone.
-    -->
-    <permission
-        android:name="rocks.gorjan.gokixp.permission.READ_WP8_MIGRATION"
-        android:protectionLevel="signature" />
-
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -113,17 +101,6 @@
                 <data android:scheme="package" />
             </intent-filter>
         </receiver>
-
-        <!--
-            Hands the Windows Phone 8.1 setup to the launcher that inherited it. Read-only,
-            and only to an app signed with the same key. See WP8MigrationProvider.
-        -->
-        <provider
-            android:name=".WP8MigrationProvider"
-            android:authorities="rocks.gorjan.gokixp.migration"
-            android:exported="true"
-            android:grantUriPermissions="false"
-            android:permission="rocks.gorjan.gokixp.permission.READ_WP8_MIGRATION" />
 
         <!-- FileProvider for My Computer file sharing -->
         <provider
