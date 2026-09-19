@@ -2,7 +2,7 @@ name: Android Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, stage-0.2-four-windows-only ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
