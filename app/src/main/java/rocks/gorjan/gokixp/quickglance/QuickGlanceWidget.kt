@@ -2,7 +2,6 @@ package rocks.gorjan.gokixp.quickglance
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.util.AttributeSet
 import android.util.Log
 import android.view.MotionEvent
@@ -382,14 +381,9 @@ class QuickGlanceWidget @JvmOverloads constructor(
 
         dataManager = QuickGlanceDataManager(context)
 
-        // Only add calendar provider if calendar events are enabled and permission is granted
-        if (isShowCalendarEventsEnabled() && hasCalendarPermission()) {
-            val calendarProvider = CalendarDataProvider(context)
-            dataManager?.addProvider(calendarProvider)
-            Log.d("QuickGlanceWidget", "Data manager initialized with calendar provider")
-        } else {
-            Log.d("QuickGlanceWidget", "Data manager initialized without calendar provider (disabled or no permission)")
-        }
+        // Calendar/provider access is disabled in WIN26; Quick Glance remains local-only.
+        context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().remove(KEY_SHOW_CALENDAR_EVENTS).apply()
 
         // Start updates
         dataManager?.startUpdates { data ->
@@ -420,30 +414,11 @@ class QuickGlanceWidget @JvmOverloads constructor(
     }
     
     fun forceCalendarRefresh() {
-        // Force refresh specifically for calendar provider and update display
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                val calendarProvider = dataManager?.providers?.find { it.getProviderId() == "calendar" } as? CalendarDataProvider
-                calendarProvider?.forceRefresh()
-
-                // Also force a complete refresh of the data manager to ensure UI updates
-                val data = calendarProvider?.getCurrentData()
-                if (data != null) {
-                    updatePanelsWithData(data)
-                } else {
-                    // If no calendar data, remove calendar panels and ensure default panel exists
-                    panels.removeAll { it.id == "calendar" || it.id == "calendar_permission" }
-                    if (panels.none { it.id == "default" }) {
-                        panels.add(createDefaultPanel())
-                    }
-                    updatePanelsDisplay()
-                }
-
-                Log.d("QuickGlanceWidget", "Calendar force refresh completed with display update")
-            } catch (e: Exception) {
-                Log.e("QuickGlanceWidget", "Error forcing calendar refresh", e)
-            }
+        panels.removeAll { it.id == "calendar" || it.id == "calendar_permission" }
+        if (panels.none { it.id == "default" }) {
+            panels.add(createDefaultPanel())
         }
+        updatePanelsDisplay()
     }
     
     private fun updatePanelsWithData(data: QuickGlanceData?) {
@@ -525,42 +500,16 @@ class QuickGlanceWidget @JvmOverloads constructor(
     }
     
     // Calendar events setting management
-    fun isShowCalendarEventsEnabled(): Boolean {
-        val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(KEY_SHOW_CALENDAR_EVENTS, false) // Default to false (unchecked)
-    }
+    fun isShowCalendarEventsEnabled(): Boolean = false
 
-    fun setShowCalendarEvents(enabled: Boolean) {
-        val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean(KEY_SHOW_CALENDAR_EVENTS, enabled).apply()
-
-        if (enabled) {
-            // If enabling calendar events but no permission, request it
-            if (!hasCalendarPermission()) {
-                Log.d("QuickGlanceWidget", "Calendar events enabled but no permission - requesting permission")
-                permissionRequestCallback?.invoke()
-            } else {
-                // Reinitialize data manager to include calendar provider
-                initializeDataManager()
-            }
-        } else {
-            // If disabling calendar events, remove calendar panels immediately and reinitialize
-            Log.d("QuickGlanceWidget", "Calendar events disabled - removing calendar panels")
-            panels.removeAll { it.id == "calendar" || it.id == "calendar_permission" }
-
-            // Ensure we always have a default panel
-            if (panels.none { it.id == "default" }) {
-                panels.add(createDefaultPanel())
-            }
-
-            // Update the display immediately
-            updatePanelsDisplay()
-
-            // Reinitialize data manager without calendar provider
-            initializeDataManager()
+    fun setShowCalendarEvents(@Suppress("UNUSED_PARAMETER") enabled: Boolean) {
+        context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().remove(KEY_SHOW_CALENDAR_EVENTS).apply()
+        panels.removeAll { it.id == "calendar" || it.id == "calendar_permission" }
+        if (panels.none { it.id == "default" }) {
+            panels.add(createDefaultPanel())
         }
-
-        Log.d("QuickGlanceWidget", "Calendar events setting changed to: $enabled")
+        updatePanelsDisplay()
     }
 
     // "Align right" setting management
@@ -577,16 +526,7 @@ class QuickGlanceWidget @JvmOverloads constructor(
     }
 
     fun handleCalendarPermissionGranted() {
-        // Called when calendar permission is granted - reinitialize data manager
-        if (isShowCalendarEventsEnabled()) {
-            Log.d("QuickGlanceWidget", "Calendar permission granted - reinitializing data manager")
-            initializeDataManager()
-        }
-    }
-
-    private fun hasCalendarPermission(): Boolean {
-        return context.checkSelfPermission(android.Manifest.permission.READ_CALENDAR) ==
-               PackageManager.PERMISSION_GRANTED
+        // Calendar permission is intentionally unsupported.
     }
 
     fun destroy() {
