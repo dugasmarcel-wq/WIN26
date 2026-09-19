@@ -10921,24 +10921,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
     
     private fun launchWebSearch() {
-        Log.d("MainActivity", "🔍 launchWebSearch() called")
-        try {
-            val intent = Intent(Intent.ACTION_WEB_SEARCH).apply {
-                putExtra(SearchManager.QUERY, "") // leave empty so the box is focused
-                // Launch as separate task that can be dismissed with home gesture
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-            }
-            if (intent.resolveActivity(packageManager) != null) {
-                startActivity(intent)
-                Log.d("MainActivity", "✅ Launched web search with focused search box")
-                return
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch focused web search: ${e.message}")
-        }
-        
-        // Fallback: try the existing Google Search method
-        launchGoogleSearch()
+        showInternetExplorerDialog("https://www.google.com")
     }
 
     fun launchSwipeRightApp() {
@@ -10957,116 +10940,18 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         startActivity(intent)
                         Log.d("MainActivity", "✅ Successfully launched swipe right app")
                     } else {
-                        Log.w(
-                            "MainActivity",
-                            "Swipe right app not found, falling back to Google magazines"
-                        )
-                        launchGoogleMagazines()
+                        Log.w("MainActivity", "Configured swipe right app is not installed")
+                        showNotification("Swipe Right", "Configured app is not installed")
                     }
                 }
             } catch (e: Exception) {
-                Log.e("MainActivity", "Failed to launch swipe right app, falling back to Google magazines", e)
-                launchGoogleMagazines()
+                Log.e("MainActivity", "Failed to launch swipe right app", e)
+                showNotification("Swipe Right", "Unable to open the configured app")
             }
         } else {
             Log.d("MainActivity", "No swipe right app set, showing instruction toast")
             showNotification("Tip", "Long press an app in the Start menu and select 'Set as Swipe Right App'")
         }
-    }
-
-    private fun launchGoogleMagazines() {
-        Log.d("MainActivity", "📰 launchGoogleMagazines() called")
-        try {
-            // Try to launch Google magazines app directly
-            val magazinesIntent = packageManager.getLaunchIntentForPackage("com.google.android.apps.magazines")
-            if (magazinesIntent != null) {
-                Log.d("MainActivity", "✅ Launching Google magazines app")
-                magazinesIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                startActivity(magazinesIntent)
-                return
-            } else {
-                Log.w("MainActivity", "Google magazines app not found")
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch Google magazines: ${e.message}")
-        }
-
-        // Fallback: try to open in Play Store if app not installed
-        try {
-            val playStoreIntent = Intent(Intent.ACTION_VIEW)
-            playStoreIntent.data = "market://details?id=com.google.android.apps.magazines".toUri()
-            playStoreIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(playStoreIntent)
-            Log.d("MainActivity", "✅ Opened Google magazines in Play Store")
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to open Google magazines in Play Store: ${e.message}")
-        }
-    }
-
-    private fun launchGoogleSearch() {
-        Log.d("MainActivity", "🔍 launchGoogleSearch() called")
-        try {
-            // Method 1: Try to launch Google Search with focused search box
-            val searchIntent = Intent(Intent.ACTION_SEARCH)
-            searchIntent.setPackage("com.google.android.googlequicksearchbox")
-            // Launch as separate task that can be properly dismissed
-            searchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-            startActivity(searchIntent)
-            Log.d("MainActivity", "✅ Launched Google Search with focused search box")
-            return
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch focused Google Search: ${e.message}")
-        }
-
-        try {
-            // Method 1b: Try to launch Google Search app directly as fallback
-            val googleSearchIntent = packageManager.getLaunchIntentForPackage("com.google.android.googlequicksearchbox")
-            if (googleSearchIntent != null) {
-                Log.d("MainActivity", "✅ Launching Google Search app")
-                startActivity(googleSearchIntent)
-                return
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch Google Search app: ${e.message}")
-        }
-
-        try {
-            // Method 2: Try to launch search via intent
-            val searchIntent = Intent(Intent.ACTION_SEARCH)
-            searchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(searchIntent)
-            Log.d("MainActivity", "✅ Launched search via ACTION_SEARCH")
-            return
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch search via ACTION_SEARCH: ${e.message}")
-        }
-        
-        try {
-            // Method 3: Try to launch Google app (fallback)
-            val googleAppIntent = packageManager.getLaunchIntentForPackage("com.google.android.gms")
-            if (googleAppIntent != null) {
-                Log.d("MainActivity", "✅ Launching Google app as fallback")
-                startActivity(googleAppIntent)
-                return
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch Google app: ${e.message}")
-        }
-        
-        try {
-            // Method 4: Launch web search as final fallback
-            val webSearchIntent = Intent(Intent.ACTION_WEB_SEARCH)
-            webSearchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(webSearchIntent)
-            Log.d("MainActivity", "✅ Launched web search")
-            return
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to launch web search: ${e.message}")
-        }
-        
-        // Final fallback: Show a message
-        Log.e("MainActivity", "❌ All Google Search launch methods failed")
-        showNotification("Error", "Google Search app not available")
     }
 
     @Deprecated("Deprecated in Java")
