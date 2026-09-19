@@ -3813,7 +3813,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         Log.d("MainActivity", "Quick Glance widget setup completed")
     }
     
-    private fun requestNotificationPermissionIfNeeded() {    private fun requestNotificationPermissionIfNeeded() {
+    private fun requestNotificationPermissionIfNeeded() {
         // Only request on Android 13+ (API 33+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
