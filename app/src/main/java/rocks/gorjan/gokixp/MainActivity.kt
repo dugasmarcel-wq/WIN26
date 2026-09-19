@@ -208,7 +208,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private val systemAppActions = mutableMapOf<String, (AppInfo?) -> Unit>() // packageName -> action function with optional AppInfo
 
     // Permission request codes
-    private val CALENDAR_PERMISSION_REQUEST_CODE = 1003
     private val AUDIO_PERMISSION_REQUEST_CODE = 200
     private val VIDEO_PERMISSION_REQUEST_CODE = 201
     private val STORAGE_PERMISSION_REQUEST_CODE = 202
@@ -3802,11 +3801,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             // Initialize data manager after positioning is set
             quickGlanceWidget.initializeDataManager()
             
-            // Set permission request callback
-            quickGlanceWidget.setPermissionRequestCallback {
-                requestCalendarPermission()
-            }
-            
             // Set context menu callback
             quickGlanceWidget.setContextMenuCallback { screenX, screenY ->
                 showQuickGlanceContextMenu(screenX, screenY)
@@ -3819,22 +3813,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         Log.d("MainActivity", "Quick Glance widget setup completed")
     }
     
-    private fun requestCalendarPermission() {
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALENDAR) 
-            != PackageManager.PERMISSION_GRANTED) {
-            
-            Log.d("MainActivity", "Requesting calendar permission")
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(android.Manifest.permission.READ_CALENDAR),
-                CALENDAR_PERMISSION_REQUEST_CODE
-            )
-        } else {
-            Log.d("MainActivity", "Calendar permission already granted")
-        }
-    }
-    
-    private fun requestNotificationPermissionIfNeeded() {
+    private fun requestNotificationPermissionIfNeeded() {    private fun requestNotificationPermissionIfNeeded() {
         // Only request on Android 13+ (API 33+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -11925,25 +11904,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         aqiContainer?.clipChildren = false
     }
 
-    override fun onRequestPermissionsResult    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         
         when (requestCode) {
-            CALENDAR_PERMISSION_REQUEST_CODE -> if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Log.d("MainActivity", "Calendar permission granted")
-
-                // Notify Quick Glance widget about permission grant
-                if (::quickGlanceWidget.isInitialized) {
-                    handler.postDelayed({
-                        quickGlanceWidget.handleCalendarPermissionGranted()
-                        Log.d("MainActivity", "Quick Glance widget notified of permission grant")
-                    }, 500) // Small delay to ensure permission is fully processed
-                }
-            } else {
-                Log.d("MainActivity", "Calendar permission denied")
-                showNotification("Permission Needed", "Calendar permission required for event display")
-            }
-
             AUDIO_PERMISSION_REQUEST_CODE -> if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d("Winamp", "Audio permission granted")
 
