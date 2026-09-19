@@ -8201,9 +8201,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Set version text (using the versionName we already retrieved)
         versionTextView?.text = "Version: $versionName"
 
-        // Set welcome text and auto-linkify URLs and email addresses
+        // Keep arbitrary URLs/email addresses as plain text. Only the explicit spans
+        // below may navigate, and those are routed through the built-in Internet Explorer.
         welcomeTextView.text = welcomeMessage
-        Linkify.addLinks(welcomeTextView, Linkify.WEB_URLS or Linkify.EMAIL_ADDRESSES)
         welcomeTextView.movementMethod = LinkMovementMethod.getInstance()
         welcomeTextView.setLinkTextColor(Color.parseColor("#0000FF")) // Windows blue
 
