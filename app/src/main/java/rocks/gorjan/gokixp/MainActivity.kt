@@ -184,11 +184,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var isShowingHiddenApps = false
     private var lastAppliedTheme: String? = null
 
-    /**
-     * Whether this phone was running the Windows Phone theme before it moved to its own
-     * app. Decides whether the "it moved" notice is shown; see [WP8Migration].
-     */
-    private var wasWindowsPhoneUser = false
     private var selectedIcon: DesktopIconView? = null
     private val desktopIcons = mutableListOf<DesktopIcon>()
     private val desktopIconViews = mutableListOf<DesktopIconView>()
@@ -1013,12 +1008,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         
         // Set up modern back press handling
         setupBackPressHandling()
-
-        // Before any of the sweeps below touch the user's arrangement: if this phone was
-        // running the Windows Phone theme, put a copy of that setup aside for the launcher
-        // it moved to. purgeRetiredSystemApps and pruneUnusedImportedIcons both edit or
-        // delete exactly the things it is made of.
-        wasWindowsPhoneUser = WP8Migration.captureIfNeeded(this)
 
         // Migrate custom mappings from old preferences file if needed
         migrateCustomMappingsIfNeeded()
@@ -8091,18 +8080,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         // Check if welcome was already shown for this version
         val shownForVersion = prefs.getString(KEY_SHOWN_WELCOME_FOR_VERSION, null)
-
-        // Someone who was running the phone theme is not looking at a new version of the
-        // launcher they had - they are looking at a different one. That is the thing to
-        // explain, and it takes the place of the changelog rather than queueing behind it.
-        if (wasWindowsPhoneUser && !prefs.getBoolean(WP8Migration.KEY_NOTICE_SHOWN, false)) {
-            showWindowsPhoneMovedNotice()
-            prefs.edit {
-                putBoolean(WP8Migration.KEY_NOTICE_SHOWN, true)
-                putString(KEY_SHOWN_WELCOME_FOR_VERSION, currentVersion)
-            }
-            return
-        }
 
         if (shownForVersion != currentVersion) {
             // Welcome not shown for this version yet, show it
