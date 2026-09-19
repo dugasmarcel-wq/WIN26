@@ -9134,7 +9134,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
     
-    private fun loadSavedWallpaper() {    private fun loadSavedWallpaper() {
+    private fun loadSavedWallpaper() {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         val (pathKey, uriKey) = getCurrentThemeWallpaperKeys()
 
