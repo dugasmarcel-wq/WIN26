@@ -574,7 +574,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_SCREENSAVER_TIMEOUT = "screensaver_timeout"
         private const val KEY_WINDOW_STATES = "window_states"
         private const val KEY_TAP_TO_HIDE_ICONS = "tap_to_hide_icons"
-        private const val KEY_OPEN_URLS_IN_IE = "open_urls_in_ie"
 
         // Screensaver types
         private const val SCREENSAVER_NONE = 0
@@ -2164,11 +2163,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun isTapToHideIconsEnabled(): Boolean {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         return prefs.getBoolean(KEY_TAP_TO_HIDE_ICONS, false) // Default to off
-    }
-
-    private fun isOpenUrlsInIeEnabled(): Boolean {
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        return prefs.getBoolean(KEY_OPEN_URLS_IN_IE, false) // Default to the system default browser
     }
 
     fun isShowAqiEnabled(): Boolean = false
@@ -6175,12 +6169,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
         }
 
-        // Set up Open Desktop URLs In Internet Explorer checkbox
-        openUrlsInIeCheckbox.isChecked = isOpenUrlsInIeEnabled()
-        openUrlsInIeCheckbox.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit { putBoolean(KEY_OPEN_URLS_IN_IE, isChecked) }
-            Log.d("MainActivity", "Open URLs in IE changed to: $isChecked")
-        }
+        // WIN26 routes launcher-owned web navigation through its built-in IE only.
+        openUrlsInIeCheckbox.isChecked = true
+        openUrlsInIeCheckbox.isEnabled = false
 
         // Air-quality data and networking are disabled in WIN26.
         showAirQualityCheckbox.isChecked = false
@@ -9582,23 +9573,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             Log.w("MainActivity", "URL shortcut has no target URL")
             return
         }
-
-        if (isOpenUrlsInIeEnabled()) {
-            showInternetExplorerDialog(target)
-            return
-        }
-
-        // Default: open in the system default browser
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(target)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error opening URL in default browser: $target", e)
-            // Fall back to the built-in browser if no external handler is available
-            showInternetExplorerDialog(target)
-        }
+        showInternetExplorerDialog(target)
     }
 
 
