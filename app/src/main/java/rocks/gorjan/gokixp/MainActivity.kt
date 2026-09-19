@@ -97,8 +97,6 @@ import rocks.gorjan.gokixp.quickglance.QuickGlanceWidget
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import rocks.gorjan.gokixp.theme.*
-import java.net.HttpURLConnection
-import java.net.URL
 import androidx.core.graphics.toColorInt
 import androidx.core.view.isVisible
 import androidx.core.view.isEmpty
@@ -586,14 +584,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_TAP_TO_HIDE_ICONS = "tap_to_hide_icons"
         private const val KEY_OPEN_URLS_IN_IE = "open_urls_in_ie"
         private const val KEY_SHOW_AQI = "show_aqi"
-        private const val AIRCARE_URL = "https://getaircare.com"
 
         // Screensaver types
         private const val SCREENSAVER_NONE = 0
         private const val SCREENSAVER_3D_PIPES = 1
         private const val SCREENSAVER_UNDERWATER = 2
         private const val DEFAULT_SCREENSAVER_TIMEOUT = 30 // Default 30 seconds
-        private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1002
 
         // System app package name prefix
@@ -11647,73 +11643,17 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun refreshAqiData() {
-        Log.d("MainActivity", "Refreshing AQI data with fresh GPS location...")
-        val locationContext = attributionContext("aqi")
-        val locationManager = locationContext.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-
-        try {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-
-                val locationListener = object : android.location.LocationListener {
-                    override fun onLocationChanged(location: android.location.Location) {
-                        Log.d("MainActivity", "Got fresh location for AQI: ${location.latitude}, ${location.longitude}")
-                        fetchAqiData(location.latitude, location.longitude)
-                        locationManager.removeUpdates(this)
-                    }
-                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                    override fun onProviderEnabled(provider: String) {}
-                    override fun onProviderDisabled(provider: String) {}
-                }
-
-                // Request fresh GPS location first, fall back to network
-                if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                    Log.d("MainActivity", "Requesting fresh GPS location for AQI...")
-                    locationManager.requestLocationUpdates(
-                        android.location.LocationManager.GPS_PROVIDER,
-                        0, 0f, locationListener)
-                } else if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                    Log.d("MainActivity", "GPS not available, using network location for AQI...")
-                    locationManager.requestLocationUpdates(
-                        android.location.LocationManager.NETWORK_PROVIDER,
-                        0, 0f, locationListener)
-                } else {
-                    Log.w("MainActivity", "No location provider available for AQI refresh")
-                }
-
-                // Timeout after 15 seconds - fall back to cached location
-                handler.postDelayed({
-                    locationManager.removeUpdates(locationListener)
-                    // Try cached location as fallback
-                    var cachedLocation: android.location.Location? = null
-                    if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                        cachedLocation = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                    }
-                    if (cachedLocation == null && locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                        cachedLocation = locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                    }
-                    if (cachedLocation != null) {
-                        Log.d("MainActivity", "GPS timeout, using cached location for AQI")
-                        fetchAqiData(cachedLocation.latitude, cachedLocation.longitude)
-                    }
-                }, 15000)
-            }
-        } catch (e: SecurityException) {
-            Log.e("MainActivity", "Location permission denied for AQI refresh", e)
+        // WIN26 keeps AQI/location data off-device and does not fetch it.
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        prefs.edit {
+            remove(KEY_AQI_DATA)
+            remove(KEY_AQI_TIMESTAMP)
         }
+        findViewById<LinearLayout>(R.id.aqi_container)?.visibility = View.GONE
     }
     
     private fun scheduleWeatherUpdates() {
-        weatherUpdateRunnable = object : Runnable {
-            override fun run() {
-                // Update weather every hour (3600000 ms)
-                updateWeatherTemperature()
-                handler.postDelayed(this, 3600000) // 1 hour
-            }
-        }
-        weatherUpdateRunnable?.let { runnable ->
-            handler.postDelayed(runnable, 3600000) // First update after 1 hour
-        }
+        // Intentionally no background weather polling.
     }
     
     private fun handleWeatherTempTap() {
@@ -11750,48 +11690,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun launchDefaultWeatherApp() {
-        Log.d("MainActivity", "🌤️ Launching default weather app - checking permissions")
-
-        // Check if location permissions are granted
-        val hasFineLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val hasCoarseLocation = checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-
-        if (hasFineLocation || hasCoarseLocation) {
-            // Permission granted - open weather app
-            Log.d("MainActivity", "✅ Location permission granted - launching Google weather app")
-            launchGoogleWeatherApp()
-        } else {
-            // No permission - check if we should show rationale or request permission
-            val shouldShowRationaleFine = shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)
-            val shouldShowRationaleCoarse = shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_COARSE_LOCATION)
-            
-            if (shouldShowRationaleFine || shouldShowRationaleCoarse) {
-                // User previously denied permission - open app settings
-                Log.d("MainActivity", "❌ Permission previously denied - opening app settings")
-                openAppSettings()
-            } else {
-                // First time asking for permission - request it
-                Log.d("MainActivity", "❓ First time requesting location permission")
-                requestPermissions(
-                    arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION),
-                    LOCATION_PERMISSION_REQUEST_CODE
-                )
-            }
-        }
-    }
-    
-    private fun openAppSettings() {
-        try {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            intent.data = "package:$packageName".toUri()
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(intent)
-            Log.d("MainActivity", "✅ Opened app settings")
-        } catch (e: Exception) {
-            Log.e("MainActivity", "❌ Failed to open app settings: ${e.message}")
-            // Fallback: show a toast message
-            showNotification("Permission Missing", "Please enable location permission in Settings")
-        }
+        // Opening an installed weather app does not give this launcher location access.
+        launchGoogleWeatherApp()
     }
     
     private fun launchGoogleWeatherApp() {
@@ -11824,229 +11724,21 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun handleWeatherTempRefresh() {
-        Log.d("MainActivity", "🔄 Weather refresh requested via long press")
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) 
-            != PackageManager.PERMISSION_GRANTED) {
-            // Request permission
-            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), 
-                LOCATION_PERMISSION_REQUEST_CODE)
-        } else if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) 
-            != PackageManager.PERMISSION_GRANTED) {
-            // Request coarse location as backup
-            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_COARSE_LOCATION), 
-                LOCATION_PERMISSION_REQUEST_CODE)
-        } else {
-            // Permission already granted, fetch weather
-            fetchLocationAndWeather()
-        }
+        updateWeatherTemperature()
     }
     
     private fun updateWeatherTemperature() {
-        val weatherTemp = findViewById<TextView>(R.id.weather_temp)
-        
-        // Check for location permissions
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) 
-            != PackageManager.PERMISSION_GRANTED &&
-            checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) 
-            != PackageManager.PERMISSION_GRANTED) {
-            Log.d("MainActivity", "No location permission - showing '?'")
-            weatherTemp?.text = "?"
-            return
+        // Weather previously transmitted precise/coarse device coordinates to Open-Meteo.
+        // Keep the taskbar surface inert and remove any location-derived cache.
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        prefs.edit {
+            remove(KEY_WEATHER_DATA)
+            remove(KEY_WEATHER_TIMESTAMP)
+            remove(KEY_AQI_DATA)
+            remove(KEY_AQI_TIMESTAMP)
         }
-        
-        // Check network availability
-        if (!isNetworkAvailable()) {
-            Log.d("MainActivity", "No network connection - trying to use cached data")
-            // Try to use cached data
-            val cachedData = getCachedWeatherJson()
-            if (cachedData != null) {
-                try {
-                    val currentWeather = cachedData.getJSONObject("current")
-                    val temperature = currentWeather.getDouble("temperature_2m")
-                    val roundedTemp = kotlin.math.round(temperature).toInt()
-                    val unitTemp = getWeatherUnit()
-                    weatherTemp?.text = "$roundedTemp°$unitTemp"
-                    Log.d("MainActivity", "Using cached weather data: $roundedTemp°")
-                    return
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Error parsing cached weather data", e)
-                }
-            }
-            weatherTemp?.text = "?"
-            return
-        }
-        
-        // Permission granted and network available, fetch weather
-        fetchLocationAndWeather()
-    }
-    
-    private fun fetchLocationAndWeather() {
-        val weatherTemp = findViewById<TextView>(R.id.weather_temp)
-        weatherTemp?.text = "..."
-        
-        val locationContext =
-            attributionContext("weather")
-        val locationManager = locationContext.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-        
-        try {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) 
-                == PackageManager.PERMISSION_GRANTED ||
-                checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) 
-                == PackageManager.PERMISSION_GRANTED) {
-                
-                // First try to get last known location (fast, no GPS ping)
-                var lastKnownLocation: android.location.Location? = null
-                
-                // Check GPS provider first
-                if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                    lastKnownLocation = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                }
-                
-                // Fallback to network provider
-                if (lastKnownLocation == null && locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                    lastKnownLocation = locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                }
-                
-                // If we have a cached location, use it immediately
-                if (lastKnownLocation != null) {
-                    fetchWeatherData(lastKnownLocation.latitude, lastKnownLocation.longitude)
-                    return
-                }
-                
-                // Only if no cached location is available, request fresh location
-                val locationListener = object : android.location.LocationListener {
-                    override fun onLocationChanged(location: android.location.Location) {
-                        fetchWeatherData(location.latitude, location.longitude)
-                        locationManager.removeUpdates(this)
-                    }
-                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                    override fun onProviderEnabled(provider: String) {}
-                    override fun onProviderDisabled(provider: String) {}
-                }
-                
-                // Request fresh location as fallback
-                if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                    // Prefer network provider for speed
-                    locationManager.requestLocationUpdates(
-                        android.location.LocationManager.NETWORK_PROVIDER, 
-                        0, 0f, locationListener)
-                } else if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                    locationManager.requestLocationUpdates(
-                        android.location.LocationManager.GPS_PROVIDER, 
-                        0, 0f, locationListener)
-                }
-                
-                // Shorter timeout since we're only using this as fallback
-                handler.postDelayed({
-                    locationManager.removeUpdates(locationListener)
-                    weatherTemp?.text = "?"
-                }, 10000) // Reduced to 10 seconds
-            }
-        } catch (e: SecurityException) {
-            weatherTemp?.text = "?"
-        }
-    }
-    
-    private fun fetchWeatherData(latitude: Double, longitude: Double) {
-        Thread {
-            val maxRetries = 3
-            var lastError: Exception? = null
-            
-            for (attempt in 0 until maxRetries) {
-                try {
-                    Log.d("MainActivity", "Weather fetch attempt ${attempt + 1}/$maxRetries")
-                    
-                    val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=temperature_2m,weather_code&timezone=auto"
-                    val connection = URL(url).openConnection() as HttpURLConnection
-                    connection.requestMethod = "GET"
-                    connection.connectTimeout = 10000 + (attempt * 2000) // Increase timeout with retries
-                    connection.readTimeout = 10000 + (attempt * 2000)
-                    
-                    val responseCode = connection.responseCode
-                    Log.d("MainActivity", "Weather API response code: $responseCode")
-                    
-                    if (responseCode == 200) {
-                        val response = connection.inputStream.bufferedReader().use { it.readText() }
-                        
-                        // Parse JSON response properly
-                        try {
-                            val jsonObject = org.json.JSONObject(response)
-                            val currentWeather = jsonObject.getJSONObject("current")
-                            val temperature = currentWeather.getDouble("temperature_2m")
-
-                            // Save weather data to SharedPreferences for other components
-                            saveWeatherData(response)
-
-                            runOnUiThread {
-                                val weatherTemp = findViewById<TextView>(R.id.weather_temp)
-                                val formattedTemp = formatTemperature(temperature)
-                                weatherTemp?.text = formattedTemp
-                                Log.d("MainActivity", "Weather updated successfully: $formattedTemp")
-
-                                // Notify QuickGlanceWidget to refresh its weather display
-                                if (::quickGlanceWidget.isInitialized) {
-                                    quickGlanceWidget.refreshData()
-                                }
-                            }
-                            // Also fetch AQI data
-                            fetchAqiData(latitude, longitude)
-                            return@Thread // Success - exit retry loop
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "Error parsing weather JSON on attempt ${attempt + 1}", e)
-                            lastError = e
-                        }
-                    } else {
-                        val errorMessage = "HTTP error $responseCode on attempt ${attempt + 1}"
-                        Log.e("MainActivity", errorMessage)
-                        lastError = Exception(errorMessage)
-                    }
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Network error on attempt ${attempt + 1}: ${e.message}", e)
-                    lastError = e
-                }
-                
-                // Wait before retrying (exponential backoff)
-                if (attempt < maxRetries - 1) {
-                    val delayMs = (1000 * (attempt + 1) * (attempt + 1)).toLong() // 1s, 4s, 9s
-                    Log.d("MainActivity", "Waiting ${delayMs}ms before retry...")
-                    try {
-                        Thread.sleep(delayMs)
-                    } catch (e: InterruptedException) {
-                        Log.d("MainActivity", "Retry sleep interrupted")
-                        break
-                    }
-                }
-            }
-            
-            // All retries failed - try to use cached data or show error
-            Log.e("MainActivity", "All weather fetch attempts failed. Last error: ${lastError?.message}")
-            runOnUiThread {
-                handleWeatherFetchFailure()
-            }
-        }.start()
-    }
-    
-    private fun handleWeatherFetchFailure() {
-        val weatherTemp = findViewById<TextView>(R.id.weather_temp)
-        
-        // Try to use cached data as fallback
-        val cachedData = getCachedWeatherJson()
-        if (cachedData != null) {
-            try {
-                val currentWeather = cachedData.getJSONObject("current")
-                val temperature = currentWeather.getDouble("temperature_2m")
-                val formattedTemp = formatTemperature(temperature)
-                weatherTemp?.text = formattedTemp
-                Log.d("MainActivity", "Using cached weather as fallback: $formattedTemp")
-                return
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error parsing cached weather fallback", e)
-            }
-        }
-        
-        // No cached data available - show error
-        weatherTemp?.text = "?"
-        Log.d("MainActivity", "No cached weather available - showing '?'")
+        findViewById<TextView>(R.id.weather_temp)?.text = "?"
+        findViewById<LinearLayout>(R.id.aqi_container)?.visibility = View.GONE
     }
     
     // Weather data caching methods
@@ -12163,53 +11855,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     // AQI (Air Quality Index) methods
-    private fun fetchAqiData(latitude: Double, longitude: Double) {
-        // Don't hit the AirCare API at all when the indicator is disabled.
-        if (!isShowAqiEnabled()) return
-        Thread {
-            try {
-                val url = "https://getaircare.com/api/v4/api.php?requestType=point&lat=$latitude&lng=$longitude"
-                val connection = URL(url).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-
-                val responseCode = connection.responseCode
-                if (responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    val jsonObject = org.json.JSONObject(response)
-                    val measurements = jsonObject.getJSONArray("measurements")
-
-                    // Find pid: 7 (EU AQI)
-                    var aqiValue: Int? = null
-                    for (i in 0 until measurements.length()) {
-                        val measurement = measurements.getJSONObject(i)
-                        if (measurement.getInt("pid") == 7) {
-                            aqiValue = measurement.getInt("val")
-                            break
-                        }
-                    }
-
-                    if (aqiValue != null) {
-                        saveAqiData(aqiValue)
-                        runOnUiThread {
-                            updateAqiDisplay(aqiValue)
-                            // Notify QuickGlanceWidget to refresh
-                            if (::quickGlanceWidget.isInitialized) {
-                                quickGlanceWidget.refreshData()
-                            }
-                        }
-                        Log.d("MainActivity", "AQI updated successfully: $aqiValue")
-                    }
-                } else {
-                    Log.e("MainActivity", "AQI API error: $responseCode")
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error fetching AQI data", e)
-            }
-        }.start()
-    }
-
     private fun saveAqiData(aqi: Int) {
         try {
             val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -12292,54 +11937,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         aqiContainer?.clipChildren = false
     }
 
-    private fun isNetworkAvailable(): Boolean {
-        return try {
-            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-
-            // Check if we have the required permission
-            // For API 23+, use the modern approach
-            val network = connectivityManager.activeNetwork ?: return false
-            val networkCapabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-            networkCapabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
-            networkCapabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
-        } catch (e: SecurityException) {
-            // Handle case where ACCESS_NETWORK_STATE permission is missing
-            Log.w("MainActivity", "ACCESS_NETWORK_STATE permission not granted, assuming network is available", e)
-            true // Default to assuming network is available
-        } catch (e: Exception) {
-            // Handle any other unexpected exceptions
-            Log.e("MainActivity", "Unexpected error checking network availability, assuming network is available", e)
-            true // Default to assuming network is available
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         
         when (requestCode) {
-            LOCATION_PERMISSION_REQUEST_CODE -> if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted, fetch weather
-                fetchLocationAndWeather()
-            } else {
-                // Permission denied, show settings or keep question mark
-                val weatherTemp = findViewById<TextView>(R.id.weather_temp)
-                weatherTemp?.text = "?"
-
-                // Handle location permission rationale
-                if (shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)) {
-                    // User denied but didn't check "don't ask again"
-                } else {
-                    // User denied and checked "don't ask again", open settings
-                    try {
-                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                        intent.data = Uri.fromParts("package", packageName, null)
-                        startActivity(intent)
-                    } catch (e: Exception) {
-                        // Couldn't open settings
-                    }
-                }
-            }
-            
             CALENDAR_PERMISSION_REQUEST_CODE -> if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d("MainActivity", "Calendar permission granted")
 
