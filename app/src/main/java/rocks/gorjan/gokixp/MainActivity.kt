@@ -92,11 +92,8 @@ import rocks.gorjan.gokixp.apps.lights.SnowfallManager
 import rocks.gorjan.gokixp.apps.minesweeper.MinesweeperGame
 import rocks.gorjan.gokixp.apps.notepad.NotepadApp
 import rocks.gorjan.gokixp.apps.regedit.RegistryEditorApp
-import rocks.gorjan.gokixp.apps.regedit.GoogleDriveHelper
 import rocks.gorjan.gokixp.apps.solitare.SolitareGame
 import rocks.gorjan.gokixp.quickglance.QuickGlanceWidget
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.common.api.ApiException
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import rocks.gorjan.gokixp.theme.*
@@ -409,9 +406,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     // Preferences export/import launchers
     private var pendingExportJson: String? = null
-    private var pendingImportCallback: (() -> Unit)? = null
-    private lateinit var googleDriveHelper: GoogleDriveHelper
-
     private val exportPrefsLauncher = registerForActivityResult(CreateDocument("todo/todo")) { uri: Uri? ->
         uri?.let { selectedUri ->
             try {
@@ -449,44 +443,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
-    // Google Sign-In launcher for Google Drive
-    private val googleSignInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        Log.d("MainActivity", "Google Sign-In result received: resultCode=${result.resultCode}")
-        if (result.resultCode == RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(ApiException::class.java)
-                Log.d("MainActivity", "Google Sign-In successful: ${account.email}")
-                googleDriveHelper.handleSignInResult(account)
-                showNotification("Google Drive", "Signed in successfully")
-
-                // Execute pending action
-                Log.d("MainActivity", "Executing pending callback")
-                pendingImportCallback?.invoke()
-                pendingImportCallback = null
-            } catch (e: ApiException) {
-                Log.e("MainActivity", "Google Sign-In failed: code=${e.statusCode}", e)
-                showNotification("Google Drive", "Sign-in failed: ${e.message}")
-                pendingImportCallback = null
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Unexpected error during sign-in", e)
-                showNotification("Google Drive", "Sign-in error: ${e.message}")
-                pendingImportCallback = null
-            }
-        } else {
-            Log.w("MainActivity", "Google Sign-In cancelled or failed: resultCode=${result.resultCode}")
-
-            // If resultCode is RESULT_CANCELED (0), it means the sign-in was cancelled
-            // This often happens when OAuth credentials are not properly configured
-            if (result.resultCode == RESULT_CANCELED) {
-                showNotification("Google Drive", "Sign-in cancelled. Note: Google Drive API requires OAuth configuration.")
-            } else {
-                showNotification("Google Drive", "Sign-in failed (code: ${result.resultCode})")
-            }
-            pendingImportCallback = null
-        }
-    }
-
     // Sound system
     private lateinit var soundPool: SoundPool
     private val soundIds = mutableMapOf<Int, Int>() // Maps resource ID to sound ID
@@ -503,10 +459,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var profileNameView: TextView? = null
     private lateinit var screensaverManager: ScreensaverManager
 
-    // Auto-sync for Google Drive
-    private val autoSyncHandler = Handler(Looper.getMainLooper())
-    private var autoSyncRunnable: Runnable? = null
-    private val AUTO_SYNC_INTERVAL = 3600000L // 1 hour in milliseconds
     private var registryEditorAppInstance: RegistryEditorApp? = null
 
     // Permission error update functions for wallpaper dialog
@@ -630,7 +582,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_SYSTEM_TRAY_VISIBLE = "system_tray_visible"
         private const val KEY_SELECTED_SCREENSAVER = "selected_screensaver"
         private const val KEY_SCREENSAVER_TIMEOUT = "screensaver_timeout"
-        private const val KEY_LAST_GOOGLE_DRIVE_SYNC = "last_google_drive_sync"
         private const val KEY_WINDOW_STATES = "window_states"
         private const val KEY_TAP_TO_HIDE_ICONS = "tap_to_hide_icons"
         private const val KEY_OPEN_URLS_IN_IE = "open_urls_in_ie"
@@ -1011,19 +962,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val screensaverTimeout = prefs.safeGetInt(KEY_SCREENSAVER_TIMEOUT, DEFAULT_SCREENSAVER_TIMEOUT)
         screensaverManager.setInactivityTimeout(screensaverTimeout)
 
-        // Initialize Google Drive helper
-        googleDriveHelper = GoogleDriveHelper(this)
-
-        // Check if already signed in to Google Drive
-        val lastAccount = GoogleSignIn.getLastSignedInAccount(this)
-        if (lastAccount != null) {
-            googleDriveHelper.handleSignInResult(lastAccount)
-        }
-
-        // Start auto-sync if enabled (should run regardless of Registry Editor being open)
-        val autoSyncEnabled = prefs.getBoolean("auto_sync_google_drive", false)
-        if (autoSyncEnabled) {
-            startAutoSync()
+        // Cloud account/sync integration is intentionally disabled in WIN26.
+        if (prefs.contains("auto_sync_google_drive") || prefs.contains("last_google_drive_sync")) {
+            prefs.edit {
+                remove("auto_sync_google_drive")
+                remove("last_google_drive_sync")
+            }
         }
 
         // Initialize floating window manager with container
@@ -7250,11 +7194,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             onShowNotification = { title, message -> showNotification(title, message) },
             onShowAddKeyDialog = { prefs, refreshCallback -> showAddKeyDialog(prefs, refreshCallback) },
             onExportToLocalFile = { prefsToExport -> exportToLocalFile(prefsToExport) },
-            onExportToGoogleDrive = { prefsToExport -> exportToGoogleDrive(prefsToExport) },
+            onExportToGoogleDrive = { _ ->
+                showNotification("Registry Editor", "Cloud backup is disabled; use Local File")
+            },
             onImportFromLocalFile = { importFromLocalFile() },
-            onImportFromGoogleDrive = { importFromGoogleDrive() },
-            onAutoSyncChanged = { enabled -> handleAutoSyncChanged(enabled) },
-            getLastSyncTime = { preferences.getSafeLong(KEY_LAST_GOOGLE_DRIVE_SYNC, 0L) }
+            onImportFromGoogleDrive = {
+                showNotification("Registry Editor", "Cloud backup is disabled; use Local File")
+            },
+            onAutoSyncChanged = { _ -> },
+            getLastSyncTime = { 0L }
         )
 
         // Store instance for auto-sync updates
@@ -7312,150 +7260,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
-    private fun exportToGoogleDrive(prefs: android.content.SharedPreferences) {
-        Log.d("MainActivity", "exportToGoogleDrive called, isSignedIn=${googleDriveHelper.isSignedIn()}")
-
-        // Check if signed in
-        if (!googleDriveHelper.isSignedIn()) {
-            Log.d("MainActivity", "Not signed in, launching sign-in flow")
-            // Save the action to perform after sign-in
-            pendingImportCallback = {
-                Log.d("MainActivity", "Callback executing after sign-in")
-                exportToGoogleDrive(prefs)
-            }
-            // Start sign-in flow
-            googleSignInLauncher.launch(googleDriveHelper.getSignInIntent())
-            return
-        }
-
-        // Export to Google Drive
-        try {
-            Log.d("MainActivity", "Starting export to Google Drive")
-            val jsonString = PrefsBackup.toJson(prefs)
-
-            Log.d("MainActivity", "JSON prepared, size=${jsonString.length} bytes")
-
-            lifecycleScope.launch {
-                try {
-                    val result = googleDriveHelper.exportToGoogleDrive(jsonString)
-                    result.onSuccess {
-                        // Record last sync time
-                        val currentTime = System.currentTimeMillis()
-                        prefs.edit { putLong(KEY_LAST_GOOGLE_DRIVE_SYNC, currentTime) }
-
-                        // Update UI in Registry Editor if it's open
-                        registryEditorAppInstance?.onSyncCompleted()
-                    }.onFailure { error ->
-                        Log.e("MainActivity", "Google Drive export failed", error)
-                    }
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Exception in coroutine", e)
-                    showNotification("Export Failed", "Error: ${e.message}")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error exporting to Google Drive", e)
-            showNotification("Export Failed", "Export failed: ${e.message}")
-        }
-    }
-
-    private fun importFromGoogleDrive() {
-        Log.d("MainActivity", "importFromGoogleDrive called, isSignedIn=${googleDriveHelper.isSignedIn()}")
-
-        // Check if signed in
-        if (!googleDriveHelper.isSignedIn()) {
-            Log.d("MainActivity", "Not signed in, launching sign-in flow")
-            // Save the action to perform after sign-in
-            pendingImportCallback = {
-                Log.d("MainActivity", "Callback executing after sign-in")
-                importFromGoogleDrive()
-            }
-            // Start sign-in flow
-            googleSignInLauncher.launch(googleDriveHelper.getSignInIntent())
-            return
-        }
-
-        // Import from Google Drive
-        Log.d("MainActivity", "Starting import from Google Drive")
-        showNotification("Google Drive", "Downloading backup...")
-
-        lifecycleScope.launch {
-            try {
-                Log.d("MainActivity", "Calling importFromGoogleDrive on helper")
-                val result = googleDriveHelper.importFromGoogleDrive()
-                result.onSuccess { jsonString ->
-                    try {
-                        Log.d("MainActivity", "Import successful, parsing JSON (${jsonString.length} bytes)")
-                        PrefsBackup.restore(getSharedPreferences(PREFS_NAME, MODE_PRIVATE), jsonString)
-                        Log.d("MainActivity", "Preferences imported successfully")
-                        showNotification("Registry Editor", "Settings imported successfully from Google Drive")
-                        recreate()
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Error parsing imported data", e)
-                        showNotification("Import Failed", "Failed to parse backup data: ${e.message}")
-                    }
-                }.onFailure { error ->
-                    Log.e("MainActivity", "Google Drive import failed", error)
-                    showNotification("Import Failed", "Failed to download from Google Drive: ${error.message}")
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Exception in coroutine", e)
-                showNotification("Import Failed", "Error: ${e.message}")
-            }
-        }
-    }
-
-    private fun handleAutoSyncChanged(enabled: Boolean) {
-        Log.d("MainActivity", "Auto-sync changed: $enabled")
-        if (enabled) {
-            startAutoSync()
-        } else {
-            stopAutoSync()
-        }
-    }
-
-    private fun startAutoSync() {
-        // Stop any existing timer first
-        stopAutoSync()
-
-        Log.d("MainActivity", "Starting auto-sync timer (interval: ${AUTO_SYNC_INTERVAL}ms)")
-
-        // Perform immediate sync when auto-sync is enabled
-        if (googleDriveHelper.isSignedIn()) {
-            val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-            exportToGoogleDrive(prefs)
-        } else {
-            Log.d("MainActivity", "Skipping initial auto-sync: not signed in to Google Drive")
-        }
-
-        autoSyncRunnable = object : Runnable {
-            override fun run() {
-                Log.d("MainActivity", "Auto-sync timer triggered")
-
-                // Only sync if user is signed in to Google Drive
-                if (googleDriveHelper.isSignedIn()) {
-                    val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                    exportToGoogleDrive(prefs)
-                } else {
-                    Log.d("MainActivity", "Skipping auto-sync: not signed in to Google Drive")
-                }
-
-                // Schedule next sync
-                autoSyncHandler.postDelayed(this, AUTO_SYNC_INTERVAL)
-            }
-        }
-
-        // Start the timer
-        autoSyncHandler.postDelayed(autoSyncRunnable!!, AUTO_SYNC_INTERVAL)
-    }
-
-    private fun stopAutoSync() {
-        autoSyncRunnable?.let {
-            Log.d("MainActivity", "Stopping auto-sync timer")
-            autoSyncHandler.removeCallbacks(it)
-            autoSyncRunnable = null
-        }
-    }
+    // Google Drive import/export and background sync removed for privacy.
 
     private fun showDialerDialog() {
         // Set cursor to busy while loading
@@ -11672,10 +11477,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
         stopNotificationMonitoring()
-        // An hour-long timer that nothing cancelled: it held the activity for as long as it
-        // had left to run.
-        stopAutoSync()
-
         // Release Plus! 95 click sound MediaPlayer
         plus95ClickPlayer?.release()
         plus95ClickPlayer = null
