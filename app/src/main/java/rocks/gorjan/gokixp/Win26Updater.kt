@@ -66,7 +66,11 @@ class Win26Updater(private val activity: Activity) {
                     if (update.versionCode <= currentCode) {
                         AlertDialog.Builder(activity)
                             .setTitle("Windows Update")
-                            .setMessage("WIN26 is up to date.\n\nInstalled: \${current.versionName ?: currentCode}")
+                            .setMessage(
+                                "WIN26 is up to date.\n\n" +
+                                    "Installed: ${current.versionName ?: "unknown"} (build $currentCode)\n" +
+                                    "Latest: ${update.versionName} (build ${update.versionCode})"
+                            )
                             .setPositiveButton("OK", null)
                             .show()
                     } else {
@@ -74,8 +78,8 @@ class Win26Updater(private val activity: Activity) {
                             .setTitle("Windows Update")
                             .setMessage(
                                 "A WIN26 update is available.\n\n" +
-                                    "Installed: \${current.versionName ?: currentCode}\n" +
-                                    "Available: \${update.versionName}"
+                                    "Installed: ${current.versionName ?: "unknown"} (build $currentCode)\n" +
+                                    "Latest: ${update.versionName} (build ${update.versionCode})"
                             )
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Download & Install") { _, _ ->
@@ -107,7 +111,7 @@ class Win26Updater(private val activity: Activity) {
                 .setPositiveButton("Open Settings") { _, _ ->
                     val intent = Intent(
                         Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:\${activity.packageName}")
+                        Uri.parse("package:${activity.packageName}")
                     )
                     activity.startActivity(intent)
                 }
@@ -163,7 +167,7 @@ class Win26Updater(private val activity: Activity) {
         val connection = openHttps(urlString)
         return try {
             require(connection.responseCode in 200..299) {
-                "Update server returned HTTP \${connection.responseCode}"
+                "Update server returned HTTP ${connection.responseCode}"
             }
             connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
@@ -180,7 +184,7 @@ class Win26Updater(private val activity: Activity) {
         val connection = openHttps(update.apkUrl)
         try {
             require(connection.responseCode in 200..299) {
-                "APK server returned HTTP \${connection.responseCode}"
+                "APK server returned HTTP ${connection.responseCode}"
             }
             connection.inputStream.use { input ->
                 FileOutputStream(temp).use { output ->
@@ -289,7 +293,7 @@ class Win26Updater(private val activity: Activity) {
     private fun launchInstaller(apk: File) {
         val uri = FileProvider.getUriForFile(
             activity,
-            "\${activity.packageName}.fileprovider",
+            "${activity.packageName}.fileprovider",
             apk
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
