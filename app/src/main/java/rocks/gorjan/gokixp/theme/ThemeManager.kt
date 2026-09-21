@@ -36,10 +36,6 @@ sealed class AppTheme {
         override fun toString() = "Windows Vista"
     }
 
-    // Future themes can be added here:
-    // object Windows7 : AppTheme() {
-    //     override fun toString() = "Windows 7"
-    // }
 
     companion object {
         /**
