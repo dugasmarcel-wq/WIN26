@@ -41,13 +41,13 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-3-win98-daily-ui'
         run: |
           mkdir -p downloads
-          cp app/build/outputs/apk/debug/app-debug.apk downloads/WIN26-stage-3-win98-daily-shell.apk
+          zip -j -9 downloads/WIN26-stage-3-win98-daily-shell.zip app/build/outputs/apk/debug/app-debug.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f downloads/WIN26-stage-3-win98-daily-shell.apk
+          git add -f downloads/WIN26-stage-3-win98-daily-shell.zip
           if git diff --cached --quiet; then
             echo "APK download is already current."
           else
-            git commit -m "Publish Stage 3 debug APK"
+            git commit -m "Publish Stage 3 debug APK zip"
             git push
           fi
