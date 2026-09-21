@@ -48,7 +48,7 @@
         android:id="@+id/gesture_bar_background"
         android:layout_width="match_parent"
         android:layout_height="30dp"
-        android:background="#000000"
+        android:background="#d3cec7"
         android:layout_alignParentBottom="true"
         android:visibility="visible"
         />

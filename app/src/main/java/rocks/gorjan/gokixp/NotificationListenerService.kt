@@ -13,6 +13,7 @@ class NotificationListenerService : NotificationListenerService() {
         private const val TAG = "NotificationListener"
         private var instance: NotificationListenerService? = null
         private val activeNotificationPackages = mutableSetOf<String>()
+        private val activeNotificationCounts = mutableMapOf<String, Int>()
 
         // Messages the mail sound has already been played for, as "key@timestamp".
         // Mail apps re-post the same notification whenever it changes, and those
@@ -55,6 +56,8 @@ class NotificationListenerService : NotificationListenerService() {
 
         fun hasNotification(packageName: String): Boolean = activeNotificationPackages.contains(packageName)
 
+        fun getNotificationCount(packageName: String): Int = activeNotificationCounts[packageName] ?: 0
+
         fun isEmailApp(packageName: String): Boolean = EMAIL_PACKAGES.contains(packageName)
     }
     
@@ -68,6 +71,7 @@ class NotificationListenerService : NotificationListenerService() {
         super.onListenerDisconnected()
         instance = null
         activeNotificationPackages.clear()
+        activeNotificationCounts.clear()
     }
     
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -90,7 +94,7 @@ class NotificationListenerService : NotificationListenerService() {
             }
             // Only add non-ongoing, non-silent email notifications
             if (!isOngoing && !isSilentNotification(sbn)) {
-                activeNotificationPackages.add(packageName)
+                refreshActiveNotifications()
                 notifyMainActivity()
             }
             return
@@ -102,7 +106,7 @@ class NotificationListenerService : NotificationListenerService() {
 
         Log.d(TAG, "Active notification posted for: $packageName")
 
-        activeNotificationPackages.add(packageName)
+        refreshActiveNotifications()
 
         notifyMainActivity()
     }
@@ -116,34 +120,8 @@ class NotificationListenerService : NotificationListenerService() {
         // A dismissed message may legitimately ring again if the app re-posts it.
         ringedEmailKeys.removeAll { it.startsWith("${sbn.key}@") }
 
-        // Check if there are still active notifications for this package
-        // Only count non-ongoing notifications
-        val stillHasNotifications = try {
-            val notifications = getActiveNotifications().filter {
-                it.packageName == packageName
-            }
-
-            // Log what we found for debugging
-            Log.d(TAG, "Found ${notifications.size} notifications for $packageName")
-            notifications.forEach { notif ->
-                val isOngoing = notif.notification.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0
-                Log.d(TAG, "  - Notification ongoing=$isOngoing")
-            }
-
-            // Only count notifications that pass our filter (non-ongoing, non-system)
-            notifications.any { shouldShowNotification(it) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking notifications for $packageName", e)
-            false
-        }
-
-        if (!stillHasNotifications) {
-            Log.d(TAG, "Removing $packageName from active notifications")
-            activeNotificationPackages.remove(packageName)
-            notifyMainActivity()
-        } else {
-            Log.d(TAG, "Keeping $packageName in active notifications")
-        }
+        refreshActiveNotifications()
+        notifyMainActivity()
     }
     
     /**
@@ -188,15 +166,17 @@ class NotificationListenerService : NotificationListenerService() {
     private fun refreshActiveNotifications() {
         try {
             activeNotificationPackages.clear()
+            activeNotificationCounts.clear()
 
             val notifications = getActiveNotifications()
 
             for (notification in notifications) {
-                val isOngoing = notification.notification.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0
                 val shouldShow = shouldShowNotification(notification)
 
                 if (shouldShow) {
                     activeNotificationPackages.add(notification.packageName)
+                    activeNotificationCounts[notification.packageName] =
+                        (activeNotificationCounts[notification.packageName] ?: 0) + 1
                 }
             }
 
