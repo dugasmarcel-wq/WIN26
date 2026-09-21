@@ -53,12 +53,22 @@
         android:visibility="visible"
         />
 
+    <View
+        android:id="@+id/status_bar_cover"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_alignParentTop="true"
+        android:background="#c0c0c0"
+        android:elevation="8dp"
+        android:visibility="visible" />
+
     <!-- Desktop Icons Container -->
     <RelativeLayout
         android:id="@+id/desktop_icons_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_alignParentEnd="true"
+        android:layout_marginTop="48dp"
         android:layout_marginBottom="20dp"
         android:clipChildren="false"
         android:clipToPadding="false" />
@@ -79,7 +89,7 @@
         android:id="@+id/taskbar_container"
         layout="@layout/taskbar_xp"
         android:layout_width="match_parent"
-        android:layout_height="40dp"
+        android:layout_height="58dp"
         android:layout_marginBottom="30dp"
         android:layout_alignParentBottom="true"
         android:elevation="15dp" />

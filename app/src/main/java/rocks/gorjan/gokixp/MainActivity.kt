@@ -1206,16 +1206,22 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun createQuickLaunchButton(slot: QuickLaunchSlot, packageName: String, compact: Boolean): View {
-        val sizeDp = if (compact) 46 else 86
         val frame = android.widget.FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(sizeDp), ViewGroup.LayoutParams.MATCH_PARENT).apply {
-                marginEnd = dp(4)
+            layoutParams = if (compact) {
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                    marginStart = dp(2)
+                    marginEnd = dp(2)
+                }
+            } else {
+                LinearLayout.LayoutParams(dp(72), dp(56)).apply {
+                    marginEnd = dp(6)
+                }
             }
             background = AppCompatResources.getDrawable(this@MainActivity, R.drawable.window_button_background)
             isClickable = true
             isFocusable = true
             contentDescription = slot.fallbackName
-            setPadding(dp(3), dp(3), dp(3), dp(3))
+            setPadding(dp(4), dp(4), dp(4), dp(4))
             setOnClickListener {
                 launchQuickLaunchPackage(getQuickLaunchPackage(slot), slot.fallbackName)
             }
@@ -1229,8 +1235,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             setImageResource(slot.iconRes)
             scaleType = ImageView.ScaleType.FIT_CENTER
             layoutParams = android.widget.FrameLayout.LayoutParams(
-                dp(if (compact) 28 else 32),
-                dp(if (compact) 28 else 32),
+                dp(if (compact) 34 else 36),
+                dp(if (compact) 34 else 36),
                 Gravity.CENTER
             )
         }
@@ -1247,12 +1253,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 setColor(Color.RED)
                 setStroke(dp(1), Color.WHITE)
             }
-            minWidth = dp(17)
-            minHeight = dp(17)
+            minWidth = dp(18)
+            minHeight = dp(18)
             setPadding(dp(3), 0, dp(3), 0)
             layoutParams = android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(17),
+                dp(18),
                 Gravity.TOP or Gravity.END
             )
         }
@@ -3390,7 +3396,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             // For Windows Classic theme, keep app list invisible when opened via Start button
             val appList98 = findViewById<RelativeLayout>(R.id.start_menu_app_list_98)
-            appList98?.visibility = View.INVISIBLE
+            appList98?.visibility = View.GONE
             isProgramsMenuExpanded = false
             commandsAdapter?.setProgramsExpanded(false)
 
@@ -3440,7 +3446,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             // Reset app list visibility to invisible for Windows Classic theme and Programs menu state
             val appList98 = findViewById<RelativeLayout>(R.id.start_menu_app_list_98)
-            appList98?.visibility = View.INVISIBLE
+            appList98?.visibility = View.GONE
             isProgramsMenuExpanded = false
             commandsAdapter?.setProgramsExpanded(false)
 
@@ -3568,7 +3574,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         if (appList98 != null) {
             isProgramsMenuExpanded = !isProgramsMenuExpanded
-            appList98.visibility = if (isProgramsMenuExpanded) View.VISIBLE else View.INVISIBLE
+            appList98.visibility = if (isProgramsMenuExpanded) View.VISIBLE else View.GONE
 
             // Update the adapter with the new expanded state
             commandsAdapter?.setProgramsExpanded(isProgramsMenuExpanded)
@@ -3734,9 +3740,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         showStartMenuWithSearch()
                         return true
                     } else if (isSwipeRight && isMinimumDistanceX && isMinimumVelocityX) {
-                        Log.d("MainActivity", "✅ Swipe right detected, opening WIN26 page")
-                        showWin98QuickPage()
-                        return true
+                        Log.d("MainActivity", "Swipe right disabled for the Win98 daily shell")
+                        return false
                     }
                 }
                 return false
@@ -8980,11 +8985,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val newTaskbar = layoutInflater.inflate(layoutResId, null)
             newTaskbar.id = R.id.taskbar_container
 
-            // Set height based on theme - Vista taskbar is taller
-            val taskbarHeight = if (layoutResId == R.layout.taskbar_vista) {
-                (45 * resources.displayMetrics.density).toInt()
-            } else {
-                (40 * resources.displayMetrics.density).toInt()
+            val taskbarHeight = when (layoutResId) {
+                R.layout.taskbar_vista -> (45 * resources.displayMetrics.density).toInt()
+                R.layout.taskbar_98 -> (58 * resources.displayMetrics.density).toInt()
+                else -> (40 * resources.displayMetrics.density).toInt()
             }
 
             // Update layout params with new height
@@ -9125,6 +9129,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         // Set up gesture bar toggle functionality
         setupGestureBarToggle()
+
+        setupWin98QuickLaunchTaskbar()
     }
 
     private fun playStartupSound() {

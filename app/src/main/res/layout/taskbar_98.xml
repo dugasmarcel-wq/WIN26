@@ -2,7 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="36dp"
+    android:layout_height="58dp"
     android:elevation="150dp"
     >
 
@@ -12,10 +12,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/taskbar_98_background"
-        android:paddingLeft="10dp"
-        android:paddingTop="4dp"
-        android:paddingRight="10dp"
-        android:paddingBottom="4dp">
+        android:paddingLeft="6dp"
+        android:paddingTop="5dp"
+        android:paddingRight="6dp"
+        android:paddingBottom="5dp">
 
         <!-- Start Button - Windows 98 style -->
         <LinearLayout
@@ -29,7 +29,7 @@
 
             <ImageView
                 android:id="@+id/start_button"
-                android:layout_width="76dp"
+                android:layout_width="104dp"
                 android:layout_height="match_parent"
                 android:background="#d3cec7"
                 android:clipToOutline="false"
@@ -39,7 +39,7 @@
                 tools:ignore="HardcodedText" />
 
             <ImageView
-                android:layout_width="10dp"
+                android:layout_width="6dp"
                 android:layout_height="match_parent"
                 android:scaleType="fitXY"
                 android:layout_marginStart="2dp"
@@ -52,12 +52,12 @@
             android:id="@+id/taskbar_empty_space"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_toLeftOf="@id/system_tray"
+            android:layout_alignParentRight="true"
             android:layout_toRightOf="@id/start_and_divider"
             android:background="@android:color/transparent"
             android:orientation="horizontal"
             android:gravity="start|center_vertical"
-            android:paddingLeft="4dp" />
+            android:paddingLeft="3dp" />
 
         <!-- System Tray - Windows 98 style with custom borders -->
         <LinearLayout
@@ -68,6 +68,7 @@
             android:background="@drawable/system_tray_98_background"
             android:gravity="center_vertical"
             android:paddingStart="4dp"
+            android:visibility="gone"
             android:orientation="horizontal">
 
             <!-- AQI (Air Quality Index) -->

@@ -3,17 +3,17 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:paddingLeft="8dp"
-    android:paddingRight="12dp"
-    android:paddingTop="10dp"
-    android:paddingBottom="10dp"
+    android:paddingLeft="10dp"
+    android:paddingRight="14dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
     android:gravity="center_vertical"
     android:background="#d3cec7">
 
     <ImageView
         android:id="@+id/command_icon"
-        android:layout_width="25dp"
-        android:layout_height="25dp"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
         android:layout_marginEnd="8dp" />
 
     <TextView
@@ -22,7 +22,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:textColor="@android:color/black"
-        android:textSize="13sp"
+        android:textSize="15sp"
         android:maxLines="1"
         android:ellipsize="end"
         android:text="Programs"

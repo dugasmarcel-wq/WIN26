@@ -14,8 +14,7 @@
         android:orientation="horizontal">
 
             <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="0.45"
+                android:layout_width="320dp"
                 android:layout_height="wrap_content"
                 android:background="@drawable/win98_start_menu_border"
                 android:orientation="horizontal"
@@ -238,12 +237,11 @@
         <!-- Right Panel (60% of remaining space) - Apps List with Search Box -->
         <RelativeLayout
             android:id="@+id/start_menu_app_list_98"
-            android:layout_width="0dp"
+            android:layout_width="320dp"
             android:layout_height="match_parent"
             android:layout_marginLeft="-4dp"
-            android:layout_weight="0.55"
             android:background="@drawable/win98_start_menu_border"
-            android:visibility="invisible"
+            android:visibility="gone"
             android:padding="2dp">
 
             <!-- Apps List. Fixed height, not wrap_content - see start_menu_xp.xml.
