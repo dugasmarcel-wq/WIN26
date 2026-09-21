@@ -71,20 +71,31 @@ jobs:
       - name: Build release APK
         run: ./gradlew --no-daemon assembleRelease
 
-      - name: Sign release APK with stable public test key
+      - name: Align and sign release APK with stable public test key
         run: |
           mkdir -p dist
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
-          if [ -z "$APKSIGNER" ]; then
-            echo "apksigner not found"
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          if [ ! -x "$APKSIGNER" ] || [ ! -x "$ZIPALIGN" ]; then
+            echo "Android signing tools not found"
             exit 1
           fi
+
+          UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED="$RUNNER_TEMP/WIN26-aligned.apk"
+
+          "$ZIPALIGN" -P 16 -f -v 4 "$UNSIGNED" "$ALIGNED"
+          "$ZIPALIGN" -c -P 16 -v 4 "$ALIGNED"
+
           "$APKSIGNER" sign \
             --key "$RUNNER_TEMP/win26-signing/testkey.pk8" \
             --cert "$RUNNER_TEMP/win26-signing/testkey.x509.pem" \
             --out dist/WIN26.apk \
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            "$ALIGNED"
+
           "$APKSIGNER" verify --verbose --print-certs dist/WIN26.apk
+          "$ZIPALIGN" -c -P 16 -v 4 dist/WIN26.apk
 
       - name: Prepare update manifest
         run: |
