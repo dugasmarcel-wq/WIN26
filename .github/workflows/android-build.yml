@@ -2,7 +2,7 @@ name: Android Build
 
 on:
   push:
-    branches: [ main, stage-1-four-versions-only, stage-3-win98-daily-ui ]
+    branches: [ main, stage-1-four-versions-only, stage-3-win98-daily-ui, stage-4-self-update ]
     paths-ignore:
       - "downloads/**"
   pull_request:
@@ -65,3 +65,76 @@ jobs:
               --title "Stage 3 Win98 Daily Shell" \
               --notes "Latest Stage 3 Win98 daily shell debug APK ZIP."
           gh release upload "$tag" "$zip_path#WIN26-stage-3-win98-daily-shell.zip" --clobber
+
+
+  publish_update:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-4-self-update'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore permanent WIN26 signing key
+        env:
+          WIN26_SIGNING_BUNDLE: ${{ secrets.WIN26_SIGNING_BUNDLE }}
+        run: |
+          if [ -z "$WIN26_SIGNING_BUNDLE" ]; then
+            echo "Missing repository secret WIN26_SIGNING_BUNDLE"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/win26-signing"
+          printf '%s' "$WIN26_SIGNING_BUNDLE" | base64 --decode > "$RUNNER_TEMP/win26-signing.tgz"
+          tar -xzf "$RUNNER_TEMP/win26-signing.tgz" -C "$RUNNER_TEMP/win26-signing"
+          set -a
+          . "$RUNNER_TEMP/win26-signing/signing.env"
+          set +a
+          echo "::add-mask::$STORE_PASSWORD"
+          echo "::add-mask::$KEY_PASSWORD"
+          echo "WIN26_KEYSTORE_PATH=$RUNNER_TEMP/win26-signing/win26-release.jks" >> "$GITHUB_ENV"
+          echo "WIN26_KEYSTORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "WIN26_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "WIN26_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Assign monotonic app version
+        run: |
+          echo "WIN26_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "WIN26_VERSION_NAME=0.4.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Build permanently signed release APK
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Prepare update manifest
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/WIN26.apk
+          APK_SHA256=$(sha256sum dist/WIN26.apk | awk '{print $1}')
+          cat > dist/update.json <<EOF
+          {
+            "versionCode": $WIN26_VERSION_CODE,
+            "versionName": "$WIN26_VERSION_NAME",
+            "apkUrl": "https://github.com/dugasmarcel-wq/WIN26/releases/latest/download/WIN26.apk",
+            "sha256": "$APK_SHA256"
+          }
+          EOF
+          cat dist/update.json
+
+      - name: Publish latest self-update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="win26-update-$WIN26_VERSION_CODE"
+          gh release create "$tag" dist/WIN26.apk dist/update.json \
+            --target "$GITHUB_SHA" \
+            --title "WIN26 $WIN26_VERSION_NAME" \
+            --notes "Signed WIN26 self-update build." \
+            --latest
