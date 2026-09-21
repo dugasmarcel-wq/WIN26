@@ -17,7 +17,7 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 /**
- * Classic Windows 98/2000 Solitaire (Klondike) game
+ * Classic Windows 98 Solitaire (Klondike) game
  */
 class SolitareGame(
     private val context: Context,
