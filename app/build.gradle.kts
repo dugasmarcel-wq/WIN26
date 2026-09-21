@@ -10,15 +10,39 @@ android {
         applicationId = "com.win26.launcher"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = System.getenv("WIN26_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("WIN26_VERSION_NAME") ?: "0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    val signingPath = System.getenv("WIN26_KEYSTORE_PATH")
+    val signingStorePassword = System.getenv("WIN26_KEYSTORE_PASSWORD")
+    val signingAlias = System.getenv("WIN26_KEY_ALIAS")
+    val signingKeyPassword = System.getenv("WIN26_KEY_PASSWORD")
+    val hasReleaseSigning =
+        !signingPath.isNullOrBlank() &&
+        !signingStorePassword.isNullOrBlank() &&
+        !signingAlias.isNullOrBlank() &&
+        !signingKeyPassword.isNullOrBlank()
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("win26Release") {
+                storeFile = file(signingPath!!)
+                storePassword = signingStorePassword
+                keyAlias = signingAlias
+                keyPassword = signingKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("win26Release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
