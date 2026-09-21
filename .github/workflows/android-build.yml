@@ -37,38 +37,9 @@ jobs:
           name: WIN26-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Publish stable APK download
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-3-win98-daily-ui'
-        run: |
-          mkdir -p downloads
-          zip -j -9 downloads/WIN26-stage-3-win98-daily-shell.zip app/build/outputs/apk/debug/app-debug.apk
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f downloads/WIN26-stage-3-win98-daily-shell.zip
-          if git diff --cached --quiet; then
-            echo "APK download is already current."
-          else
-            git commit -m "Publish Stage 3 debug APK zip"
-            git push
-          fi
-
-      - name: Publish GitHub Release download
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-3-win98-daily-ui'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="stage-3-win98-daily-shell"
-          zip_path="downloads/WIN26-stage-3-win98-daily-shell.zip"
-          gh release view "$tag" >/dev/null 2>&1 || \
-            gh release create "$tag" \
-              --target "$GITHUB_SHA" \
-              --title "Stage 3 Win98 Daily Shell" \
-              --notes "Latest Stage 3 Win98 daily shell debug APK ZIP."
-          gh release upload "$tag" "$zip_path#WIN26-stage-3-win98-daily-shell.zip" --clobber
-
 
   publish_update:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-4-self-update'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-3-win98-daily-ui'
     needs: build
     runs-on: ubuntu-latest
     steps:
