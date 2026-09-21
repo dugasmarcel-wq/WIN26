@@ -97,6 +97,13 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs dist/WIN26.apk
           "$ZIPALIGN" -c -P 16 -v 4 dist/WIN26.apk
 
+      - name: Upload signed WIN26 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WIN26-signed-apk
+          path: dist/WIN26.apk
+          compression-level: 0
+
       - name: Prepare update manifest
         run: |
           APK_SHA256=$(sha256sum dist/WIN26.apk | awk '{print $1}')
