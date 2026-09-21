@@ -1198,9 +1198,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun createQuickLaunchButton(slot: QuickLaunchSlot, packageName: String, compact: Boolean): View {
         val frame = android.widget.FrameLayout(this).apply {
             layoutParams = if (compact) {
-                LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.MATCH_PARENT).apply {
-                    marginStart = dp(3)
-                    marginEnd = dp(3)
+                // Four permanent Win98 Quick Launch buttons share all space to the right
+                // of Start. Weighting prevents the fourth button from being clipped on phones.
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                    marginStart = dp(1)
+                    marginEnd = dp(1)
                 }
             } else {
                 LinearLayout.LayoutParams(dp(72), dp(56)).apply {
