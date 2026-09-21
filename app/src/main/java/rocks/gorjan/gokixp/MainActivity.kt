@@ -1208,20 +1208,20 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun createQuickLaunchButton(slot: QuickLaunchSlot, packageName: String, compact: Boolean): View {
         val frame = android.widget.FrameLayout(this).apply {
             layoutParams = if (compact) {
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
-                    marginStart = dp(2)
-                    marginEnd = dp(2)
+                LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                    marginStart = dp(3)
+                    marginEnd = dp(3)
                 }
             } else {
                 LinearLayout.LayoutParams(dp(72), dp(56)).apply {
                     marginEnd = dp(6)
                 }
             }
-            background = AppCompatResources.getDrawable(this@MainActivity, R.drawable.window_button_background)
+            background = if (compact) null else AppCompatResources.getDrawable(this@MainActivity, R.drawable.window_button_background)
             isClickable = true
             isFocusable = true
             contentDescription = slot.fallbackName
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            setPadding(dp(2), dp(1), dp(2), dp(1))
             setOnClickListener {
                 launchQuickLaunchPackage(getQuickLaunchPackage(slot), slot.fallbackName)
             }
@@ -1235,8 +1235,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             setImageResource(slot.iconRes)
             scaleType = ImageView.ScaleType.FIT_CENTER
             layoutParams = android.widget.FrameLayout.LayoutParams(
-                dp(if (compact) 34 else 36),
-                dp(if (compact) 34 else 36),
+                dp(if (compact) 46 else 36),
+                dp(if (compact) 46 else 36),
                 Gravity.CENTER
             )
         }
@@ -1326,9 +1326,58 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             openMyComputer(existing)
             return
         }
-        showMyComputer()
-        updateMyComputerReference()
-        myComputer?.let { openMyComputer(it) }
+        openMyComputerWindowDirect()
+    }
+
+    private fun openMyComputerWindowDirect() {
+        if (!hasStoragePermission()) {
+            requestStoragePermission()
+            return
+        }
+
+        val windowId = "mycomputer:start"
+        if (floatingWindowManager.findAndFocusWindow(windowId)) {
+            val existingWindow = floatingWindowManager.findWindowByIdentifier(windowId)
+            (existingWindow?.myComputerApp as? rocks.gorjan.gokixp.apps.explorer.MyComputerApp)?.resetClipboard()
+            return
+        }
+
+        val windowsDialog = createThemedWindowsDialog()
+        windowsDialog.windowIdentifier = windowId
+        windowsDialog.setTitle("My Computer")
+        windowsDialog.setTaskbarIcon(themeManager.getMyComputerIcon())
+
+        val explorerLayoutRes = themeManager.getWindowsExplorerLayoutRes(themeManager.getSelectedTheme())
+        val contentView = layoutInflater.inflate(explorerLayoutRes, null)
+        val myComputerApp = rocks.gorjan.gokixp.apps.explorer.MyComputerApp(
+            context = this,
+            theme = themeManager.getSelectedTheme(),
+            themeManager = themeManager,
+            onSoundPlay = { playClickSound() },
+            onUpdateWindowTitle = { title -> windowsDialog.setTitle(title) },
+            onSetCursorBusy = { setCursorBusy() },
+            onSetCursorNormal = { setCursorNormal() },
+            onShowDialog = { dialogType, message -> showDialogBox(dialogType, message) },
+            onShowContextMenu = { items, x, y ->
+                if (::contextMenu.isInitialized) contextMenu.showMenu(items, x, y)
+            },
+            onShowRenameDialog = { file, onRename -> showFileRenameDialog(file, onRename) },
+            onShowConfirmDialog = { title, message, onConfirm -> showConfirmDialog(title, message, onConfirm) },
+            onLaunchSystemApp = { packageName -> launchSystemApp(packageName) },
+            getSystemAppIcon = { packageName -> getSystemAppIconDrawable(packageName) },
+            getSystemAppsList = { getSystemAppsList().map { Pair(it.exeName, it.packageName) } }
+        )
+
+        myComputerApp.setupApp(contentView)
+        if (::contextMenu.isInitialized) {
+            myComputerApp.setupContextMenuCallback(contextMenu)
+        }
+        windowsDialog.myComputerApp = myComputerApp
+        windowsDialog.setContentView(contentView)
+        windowsDialog.setWindowSizePercentage(90f, 60f)
+        windowsDialog.setMaximizable(true)
+        windowsDialog.setContextMenuView(contextMenu)
+        floatingWindowManager.showWindow(windowsDialog)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -3122,6 +3171,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     
     private fun adjustStartMenuForKeyboard() {
         if (!::startMenu.isInitialized) return
+        if (themeManager.getSelectedTheme() is AppTheme.WindowsClassic) return
 
         // Get the ConstraintLayout container by ID
         val startMenuContainer = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.start_menu_container) ?: return
@@ -3397,6 +3447,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             // For Windows Classic theme, keep app list invisible when opened via Start button
             val appList98 = findViewById<RelativeLayout>(R.id.start_menu_app_list_98)
             appList98?.visibility = View.GONE
+            appList98?.translationX = 0f
             isProgramsMenuExpanded = false
             commandsAdapter?.setProgramsExpanded(false)
 
@@ -3447,6 +3498,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             // Reset app list visibility to invisible for Windows Classic theme and Programs menu state
             val appList98 = findViewById<RelativeLayout>(R.id.start_menu_app_list_98)
             appList98?.visibility = View.GONE
+            appList98?.translationX = 0f
             isProgramsMenuExpanded = false
             commandsAdapter?.setProgramsExpanded(false)
 
@@ -3511,7 +3563,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun showAppList() {
         if (themeManager.getSelectedTheme() is AppTheme.WindowsClassic) {
             val appList98 = findViewById<RelativeLayout>(R.id.start_menu_app_list_98)
-            appList98?.visibility = View.VISIBLE
+            appList98?.let { list ->
+                list.visibility = View.VISIBLE
+                list.post {
+                    list.translationX = -list.left.toFloat()
+                }
+            }
             isProgramsMenuExpanded = true
             commandsAdapter?.setProgramsExpanded(true)
         } else {
@@ -3532,7 +3589,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             // For Vista, keep showing command list until user starts typing
             if (themeManager.getSelectedTheme() is AppTheme.WindowsClassic) {
                 val appList98 = findViewById<RelativeLayout>(R.id.start_menu_app_list_98)
-                appList98?.visibility = View.VISIBLE
+                appList98?.let { list ->
+                    list.visibility = View.VISIBLE
+                    list.post {
+                        list.translationX = -list.left.toFloat()
+                    }
+                }
                 isProgramsMenuExpanded = true
                 commandsAdapter?.setProgramsExpanded(true)
             } else {
@@ -3551,7 +3613,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
 
             // Adjust for keyboard if needed
-            adjustStartMenuForKeyboard()
+            if (themeManager.getSelectedTheme() !is AppTheme.WindowsClassic) {
+                adjustStartMenuForKeyboard()
+            }
 
             // Scroll app list to top
             if (::appsRecyclerView.isInitialized) {
@@ -3575,6 +3639,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (appList98 != null) {
             isProgramsMenuExpanded = !isProgramsMenuExpanded
             appList98.visibility = if (isProgramsMenuExpanded) View.VISIBLE else View.GONE
+            if (isProgramsMenuExpanded) {
+                appList98.post {
+                    appList98.translationX = -appList98.left.toFloat()
+                }
+            } else {
+                appList98.translationX = 0f
+            }
 
             // Update the adapter with the new expanded state
             commandsAdapter?.setProgramsExpanded(isProgramsMenuExpanded)

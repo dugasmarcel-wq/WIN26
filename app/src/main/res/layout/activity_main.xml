@@ -56,7 +56,7 @@
     <View
         android:id="@+id/status_bar_cover"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
+        android:layout_height="36dp"
         android:layout_alignParentTop="true"
         android:background="#c0c0c0"
         android:elevation="8dp"
@@ -68,7 +68,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_alignParentEnd="true"
-        android:layout_marginTop="48dp"
+        android:layout_marginTop="36dp"
         android:layout_marginBottom="20dp"
         android:clipChildren="false"
         android:clipToPadding="false" />
@@ -80,7 +80,7 @@
         android:layout_height="match_parent"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:layout_marginTop="60dp"
+        android:layout_marginTop="48dp"
         android:layout_marginBottom="70dp"
         android:elevation="50dp" />
 
