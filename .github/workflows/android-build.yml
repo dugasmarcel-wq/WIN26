@@ -51,3 +51,17 @@ jobs:
             git commit -m "Publish Stage 3 debug APK zip"
             git push
           fi
+
+      - name: Publish GitHub Release download
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-3-win98-daily-ui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="stage-3-win98-daily-shell"
+          zip_path="downloads/WIN26-stage-3-win98-daily-shell.zip"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "Stage 3 Win98 Daily Shell" \
+              --notes "Latest Stage 3 Win98 daily shell debug APK ZIP."
+          gh release upload "$tag" "$zip_path#WIN26-stage-3-win98-daily-shell.zip" --clobber
