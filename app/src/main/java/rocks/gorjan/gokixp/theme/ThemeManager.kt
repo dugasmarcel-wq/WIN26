@@ -57,11 +57,9 @@ sealed class AppTheme {
             //
             // This has to be here, at the point of reading, rather than done once as a
             // migration. The old string can re-enter preferences long after any migration
-            // would have run: `allowBackup` is on with empty rules, so it arrives with a
-            // cloud restore onto a fresh install; PrefsBackup.restore clears and replaces
-            // wholesale from a Drive sync or an imported .reg; and the Registry Editor
-            // lets it be typed in by hand. Every one of those routes reads back through
-            // here.
+            // would have run: PrefsBackup.restore clears and replaces wholesale from a
+            // local import, and the Registry Editor lets it be typed in by hand. Every one
+            // of those routes reads back through here.
             "Windows Phone 8", "Windows Phone 8.1" -> WindowsVista
             else -> WindowsXP // Default to XP if unknown
         }
