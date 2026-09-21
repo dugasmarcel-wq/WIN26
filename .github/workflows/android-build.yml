@@ -84,39 +84,39 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Restore permanent WIN26 signing key
-        env:
-          WIN26_SIGNING_BUNDLE: ${{ secrets.WIN26_SIGNING_BUNDLE }}
+      - name: Fetch stable public AOSP test signing key
         run: |
-          if [ -z "$WIN26_SIGNING_BUNDLE" ]; then
-            echo "Missing repository secret WIN26_SIGNING_BUNDLE"
-            exit 1
-          fi
           mkdir -p "$RUNNER_TEMP/win26-signing"
-          printf '%s' "$WIN26_SIGNING_BUNDLE" | base64 --decode > "$RUNNER_TEMP/win26-signing.tgz"
-          tar -xzf "$RUNNER_TEMP/win26-signing.tgz" -C "$RUNNER_TEMP/win26-signing"
-          set -a
-          . "$RUNNER_TEMP/win26-signing/signing.env"
-          set +a
-          echo "::add-mask::$STORE_PASSWORD"
-          echo "::add-mask::$KEY_PASSWORD"
-          echo "WIN26_KEYSTORE_PATH=$RUNNER_TEMP/win26-signing/win26-release.jks" >> "$GITHUB_ENV"
-          echo "WIN26_KEYSTORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "WIN26_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "WIN26_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          AOSP_BUILD_COMMIT="045a3d6a3e359633a14853a5a5e1e4f2a11cbdae"
+          BASE="https://raw.githubusercontent.com/aosp-mirror/platform_build/$AOSP_BUILD_COMMIT/target/product/security"
+          curl -fsSL "$BASE/testkey.pk8" -o "$RUNNER_TEMP/win26-signing/testkey.pk8"
+          curl -fsSL "$BASE/testkey.x509.pem" -o "$RUNNER_TEMP/win26-signing/testkey.x509.pem"
 
       - name: Assign monotonic app version
         run: |
           echo "WIN26_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
           echo "WIN26_VERSION_NAME=0.4.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
 
-      - name: Build permanently signed release APK
+      - name: Build release APK
         run: ./gradlew --no-daemon assembleRelease
+
+      - name: Sign release APK with stable public test key
+        run: |
+          mkdir -p dist
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "apksigner not found"
+            exit 1
+          fi
+          "$APKSIGNER" sign \
+            --key "$RUNNER_TEMP/win26-signing/testkey.pk8" \
+            --cert "$RUNNER_TEMP/win26-signing/testkey.x509.pem" \
+            --out dist/WIN26.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk
+          "$APKSIGNER" verify --verbose --print-certs dist/WIN26.apk
 
       - name: Prepare update manifest
         run: |
-          mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk dist/WIN26.apk
           APK_SHA256=$(sha256sum dist/WIN26.apk | awk '{print $1}')
           cat > dist/update.json <<EOF
           {
