@@ -9,8 +9,8 @@ import org.junit.Test
  * The theme a stored preference resolves to.
  *
  * Worth pinning because [AppTheme.fromString] is the *only* place the Windows Phone
- * fallback lives, and it has to be: that string can arrive from a cloud backup restore, a
- * Google Drive sync, an imported .reg or the Registry Editor long after any one-shot
+ * fallback lives, and it has to be: that string can arrive from a backup restore, an
+ * imported .reg or the Registry Editor long after any one-shot
  * migration would have run. If this ever goes back to falling through to the `else` arm,
  * everyone who was running the phone theme silently lands on XP instead of Vista.
  */
