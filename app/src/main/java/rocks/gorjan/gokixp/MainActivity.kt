@@ -1185,6 +1185,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     )
 
     private fun getQuickLaunchPackage(slot: QuickLaunchSlot): String {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         return prefs.getString("${KEY_QUICK_LAUNCH_PREFIX}${slot.index}", slot.defaultPackage)
             ?: slot.defaultPackage
     }
@@ -1237,7 +1238,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         val badge = TextView(this).apply {
             visibility = View.GONE
-            textColor = Color.WHITE
+            setTextColor(Color.WHITE)
             textSize = 10f
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -1288,6 +1289,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     .setTitle("Set ${slot.fallbackName} button")
                     .setItems(names) { _, which ->
                         val app = apps[which]
+                        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                         prefs.edit { putString("${KEY_QUICK_LAUNCH_PREFIX}${slot.index}", app.packageName) }
                         setupWin98QuickLaunchTaskbar()
                         showNotification("Quick Launch", "${slot.fallbackName} now opens ${app.name}")
@@ -11046,7 +11048,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         val title = TextView(this).apply {
             text = "WIN26 - QUICK GLANCE\n${SimpleDateFormat("EEEE, MMMM d h:mm a", Locale.getDefault()).format(Date())}"
-            textColor = Color.WHITE
+            setTextColor(Color.WHITE)
             textSize = 22f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(dp(12), dp(8), dp(12), dp(8))
@@ -11078,7 +11080,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val storyText = TextView(this).apply {
             text = "Headlines are unavailable right now.\nUse the source buttons below or tap Refresh. No personal information is sent by WIN26."
             gravity = Gravity.CENTER
-            textColor = Color.BLACK
+            setTextColor(Color.BLACK)
             textSize = 16f
             setPadding(dp(10), dp(24), dp(10), dp(24))
         }
@@ -11123,7 +11125,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             background = win98PanelBackground()
             addView(TextView(this@MainActivity).apply {
                 text = title
-                textColor = Color.WHITE
+                setTextColor(Color.WHITE)
                 textSize = 18f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setPadding(dp(8), dp(7), dp(8), dp(7))
@@ -11139,7 +11141,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         row.addView(TextView(this).apply {
             text = "$label\n\n$value"
             gravity = Gravity.CENTER
-            textColor = Color.BLACK
+            setTextColor(Color.BLACK)
             textSize = 16f
             background = win98PanelBackground()
             setOnClickListener { action() }
@@ -11153,7 +11155,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             text = label
             gravity = Gravity.CENTER
             textSize = 16f
-            textColor = Color.BLACK
+            setTextColor(Color.BLACK)
             background = AppCompatResources.getDrawable(this@MainActivity, R.drawable.window_button_background)
             setPadding(dp(8), dp(14), dp(8), dp(14))
             setOnClickListener { showInternetExplorerDialog(url) }
