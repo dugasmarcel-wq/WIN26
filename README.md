@@ -7,7 +7,6 @@ The current privacy baseline removes cloud sync, automatic update checks, locati
 ## Features
 - Themes to faithfully recreate:
     - Windows 95/98
-    - Windows 2000/ME
     - Windows XP
     - Windows Vista
 - Working home screen, with desktop icons that can be renamed and changed (included are a bunch of icons from the era
