@@ -43,8 +43,8 @@ class InternetExplorerApp(
     companion object {
         private const val KEY_FAVOURITES = "ie_favourites"
         private const val KEY_LAST_URL = "ie_last_url"
-        private const val DEFAULT_FAVOURITE_NAME = "Windows Launcher"
-        private const val DEFAULT_FAVOURITE_URL = "https://github.com/jovanovski/windowslauncher/"
+        private const val DEFAULT_FAVOURITE_NAME = "News"
+        private const val DEFAULT_FAVOURITE_URL = "https://news.google.com"
         private const val SOUND_THROTTLE_MS = 2000L // Only allow one sound per second
     }
 
