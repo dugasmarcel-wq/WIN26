@@ -169,8 +169,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private val BACK_GESTURE_EDGE_THRESHOLD_DP = 5 // Touch within 20dp from edge is potential back gesture
     private val BACK_GESTURE_TIMEOUT_MS = 300L // If no back gesture confirmed within 300ms, allow touch
 
-    // Windows Update UI remains for visual compatibility, but automatic outbound
-    // update checks are disabled. Network access is reserved for Internet Explorer.
+    // Windows Update is explicit/user-triggered only. It contacts only the WIN26 GitHub
+    // release endpoint and does not run background polling or analytics.
     private lateinit var updateIcon: LinearLayout
     private var updateDownloadLink: String? = null
     
@@ -1091,19 +1091,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Set up clock updates
         setupClockUpdates()
 
-        // Set up update icon click listener
+        // Manual updater only: no background polling or telemetry.
         updateIcon.setOnClickListener {
-            updateDownloadLink?.let { link ->
-                try {
-//                    val intent = Intent(Intent.ACTION_VIEW)
-//                    intent.data = link.toUri()
-//                    startActivity(intent)
-                    showInternetExplorerDialog(link)
-//                    playClickSound()
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Error opening update link", e)
-                }
-            }
+            Win26Updater(this).checkForUpdates()
         }
 
         // Set up start button click
@@ -2079,7 +2069,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val updateItem = findViewById<LinearLayout>(R.id.windows_update_item)
             updateItem?.setOnClickListener {
                 hideStartMenu()
-                showNotification("Windows Update", "Automatic network update checks are disabled")
+                Win26Updater(this).checkForUpdates()
             }
 
             // Setup XP/Vista-specific All Programs toggle
@@ -9091,19 +9081,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             Log.d("MainActivity", "initializeTaskbarElements: Restored update icon visibility to VISIBLE")
         }
 
-        // Set up update icon click listener
+        // Manual updater only: no background polling or telemetry.
         updateIcon.setOnClickListener {
-            updateDownloadLink?.let { link ->
-                try {
-//                    val intent = Intent(Intent.ACTION_VIEW)
-//                    intent.data = link.toUri()
-//                    startActivity(intent)
-//                    playClickSound()
-                    showInternetExplorerDialog(link)
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Error opening update link", e)
-                }
-            }
+            Win26Updater(this).checkForUpdates()
         }
 
         // Set up start button click
@@ -13239,7 +13219,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         notificationHideRunnable = null
     }
 
-    // Automatic Windows Update networking intentionally removed for privacy.
+    // No automatic update polling: Windows Update networking occurs only after a user tap.
 
     private fun Int.dpToPx(): Int {
         return (this * resources.displayMetrics.density).toInt()
