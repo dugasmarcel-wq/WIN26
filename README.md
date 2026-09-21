@@ -1,11 +1,8 @@
-# Windows Launcher for Android
-Donate to keep this project alive and going: [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/jovanovski)
+# WIN26
 
-This is a Windows inspired launcher for Android 11+, which tries to faithfully recreate the retro Windows on modern phones. Feel free to grab a pre-comliped APK from the Releases tab or download and build the project yourself.
+WIN26 is a Windows-inspired launcher for Android 11+. This fork is configured as a local-first build: personal data stays on-device, and network access is reserved for Internet Explorer/browser actions.
 
-Looking for the Windows Phone 8 launcher? It's [moved to it's own repo](https://github.com/jovanovski/windowsphonelauncher/) as a separate project.
-
-![Windows Launcher Preview](https://i.imgur.com/TBZMjFl.gif)
+The current privacy baseline removes cloud sync, automatic update checks, location/weather fetching, contacts/calendar reads, external TTS, Google sign-in/Drive integration, and other non-browser network paths.
 
 ## Features
 - Themes to faithfully recreate:
@@ -25,31 +22,32 @@ Looking for the Windows Phone 8 launcher? It's [moved to it's own repo](https://
     -   Winamp - plays local MP3 files
     -   Notepad - for storing notes but included tabs as well
     -   Phone Dialer - working phone with basic features and speed dial
-    -   Registry Editor - to check locally stored settings, modify, export/sync to your Google Drive to later restore easily
+    -   Registry Editor - to check locally stored settings and import/export local settings files
     -   3 games: Minesweeper, Solitare, 3D Pinball Space Cadet
--   Calendar & Weather Integration
--   Windows Update (checks for a new APK version and lets you download it)
+-   Calendar and clock shortcuts that open installed Android apps without reading calendar data
+-   Windows Update menu item is disabled; it does not check the network
 
-## More Screenshots
-![Start Menus](https://i.imgur.com/5ShmfUq.jpeg)
+## Privacy Notes
+- `INTERNET` remains because Internet Explorer is built into the same APK.
+- Android cannot restrict that permission to only one Kotlin class inside the same APK/UID.
+- Known non-browser networking paths have been removed or disabled.
+- Explorer, media apps, notification dots, app enumeration, uninstall flow, wallpapers, and local import/export still require their related Android permissions.
 
 ## Special Permissions
-In order for the launcher to do some of it's things like turn off your screen on shutdown, or access notifications for the notification dots, it need special permissions which Android restricts by default, especially for side-loaded apps. In order to enable them, follow these steps:
+In order for the launcher to do some of its things like access notifications for notification dots, it needs special permissions which Android restricts by default, especially for side-loaded apps. To enable them, follow these steps:
 
 ### Option 1 - Install via ADB
 Apps installed with adb install aren’t treated as the “untrusted sideload” case, so Restricted Settings doesn’t trigger.
 Just: `adb install -r app-release.apk`
-Then go to Settings → Accessibility / Notification access and you should be able to toggle your services without the “Restricted setting” dialog.
+Then go to Settings → Notification access and you should be able to toggle the notification service without the “Restricted setting” dialog.
 
 ### Option 2 - Allow restricted settings
-1. Settings → Apps → See all apps → Windows Launcher
+1. Settings → Apps → See all apps → WIN26
 2. Tap the ⋮ three-dot menu (top right)
 3. Tap “Allow restricted settings”, Unlock with PIN if asked
-4. Now go to Accessibility or Notification access and enable your service.
+4. Now go to Notification access and enable the service.
 
 
 ## Notes
-1) Claude Code was used to create most of this as a fun side-project of mine. Do **NOT** expect super clean code or great organization, it was never the goal. Feel free to refactor things that need refactoring, and submit a PR if something is bothering you.
-2) I claim **NO** copyright over any of the assets used in this project. Most of them belong to Microsoft, and there is no goal to do anything illegal with them. This is just a nostalgia project for all us old Windows fans.
-
-
+1) The codebase is inherited and still needs cleanup. Keep changes controlled and build after each privacy or theme stage.
+2) WIN26 claims no copyright over the era-specific assets used for compatibility and nostalgia.
