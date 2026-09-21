@@ -3,12 +3,14 @@ name: Android Build
 on:
   push:
     branches: [ main, stage-1-four-versions-only, stage-3-win98-daily-ui ]
+    paths-ignore:
+      - "downloads/**"
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -34,3 +36,18 @@ jobs:
         with:
           name: WIN26-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish stable APK download
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-3-win98-daily-ui'
+        run: |
+          mkdir -p downloads
+          cp app/build/outputs/apk/debug/app-debug.apk downloads/WIN26-stage-3-win98-daily-shell.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f downloads/WIN26-stage-3-win98-daily-shell.apk
+          if git diff --cached --quiet; then
+            echo "APK download is already current."
+          else
+            git commit -m "Publish Stage 3 debug APK"
+            git push
+          fi
