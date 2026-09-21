@@ -1916,12 +1916,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     } else if ((keyCode == android.view.KeyEvent.KEYCODE_SEARCH || keyCode == android.view.KeyEvent.KEYCODE_ENTER) && event.action == KeyEvent.ACTION_DOWN) {
                         val query = searchBox.text.toString().trim()
                         if (query.isNotEmpty()) {
-                            if (query == "marti") {
-                                val url = "https://gorjan.rocks/clients/marti/"
-                                showInternetExplorerDialog(url)
-                            } else {
-                                openSearchWithQuery(query)
-                            }
+                            openSearchWithQuery(query)
                             hideStartMenu()
                         }
                         true
@@ -3097,13 +3092,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             if ((keyCode == android.view.KeyEvent.KEYCODE_SEARCH || keyCode == android.view.KeyEvent.KEYCODE_ENTER) && event.action == KeyEvent.ACTION_DOWN) {
                 val query = searchBox.text.toString().trim()
                 if (query.isNotEmpty()) {
-                    if(query == "marti"){
-                        val url = "https://gorjan.rocks/clients/marti/"
-                        showInternetExplorerDialog(url)
-                    }
-                    else {
-                        openSearchWithQuery(query)
-                    }
+                    openSearchWithQuery(query)
                     hideStartMenu()
                 }
                 true
@@ -7154,7 +7143,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
-    // Google Drive import/export and background sync removed for privacy.
+    // Cloud import/export and background sync removed for privacy.
 
     private fun showDialerDialog() {
         // Set cursor to busy while loading
@@ -8120,7 +8109,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
 
         // Set welcome message based on theme
-        val welcomeMessage = "Windows has updated to version $versionName, tap 'Change Log' to see what's new!\n\nIf you like what I'm building, buy me a coffee here: https://buymeacoffee.com/jovanovski.\n\nThis is a passion project from Gorjan Jovanovski, a developer who grew up with these aesthetics and prefers them over new design any day.\n\nIf you're a 80s or 90s kid, you remember these days fondly, and this is a change to relive them on a modern daily driver, in your pocket!\n\nA few tips:\n1) Tap on things that look tappable, chances are they are.\n2) Swipe back to close the active open window.\n3) Swipe up, down and right on the desktop for different actions.\n4) Long press on the desktop to change wallpapers and themes.\n5) There are multiple Windows apps in the start menu, all with their own purpose.\n\nAll the copyrighted information belongs to their respective authors, the aim here is to just recreate nostalgia for fun.\n\nThe music you're listening to from the legendary Stan LePard, rest in peace!\n\nFor any feature requests, drop me an email at hey@gorjan.rocks\n\nThanks for using Windows!"
+        val welcomeMessage = "WIN26 has updated to version $versionName. Tap 'Change Log' to see what's new.\n\nThis build is configured for local-first use. Network access is reserved for Internet Explorer and explicit browser actions.\n\nA few tips:\n1) Tap on things that look tappable.\n2) Swipe back to close the active open window.\n3) Swipe up, down and right on the desktop for different actions.\n4) Long press on the desktop to change wallpapers and themes.\n5) There are multiple Windows apps in the start menu, all with their own purpose.\n\nAll copyrighted information belongs to its respective authors.\n\nThanks for using WIN26."
 
         // Release notes are intentionally local-only in WIN26.
         fun fetchChangeLogFromGitHub(callback: (String) -> Unit) {
@@ -8133,33 +8122,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Set version text (using the versionName we already retrieved)
         versionTextView?.text = "Version: $versionName"
 
-        // Keep arbitrary URLs/email addresses as plain text. Only the explicit spans
-        // below may navigate, and those are routed through the built-in Internet Explorer.
         welcomeTextView.text = welcomeMessage
         welcomeTextView.movementMethod = LinkMovementMethod.getInstance()
         welcomeTextView.setLinkTextColor(Color.parseColor("#0000FF")) // Windows blue
 
-        // Now add custom clickable spans on top of auto-linkified text
         val spannableString = SpannableString(welcomeTextView.text)
-
-        // Make "Windows" (first word) clickable to open GitHub repo
-        val windowsStart = welcomeMessage.indexOf("Windows")
-        val windowsEnd = windowsStart + "Windows".length
-
-        if (windowsStart != -1) {
-            val windowsClickableSpan = object : ClickableSpan() {
-                override fun onClick(widget: View) {
-                    showInternetExplorerDialog("https://github.com/jovanovski/windowslauncher/")
-                }
-
-                override fun updateDrawState(ds: TextPaint) {
-                    super.updateDrawState(ds)
-                    ds.isUnderlineText = true
-                    ds.color = Color.BLUE
-                }
-            }
-            spannableString.setSpan(windowsClickableSpan, windowsStart, windowsEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
 
         // Make "Change Log" clickable
         val changeLogStart = welcomeMessage.indexOf("Change Log")
@@ -8178,25 +8145,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
             }
             spannableString.setSpan(changeLogClickableSpan, changeLogStart, changeLogEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-
-        // Make "Gorjan Jovanovski" clickable
-        val gorjanStart = welcomeMessage.indexOf("Gorjan Jovanovski")
-        val gorjanEnd = gorjanStart + "Gorjan Jovanovski".length
-
-        if (gorjanStart != -1) {
-            val gorjanClickableSpan = object : ClickableSpan() {
-                override fun onClick(widget: View) {
-                    showInternetExplorerDialog("https://gorjan.rocks")
-                }
-
-                override fun updateDrawState(ds: TextPaint) {
-                    super.updateDrawState(ds)
-                    ds.isUnderlineText = true
-                    ds.color = Color.BLUE
-                }
-            }
-            spannableString.setSpan(gorjanClickableSpan, gorjanStart, gorjanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
 
         welcomeTextView.text = spannableString
