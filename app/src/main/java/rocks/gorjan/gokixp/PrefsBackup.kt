@@ -10,9 +10,8 @@ import kotlin.math.floor
 /**
  * Serialises the launcher's SharedPreferences to JSON and back.
  *
- * Shared by the local-file and Google Drive paths so they can't drift apart - they used to
- * have two different (and differently wrong) ideas about how to turn a JSON number back into
- * a preference.
+ * Shared by local import/export paths so backup and restore keep one definition of how to
+ * turn a JSON number back into a preference.
  */
 object PrefsBackup {
 
