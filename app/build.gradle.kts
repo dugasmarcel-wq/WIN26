@@ -7,11 +7,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "rocks.gorjan.gokixp"
+        applicationId = "com.win26.launcher"
         minSdk = 29
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.0.2"
+        versionCode = 1
+        versionName = "0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
