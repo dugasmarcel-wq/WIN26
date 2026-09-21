@@ -3163,13 +3163,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     
     private fun adjustStartMenuForKeyboard() {
         if (!::startMenu.isInitialized) return
-        if (themeManager.getSelectedTheme() is AppTheme.WindowsClassic) return
 
+        // Classic/98 needs this too. Its filtered app list is stackFromEnd, so without
+        // resizing the menu to the visible area the search box and matching rows sit
+        // behind the IME and appear to vanish as soon as the user types.
         // Get the ConstraintLayout container by ID
         val startMenuContainer = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.start_menu_container) ?: return
         val layoutParams = startMenuContainer.layoutParams as? RelativeLayout.LayoutParams ?: return
 
-        // Save original layout params the first time (they have the 70dp bottom margin from XML)
+        // Save the normal desktop layout params before temporarily fitting above the IME.
         if (originalStartMenuLayoutParams == null) {
             originalStartMenuLayoutParams = RelativeLayout.LayoutParams(layoutParams)
         }
@@ -3190,7 +3192,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             layoutParams.bottomMargin = 0
 
         } else {
-            // Restore original layout params (including the 70dp bottom margin)
+            // Restore the normal desktop position above the taskbar/navigation area.
             originalStartMenuLayoutParams?.let { original ->
                 layoutParams.height = original.height
                 layoutParams.topMargin = original.topMargin
@@ -3604,10 +3606,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             }
 
-            // Adjust for keyboard if needed
-            if (themeManager.getSelectedTheme() !is AppTheme.WindowsClassic) {
-                adjustStartMenuForKeyboard()
-            }
+            // The insets listener will run this again once the keyboard becomes visible.
+            // Calling it here also restores a clean pre-IME layout if the previous keyboard
+            // transition was interrupted.
+            adjustStartMenuForKeyboard()
 
             // Scroll app list to top
             if (::appsRecyclerView.isInitialized) {

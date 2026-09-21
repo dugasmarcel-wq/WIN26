@@ -102,7 +102,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
-        android:layout_marginBottom="70dp">
+        <!-- Taskbar is 58dp high and sits 30dp above the gesture/navigation strip.
+             Keep Start exactly above it instead of overlapping it by 18dp. -->
+        android:layout_marginBottom="88dp">
 
         <RelativeLayout
             android:id="@+id/start_menu"
