@@ -663,19 +663,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LANDSCAPE
         }
 
-        // Start banner cycling order: 98 -> me -> 2000 -> 95 -> back to 98
+        // Start banner cycling order: 98 -> 95 -> back to 98
         private val START_BANNER_CYCLE = arrayOf(
             "start_banner_98",
-            "start_banner_me",
-            "start_banner_2000",
             "start_banner_95"
         )
 
         // Map banner names to resource IDs
         private val BANNER_RESOURCE_MAP = mapOf(
             "start_banner_98" to R.drawable.start_banner_98,
-            "start_banner_me" to R.drawable.start_banner_me,
-            "start_banner_2000" to R.drawable.start_banner_2000,
             "start_banner_95" to R.drawable.start_banner_95
         )
     }
@@ -685,7 +681,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      * @return Resource ID or 0 if not found
      */
     private fun getBannerResourceId(bannerName: String): Int {
-        return BANNER_RESOURCE_MAP[bannerName] ?: 0
+        return BANNER_RESOURCE_MAP[normalizeClassicBanner(bannerName)] ?: 0
+    }
+
+    private fun normalizeClassicBanner(bannerName: String?): String {
+        return if (bannerName != null && BANNER_RESOURCE_MAP.containsKey(bannerName)) {
+            bannerName
+        } else {
+            "start_banner_98"
+        }
     }
 
 
@@ -741,7 +745,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // runs while switching XP→Classic *before* the base theme flips, so getActivePlus95()
         // would still be null and we'd wrongly stage the default wallpaper. Themes that don't
         // ship a wall.jpg (e.g. the Plus! 98 set) fall back to the default Classic wallpaper.
-        val classicPath = plus95WallpaperPath(slug) ?: "wallpapers/Windows ME (m).jpg"
+        val classicPath = plus95WallpaperPath(slug) ?: "wallpapers/Windows 98 Colorful (m).jpg"
         prefs.edit {
             putString(KEY_WALLPAPER_CLASSIC_PATH, classicPath)
             remove(KEY_WALLPAPER_CLASSIC_URI)
@@ -851,7 +855,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      */
     private fun getDefaultWallpaperForCurrentTheme(): String {
         return when (themeManager.getSelectedTheme()) {
-            AppTheme.WindowsClassic -> "wallpapers/Windows ME (m).jpg"
+            AppTheme.WindowsClassic -> "wallpapers/Windows 98 Colorful (m).jpg"
             AppTheme.WindowsXP -> "wallpapers/Bliss (m).jpg"
             AppTheme.WindowsVista -> "wallpapers/Windows Vista (m).jpg" // Can be changed to Vista default later
         }
@@ -1331,11 +1335,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         soundIds[R.raw.startup] = soundPool.load(audioContext, R.raw.startup, 1)
         soundIds[R.raw.startup_98] = soundPool.load(audioContext, R.raw.startup_98, 1)
         soundIds[R.raw.startup_95] = soundPool.load(audioContext, R.raw.startup_95, 1)
-        soundIds[R.raw.startup_2000] = soundPool.load(audioContext, R.raw.startup_2000, 1)
         soundIds[R.raw.startup_vista] = soundPool.load(audioContext, R.raw.startup_vista, 1)
         soundIds[R.raw.shutdown] = soundPool.load(audioContext, R.raw.shutdown, 1)
         soundIds[R.raw.shutdown_98] = soundPool.load(audioContext, R.raw.shutdown_98, 1)
-        soundIds[R.raw.shutdown_2000] = soundPool.load(audioContext, R.raw.shutdown_2000, 1)
         soundIds[R.raw.shutdown_vista] = soundPool.load(audioContext, R.raw.shutdown_vista, 1)
         soundIds[R.raw.click] = soundPool.load(audioContext, R.raw.click, 1)
         soundIds[R.raw.click_vista] = soundPool.load(audioContext, R.raw.click_vista, 1)
@@ -6009,12 +6011,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
 
         // Set up flavour spinner
-        val flavours = arrayOf("Windows 95", "Windows 98", "Windows ME", "Windows 2000")
+        val flavours = arrayOf("Windows 95", "Windows 98")
         val flavourValues = mapOf(
             "Windows 95" to "start_banner_95",
-            "Windows 98" to "start_banner_98",
-            "Windows ME" to "start_banner_me",
-            "Windows 2000" to "start_banner_2000"
+            "Windows 98" to "start_banner_98"
         )
 
         val flavourSpinnerAdapter = android.widget.ArrayAdapter(this, spinnerLayoutId, flavours)
@@ -6022,7 +6022,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         flavourSpinner.adapter = flavourSpinnerAdapter
 
         // Set current flavour from SharedPreferences
-        val currentFlavourValue = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+        val currentFlavourValue = normalizeClassicBanner(
+            prefs.getString(KEY_START_BANNER_98, "start_banner_98")
+        )
         val currentFlavourName = flavourValues.entries.find { it.value == currentFlavourValue }?.key ?: "Windows 98"
         val flavourIndex = flavours.indexOf(currentFlavourName)
         if (flavourIndex != -1) {
@@ -6663,7 +6665,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             // Apply pending flavour changes
             if (pendingFlavour != null && pendingFlavour != currentFlavourValue) {
-                prefs.edit { putString(KEY_START_BANNER_98, pendingFlavour) }
+                prefs.edit { putString(KEY_START_BANNER_98, normalizeClassicBanner(pendingFlavour)) }
                 val startMenuContent = findViewById<View>(R.id.start_menu_content)
                 val bannerFrame = startMenuContent?.findViewById<android.widget.FrameLayout>(R.id.start_banner_frame)
                 bannerFrame?.let { frame ->
@@ -6736,7 +6738,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             // Apply pending flavour changes
             if (pendingFlavour != null && pendingFlavour != currentFlavourValue) {
-                prefs.edit { putString(KEY_START_BANNER_98, pendingFlavour) }
+                prefs.edit { putString(KEY_START_BANNER_98, normalizeClassicBanner(pendingFlavour)) }
                 val startMenuContent = findViewById<View>(R.id.start_menu_content)
                 val bannerFrame = startMenuContent?.findViewById<android.widget.FrameLayout>(R.id.start_banner_frame)
                 bannerFrame?.let { frame ->
@@ -8032,12 +8034,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Determine the layout based on theme and flavor
         val layoutRes = when (selectedTheme) {
             "Windows Classic" -> {
-                val flavor = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+                val flavor = normalizeClassicBanner(prefs.getString(KEY_START_BANNER_98, "start_banner_98"))
                 when (flavor) {
                     "start_banner_95" -> R.layout.program_welcome_95
                     "start_banner_98" -> R.layout.program_welcome_98
-                    "start_banner_2000" -> R.layout.program_welcome_2000
-                    "start_banner_me" -> R.layout.program_welcome_me
                     else -> R.layout.program_welcome_98
                 }
             }
@@ -8048,7 +8048,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Create MediaPlayer for welcome sound - choose based on theme
         val soundRes = when (selectedTheme) {
             "Windows Classic" -> {
-                val flavor = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+                val flavor = normalizeClassicBanner(prefs.getString(KEY_START_BANNER_98, "start_banner_98"))
                 when (flavor) {
                     "start_banner_95", "start_banner_98" -> R.raw.welcome_98
                     else -> R.raw.welcome
@@ -8088,12 +8088,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Determine which drawables to use based on theme and flavor
         val (welcomeDrawable, changeLogDrawable) = when (selectedTheme) {
             "Windows Classic" -> {
-                val flavor = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+                val flavor = normalizeClassicBanner(prefs.getString(KEY_START_BANNER_98, "start_banner_98"))
                 when (flavor) {
                     "start_banner_95" -> Pair(R.drawable.welcome_95_welcome, R.drawable.welcome_95_change_log)
                     "start_banner_98" -> Pair(R.drawable.welcome_98_welcome, R.drawable.welcome_98_change_log)
-                    "start_banner_2000" -> Pair(R.drawable.welcome_2000_welcome, R.drawable.welcome_2000_change_log)
-                    "start_banner_me" -> Pair(R.drawable.welcome_me_welcome, R.drawable.welcome_me_change_log)
                     else -> Pair(R.drawable.welcome_98_welcome, R.drawable.welcome_98_change_log)
                 }
             }
@@ -8940,11 +8938,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
 
         if(themeManager.getSelectedTheme() is AppTheme.WindowsClassic) {
-            val currentBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+            val currentBanner = normalizeClassicBanner(prefs.getString(KEY_START_BANNER_98, "start_banner_98"))
             when (currentBanner) {
-                "start_banner_me", "start_banner_2000" -> {
-                    playSound(R.raw.startup_2000)
-                }
                 "start_banner_95" -> {
                     playSound(R.raw.startup_95)
                 }
@@ -9023,11 +9018,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun playShutdownSound() {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         if(themeManager.getSelectedTheme() is AppTheme.WindowsClassic) {
-            val currentBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+            val currentBanner = normalizeClassicBanner(prefs.getString(KEY_START_BANNER_98, "start_banner_98"))
             when (currentBanner) {
-                "start_banner_me", "start_banner_2000" -> {
-                    playSound(R.raw.shutdown_2000)
-                }
                 "start_banner_95" -> {
                     playSound(R.raw.shutdown_98)
                 }
@@ -12193,7 +12185,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun loadCurrentStartBanner(bannerFrame: android.widget.FrameLayout) {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val currentBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+        val currentBanner = normalizeClassicBanner(prefs.getString(KEY_START_BANNER_98, "start_banner_98"))
+        if (prefs.getString(KEY_START_BANNER_98, "start_banner_98") != currentBanner) {
+            prefs.edit { putString(KEY_START_BANNER_98, currentBanner) }
+        }
 
         // Set the background using the asset image
         try {
@@ -12213,7 +12208,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun cycleStartBanner(bannerFrame: android.widget.FrameLayout) {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val currentBanner = prefs.getString(KEY_START_BANNER_98, "start_banner_98") ?: "start_banner_98"
+        val currentBanner = normalizeClassicBanner(prefs.getString(KEY_START_BANNER_98, "start_banner_98"))
 
         // Find current index in cycle
         val currentIndex = START_BANNER_CYCLE.indexOf(currentBanner)
