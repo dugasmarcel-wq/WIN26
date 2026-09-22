@@ -92,8 +92,8 @@ class NotificationListenerService : NotificationListenerService() {
                     Log.w(TAG, "MainActivity instance is null, cannot play email sound")
                 }
             }
-            // Only add non-ongoing, non-silent email notifications
-            if (!isOngoing && !isSilentNotification(sbn)) {
+            // Badge counts represent visible notifications, including silent channels.
+            if (!isOngoing) {
                 refreshActiveNotifications()
                 notifyMainActivity()
             }
@@ -198,11 +198,6 @@ class NotificationListenerService : NotificationListenerService() {
 
         // Skip system notifications
         if (sbn.packageName == "android" || sbn.packageName == "com.android.systemui") {
-            return false
-        }
-
-        // Skip silent notifications (low/min importance channels, no sound or vibration)
-        if (isSilentNotification(sbn)) {
             return false
         }
 

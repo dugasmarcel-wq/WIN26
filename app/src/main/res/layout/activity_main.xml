@@ -110,7 +110,7 @@
             android:id="@+id/start_menu"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="0dp"
             android:layout_marginEnd="12dp"
             android:orientation="vertical"
             android:visibility="gone"

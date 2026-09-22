@@ -564,6 +564,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_SWIPE_RIGHT_APP = "swipe_right_app"
         private const val KEY_WEATHER_APP = "weather_app"
         private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
+        private const val KEY_NOTIFICATION_LISTENER_PROMPTED = "notification_listener_prompted_v1"
         private const val KEY_START_BANNER_98 = "start_banner_98"
         private const val KEY_GESTURE_BAR_VISIBLE = "gesture_bar_visible"
         private const val KEY_CHRISTMAS_LIGHTS_VISIBLE = "christmas_lights_visible"
@@ -1001,6 +1002,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         
         // Start notification monitoring (after handler is initialized)
         startNotificationMonitoring()
+        requestNotificationListenerAccessForBadgesIfNeeded()
         
         // Set up desktop interactions
         setupDesktopInteractions()
@@ -1183,14 +1185,17 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun setupWin98QuickLaunchTaskbar() {
         if (!themeManager.isClassicTheme()) return
         val taskbarEmptySpace = findViewById<LinearLayout>(R.id.taskbar_empty_space) ?: return
+        val quickLaunchContainer =
+            findViewById<LinearLayout>(R.id.quick_launch_container) ?: taskbarEmptySpace
+
         quickLaunchBadgeViews.clear()
-        taskbarEmptySpace.removeAllViews()
+        quickLaunchContainer.removeAllViews()
         taskbarEmptySpace.setOnClickListener(null)
         findViewById<View>(R.id.system_tray)?.visibility = View.GONE
 
         quickLaunchSlots().forEach { slot ->
             val packageName = getQuickLaunchPackage(slot)
-            taskbarEmptySpace.addView(createQuickLaunchButton(slot, packageName, compact = true))
+            quickLaunchContainer.addView(createQuickLaunchButton(slot, packageName, compact = true))
         }
         updateNotificationDots()
     }
@@ -1198,8 +1203,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun createQuickLaunchButton(slot: QuickLaunchSlot, packageName: String, compact: Boolean): View {
         val frame = android.widget.FrameLayout(this).apply {
             layoutParams = if (compact) {
-                // Four permanent Win98 Quick Launch buttons share all space to the right
-                // of Start. Weighting prevents the fourth button from being clipped on phones.
+                // Four permanent slots share a dedicated fixed-width region. Running
+                // launcher-window buttons live elsewhere and cannot squeeze these.
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
                     marginStart = dp(1)
                     marginEnd = dp(1)
@@ -1227,8 +1232,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             setImageResource(slot.iconRes)
             scaleType = ImageView.ScaleType.FIT_CENTER
             layoutParams = android.widget.FrameLayout.LayoutParams(
-                dp(if (compact) 46 else 36),
-                dp(if (compact) 46 else 36),
+                dp(if (compact) 38 else 36),
+                dp(if (compact) 38 else 36),
                 Gravity.CENTER
             )
         }
@@ -11974,6 +11979,32 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      * Message.next ... Message.callback -> startNotificationMonitoring$updateRunnable$1.
      */
     private var notificationMonitorRunnable: Runnable? = null
+
+    private fun requestNotificationListenerAccessForBadgesIfNeeded() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val badgesEnabled = prefs.getBoolean(KEY_SHOW_NOTIFICATION_DOTS, true)
+        if (!badgesEnabled || isNotificationListenerEnabled() ||
+            prefs.getBoolean(KEY_NOTIFICATION_LISTENER_PROMPTED, false)
+        ) {
+            return
+        }
+
+        prefs.edit { putBoolean(KEY_NOTIFICATION_LISTENER_PROMPTED, true) }
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isNotificationListenerEnabled()) {
+                Toast.makeText(
+                    this,
+                    "Enable notification access for WIN26 to show taskbar counters.",
+                    Toast.LENGTH_LONG
+                ).show()
+                try {
+                    startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Unable to open notification listener settings", e)
+                }
+            }
+        }, 1200L)
+    }
 
     private fun startNotificationMonitoring() {
         stopNotificationMonitoring()

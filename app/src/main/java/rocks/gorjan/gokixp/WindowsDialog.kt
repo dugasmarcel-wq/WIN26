@@ -1131,8 +1131,9 @@ class WindowsDialog @JvmOverloads constructor(
     private fun autoRegisterWithTaskbar() {
         try {
             val activity = resolveActivity(context)
-            val taskbarContainerId = R.id.taskbar_empty_space
-            val container = activity?.findViewById<LinearLayout>(taskbarContainerId)
+            val container =
+                activity?.findViewById<LinearLayout>(R.id.taskbar_windows_container)
+                    ?: activity?.findViewById(R.id.taskbar_empty_space)
             if (container != null) {
                 registerWithTaskbar(container)
             }
@@ -1142,8 +1143,9 @@ class WindowsDialog @JvmOverloads constructor(
     private fun autoRegisterWithTaskbar(dialog: AlertDialog) {
         try {
             val activity = resolveActivity(context)
-            val taskbarContainerId = R.id.taskbar_empty_space
-            val container = activity?.findViewById<LinearLayout>(taskbarContainerId)
+            val container =
+                activity?.findViewById<LinearLayout>(R.id.taskbar_windows_container)
+                    ?: activity?.findViewById(R.id.taskbar_empty_space)
             if (container != null) {
                 registerWithTaskbar(container, dialog)
             }

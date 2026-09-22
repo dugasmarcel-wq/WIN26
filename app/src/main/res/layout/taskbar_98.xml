@@ -47,7 +47,12 @@
         </LinearLayout>
 
 
-        <!-- Empty taskbar space (clickable area between start button and system tray) -->
+        <!--
+             Win98 taskbar body.
+             The four permanent Quick Launch slots have their own fixed region so opening
+             launcher windows cannot squeeze or resize them. Running-window buttons use the
+             remaining strip and can scroll independently when several windows are open.
+        -->
         <LinearLayout
             android:id="@+id/taskbar_empty_space"
             android:layout_width="match_parent"
@@ -56,8 +61,36 @@
             android:layout_toRightOf="@id/start_and_divider"
             android:background="@android:color/transparent"
             android:orientation="horizontal"
-            android:gravity="start|center_vertical"
-            android:paddingLeft="10dp" />
+            android:gravity="center_vertical"
+            android:paddingLeft="4dp">
+
+            <LinearLayout
+                android:id="@+id/quick_launch_container"
+                android:layout_width="176dp"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="start|center_vertical"
+                android:clipChildren="false"
+                android:clipToPadding="false" />
+
+            <HorizontalScrollView
+                android:id="@+id/taskbar_windows_scroll"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:fillViewport="false"
+                android:scrollbars="none"
+                android:overScrollMode="never">
+
+                <LinearLayout
+                    android:id="@+id/taskbar_windows_container"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical" />
+            </HorizontalScrollView>
+
+        </LinearLayout>
 
         <!-- System Tray - Windows 98 style with custom borders -->
         <LinearLayout
