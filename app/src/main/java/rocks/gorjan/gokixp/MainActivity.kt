@@ -1191,7 +1191,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         quickLaunchBadgeViews.clear()
         quickLaunchContainer.removeAllViews()
         taskbarEmptySpace.setOnClickListener(null)
+
+        // WINSUNG Classic/98 taskbar is intentionally fixed: Start + four Quick Launch apps.
+        // Internal launcher windows must not create extra buttons that squeeze these slots.
         findViewById<View>(R.id.system_tray)?.visibility = View.GONE
+        findViewById<View>(R.id.taskbar_windows_scroll)?.visibility = View.GONE
+        findViewById<LinearLayout>(R.id.taskbar_windows_container)?.removeAllViews()
 
         quickLaunchSlots().forEach { slot ->
             val packageName = getQuickLaunchPackage(slot)
@@ -3430,10 +3435,38 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
     
+    /**
+     * Classic/98 Start must open from the same physical left edge as the Start button.
+     * Using the button's screen position avoids drift from root insets, taskbar padding,
+     * gesture-navigation padding, or device-specific layout offsets.
+     */
+    private fun alignClassicStartMenuToStartButton() {
+        if (!themeManager.isClassicTheme() || !::startMenu.isInitialized) return
+        val startButton = findViewById<View>(R.id.start_button) ?: return
+        val container = findViewById<View>(R.id.start_menu_container) ?: return
+
+        startMenu.post {
+            val buttonLocation = IntArray(2)
+            val containerLocation = IntArray(2)
+            startButton.getLocationOnScreen(buttonLocation)
+            container.getLocationOnScreen(containerLocation)
+
+            val targetStartPx = (buttonLocation[0] - containerLocation[0]).coerceAtLeast(0)
+            val params = startMenu.layoutParams as? androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+                ?: return@post
+            if (params.marginStart != targetStartPx) {
+                params.marginStart = targetStartPx
+                startMenu.layoutParams = params
+            }
+            startMenu.translationX = 0f
+        }
+    }
+
     private fun showStartMenu() {
         if (::startMenu.isInitialized) {
             startMenu.visibility = View.VISIBLE
             isStartMenuVisible = true
+            alignClassicStartMenuToStartButton()
 
             // The start menu lives outside main_background, so applyPlus95Theme's walk never
             // reaches it — tint (or reset) it here every time it opens. Passing CLASSIC_GRAY when
@@ -3583,6 +3616,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (::startMenu.isInitialized) {
             startMenu.visibility = View.VISIBLE
             isStartMenuVisible = true
+            alignClassicStartMenuToStartButton()
 
             // For Windows Classic theme, make app list visible when opened via swipe up
             // For Vista, keep showing command list until user starts typing

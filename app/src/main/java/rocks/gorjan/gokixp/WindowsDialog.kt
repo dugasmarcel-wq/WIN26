@@ -1130,6 +1130,7 @@ class WindowsDialog @JvmOverloads constructor(
 
     private fun autoRegisterWithTaskbar() {
         try {
+            if (ThemeManager(context).isClassicTheme()) return
             val activity = resolveActivity(context)
             val container =
                 activity?.findViewById<LinearLayout>(R.id.taskbar_windows_container)
@@ -1142,6 +1143,7 @@ class WindowsDialog @JvmOverloads constructor(
 
     private fun autoRegisterWithTaskbar(dialog: AlertDialog) {
         try {
+            if (ThemeManager(context).isClassicTheme()) return
             val activity = resolveActivity(context)
             val container =
                 activity?.findViewById<LinearLayout>(R.id.taskbar_windows_container)
@@ -1162,6 +1164,11 @@ class WindowsDialog @JvmOverloads constructor(
     }
 
     fun registerWithTaskbar(taskbarContainerView: LinearLayout) {
+        if (ThemeManager(context).isClassicTheme()) {
+            taskbarContainer = null
+            taskbarButton = null
+            return
+        }
         taskbarContainer = taskbarContainerView
         val buttonLayoutResId = ThemeManager(context).getTaskbarButtonLayoutRes(currentTheme)
         taskbarButton = LayoutInflater.from(context).inflate(buttonLayoutResId, taskbarContainer, false)
@@ -1198,6 +1205,11 @@ class WindowsDialog @JvmOverloads constructor(
     }
 
     fun registerWithTaskbar(taskbarContainerView: LinearLayout, dialogRef: AlertDialog) {
+        if (ThemeManager(context).isClassicTheme()) {
+            taskbarContainer = null
+            taskbarButton = null
+            return
+        }
         taskbarContainer = taskbarContainerView
         val buttonLayoutResId = ThemeManager(context).getTaskbarButtonLayoutRes(currentTheme)
         taskbarButton = LayoutInflater.from(context).inflate(buttonLayoutResId, taskbarContainer, false)
