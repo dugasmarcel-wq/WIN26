@@ -165,6 +165,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private val quickLaunchBadgeViews = mutableMapOf<String, TextView>()
     private var win98QuickPage: View? = null
     private var win98SecondPage: View? = null
+    private var win98MusicWidget: Win98YouTubeMusicWidget? = null
     private var win98NewsLoading = false
     private var win98QuickHeaderTime: TextView? = null
     private var win98QuickCalendarValue: TextView? = null
@@ -1199,6 +1200,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun setupWin98QuickLaunchTaskbar() {
+        setupWin98MusicWidget()
         if (!themeManager.isClassicTheme()) return
         val taskbarEmptySpace = findViewById<LinearLayout>(R.id.taskbar_empty_space) ?: return
         val quickLaunchContainer =
@@ -1219,6 +1221,48 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             quickLaunchContainer.addView(createQuickLaunchButton(slot, packageName, compact = true))
         }
         updateNotificationDots()
+    }
+
+    private fun setupWin98MusicWidget() {
+        val mainBackground = findViewById<RelativeLayout>(R.id.main_background) ?: return
+
+        if (!themeManager.isClassicTheme()) {
+            win98MusicWidget?.let { widget ->
+                (widget.parent as? ViewGroup)?.removeView(widget)
+            }
+            win98MusicWidget = null
+            return
+        }
+
+        val widget = win98MusicWidget ?: Win98YouTubeMusicWidget(
+            context = this,
+            onOpenNotificationAccess = {
+                try {
+                    startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Unable to open notification access settings", e)
+                    showNotification("Music Player", "Unable to open notification access settings")
+                }
+            },
+            onOpenYouTubeMusic = {
+                launchQuickLaunchPackage(QUICK_LAUNCH_YTMUSIC, "YouTube Music")
+            }
+        ).also {
+            win98MusicWidget = it
+        }
+
+        if (widget.parent !== mainBackground) {
+            (widget.parent as? ViewGroup)?.removeView(widget)
+
+            val availableWidth = (resources.displayMetrics.widthPixels - dp(20))
+                .coerceAtLeast(dp(250))
+            val widgetWidth = minOf(availableWidth, dp(382))
+            val widgetHeight = dp(205)
+
+            widget.layoutParams = RelativeLayout.LayoutParams(widgetWidth, widgetHeight)
+            widget.elevation = 7f
+            mainBackground.addView(widget)
+        }
     }
 
     private fun createQuickLaunchButton(slot: QuickLaunchSlot, packageName: String, compact: Boolean): View {
@@ -1309,17 +1353,23 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val apps = loadAppsInBackground()
             runOnUiThread {
                 val names = apps.map { it.name }.toTypedArray()
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Set ${slot.fallbackName} button")
-                    .setItems(names) { _, which ->
-                        val app = apps[which]
-                        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                        prefs.edit { putString("${KEY_QUICK_LAUNCH_PREFIX}${slot.index}", app.packageName) }
-                        setupWin98QuickLaunchTaskbar()
-                        showNotification("Quick Launch", "${slot.fallbackName} now opens ${app.name}")
+                Win98Dialogs.showList(
+                    context = this,
+                    title = "Set ${slot.fallbackName} button",
+                    items = names,
+                    negativeText = "Cancel"
+                ) { which ->
+                    val app = apps[which]
+                    val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    prefs.edit {
+                        putString("${KEY_QUICK_LAUNCH_PREFIX}${slot.index}", app.packageName)
                     }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+                    setupWin98QuickLaunchTaskbar()
+                    showNotification(
+                        "Quick Launch",
+                        "${slot.fallbackName} now opens ${app.name}"
+                    )
+                }
             }
         }.start()
     }
@@ -1328,13 +1378,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val labels = quickLaunchSlots().map { slot ->
             "${slot.fallbackName}: ${getQuickLaunchPackage(slot)}"
         }.toTypedArray()
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Edit Quick Launch")
-            .setItems(labels) { _, which ->
-                showQuickLaunchPicker(quickLaunchSlots()[which])
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+
+        Win98Dialogs.showList(
+            context = this,
+            title = "Edit Quick Launch",
+            items = labels,
+            negativeText = "Cancel"
+        ) { which ->
+            showQuickLaunchPicker(quickLaunchSlots()[which])
+        }
     }
 
     private fun classicStartRowDefaults(): List<String> = listOf(
@@ -1476,10 +1528,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             "Row ${index + 1}: $current"
         }.toTypedArray()
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Customize Start Rows")
-            .setItems(labels) { _, which -> showStartRowPicker(which) }
-            .setNeutralButton("Reset") { _, _ ->
+        Win98Dialogs.showList(
+            context = this,
+            title = "Customize Start Rows",
+            items = labels,
+            negativeText = "Cancel",
+            neutralText = "Reset",
+            onNeutral = {
                 val editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                 classicStartRowDefaults().indices.forEach { index ->
                     editor.remove("${KEY_START_ROW_PREFIX}$index")
@@ -1487,8 +1542,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 editor.apply()
                 populateClassicStartRows()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        ) { which ->
+            showStartRowPicker(which)
+        }
     }
 
     private fun showStartRowPicker(index: Int) {
@@ -1498,22 +1554,23 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 val labels = mutableListOf("Hide this row", "Phone")
                 labels.addAll(apps.map { it.name })
 
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Set Start row ${index + 1}")
-                    .setItems(labels.toTypedArray()) { _, which ->
-                        val value = when (which) {
-                            0 -> CONFIGURED_SLOT_HIDDEN
-                            1 -> START_ROW_PHONE_ACTION
-                            else -> apps[which - 2].packageName
-                        }
-                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                            .edit()
-                            .putString("${KEY_START_ROW_PREFIX}$index", value)
-                            .apply()
-                        populateClassicStartRows()
+                Win98Dialogs.showList(
+                    context = this,
+                    title = "Set Start row ${index + 1}",
+                    items = labels.toTypedArray(),
+                    negativeText = "Cancel"
+                ) { which ->
+                    val value = when (which) {
+                        0 -> CONFIGURED_SLOT_HIDDEN
+                        1 -> START_ROW_PHONE_ACTION
+                        else -> apps[which - 2].packageName
                     }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString("${KEY_START_ROW_PREFIX}$index", value)
+                        .apply()
+                    populateClassicStartRows()
+                }
             }
         }.start()
     }
@@ -1525,22 +1582,23 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 val labels = mutableListOf("Empty slot", "Phone")
                 labels.addAll(apps.map { it.name })
 
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Set Page 2 slot ${index + 1}")
-                    .setItems(labels.toTypedArray()) { _, which ->
-                        val value = when (which) {
-                            0 -> CONFIGURED_SLOT_EMPTY
-                            1 -> START_ROW_PHONE_ACTION
-                            else -> apps[which - 2].packageName
-                        }
-                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                            .edit()
-                            .putString("${KEY_SECOND_PAGE_SLOT_PREFIX}$index", value)
-                            .apply()
-                        populateWin98SecondPageSlots()
+                Win98Dialogs.showList(
+                    context = this,
+                    title = "Set Page 2 slot ${index + 1}",
+                    items = labels.toTypedArray(),
+                    negativeText = "Cancel"
+                ) { which ->
+                    val value = when (which) {
+                        0 -> CONFIGURED_SLOT_EMPTY
+                        1 -> START_ROW_PHONE_ACTION
+                        else -> apps[which - 2].packageName
                     }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString("${KEY_SECOND_PAGE_SLOT_PREFIX}$index", value)
+                        .apply()
+                    populateWin98SecondPageSlots()
+                }
             }
         }.start()
     }
@@ -7593,38 +7651,39 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         })
         container.addView(typeSpinner)
 
-        android.app.AlertDialog.Builder(this, R.style.LightAlertDialog)
-            .setTitle("Add Preference Key")
-            .setView(container)
-            .setPositiveButton("Add") { _, _ ->
+        Win98Dialogs.showCustom(
+            context = this,
+            title = "Add Preference Key",
+            content = container,
+            positiveText = "Add",
+            negativeText = "Cancel",
+            onPositive = {
                 val key = keyInput.text.toString().trim()
                 val value = valueInput.text.toString().trim()
                 val type = typeSpinner.selectedItem.toString()
 
                 if (key.isEmpty()) {
                     showNotification("Error", "Key cannot be empty")
-                    return@setPositiveButton
-                }
-
-                try {
-                    prefs.edit().apply {
-                        when (type) {
-                            "String" -> putString(key, value)
-                            "Boolean" -> putBoolean(key, value.toBoolean())
-                            "Integer" -> putInt(key, value.toInt())
-                            "Float" -> putFloat(key, value.toFloat())
-                            "Long" -> putLong(key, value.toLong())
+                } else {
+                    try {
+                        prefs.edit().apply {
+                            when (type) {
+                                "String" -> putString(key, value)
+                                "Boolean" -> putBoolean(key, value.toBoolean())
+                                "Integer" -> putInt(key, value.toInt())
+                                "Float" -> putFloat(key, value.toFloat())
+                                "Long" -> putLong(key, value.toLong())
+                            }
+                            apply()
                         }
-                        apply()
+                        showNotification("Registry Editor", "Key added successfully")
+                        refreshCallback()
+                    } catch (e: Exception) {
+                        showNotification("Registry Editor", "Error adding key: ${e.message}")
                     }
-                    showNotification("Registry Editor", "Key added successfully")
-                    refreshCallback()
-                } catch (e: Exception) {
-                    showNotification("Registry Editor", "Error adding key: ${e.message}")
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        )
     }
 
     private fun showRegistryEditorDialog() {

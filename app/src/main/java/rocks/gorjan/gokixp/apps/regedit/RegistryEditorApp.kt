@@ -14,6 +14,7 @@ import android.widget.TableRow
 import android.widget.TextView
 import androidx.core.content.edit
 import rocks.gorjan.gokixp.R
+import rocks.gorjan.gokixp.Win98Dialogs
 
 class RegistryEditorApp(
     private val context: Context,
@@ -248,10 +249,13 @@ class RegistryEditorApp(
         })
         container.addView(typeSpinner)
 
-        android.app.AlertDialog.Builder(context, R.style.LightAlertDialog)
-            .setTitle("Edit Key: $key")
-            .setView(container)
-            .setPositiveButton("Save") { _, _ ->
+        Win98Dialogs.showCustom(
+            context = context,
+            title = "Edit Key: $key",
+            content = container,
+            positiveText = "Save",
+            negativeText = "Cancel",
+            onPositive = {
                 val newValue = valueInput.text.toString().trim()
                 val type = typeSpinner.selectedItem.toString()
 
@@ -272,15 +276,17 @@ class RegistryEditorApp(
                     onShowNotification("Registry Editor", "Error updating key: ${e.message}")
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        )
     }
 
     private fun showDeleteKeyDialog(prefs: SharedPreferences, key: String, refreshCallback: () -> Unit) {
-        android.app.AlertDialog.Builder(context, R.style.LightAlertDialog)
-            .setTitle("Confirm Delete")
-            .setMessage("Are you sure you want to delete the key:\n\n$key")
-            .setPositiveButton("Delete") { _, _ ->
+        Win98Dialogs.showMessage(
+            context = context,
+            title = "Confirm Delete",
+            message = "Are you sure you want to delete the key:\n\n$key",
+            positiveText = "Delete",
+            negativeText = "Cancel",
+            onPositive = {
                 try {
                     prefs.edit { remove(key) }
                     onShowNotification("Registry Editor", "Key deleted successfully")
@@ -289,8 +295,7 @@ class RegistryEditorApp(
                     onShowNotification("Registry Editor", "Error deleting key: ${e.message}")
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        )
     }
 
     fun cleanup() {

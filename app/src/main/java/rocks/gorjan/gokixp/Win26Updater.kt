@@ -56,12 +56,11 @@ class Win26Updater(private val activity: Activity) {
     }
 
     fun checkForUpdates() {
-        val progress = AlertDialog.Builder(activity)
-            .setTitle("Windows Update")
-            .setMessage("Checking for updates...")
-            .setCancelable(false)
-            .create()
-        progress.show()
+        val progress = Win98Dialogs.showProgress(
+            context = activity,
+            title = "Windows Update",
+            message = "Checking for updates..."
+        )
 
         Thread {
             try {
@@ -125,12 +124,11 @@ class Win26Updater(private val activity: Activity) {
             return
         }
 
-        val progress = AlertDialog.Builder(activity)
-            .setTitle("Windows Update")
-            .setMessage("Starting download...")
-            .setCancelable(false)
-            .create()
-        progress.show()
+        val progress = Win98Dialogs.showProgress(
+            context = activity,
+            title = "Windows Update",
+            message = "Starting download..."
+        )
 
         Thread {
             try {
@@ -378,117 +376,13 @@ class Win26Updater(private val activity: Activity) {
         onPositive: (() -> Unit)? = null,
         negativeText: String? = null
     ) {
-        val density = activity.resources.displayMetrics.density
-        fun dp(value: Int) = (value * density + 0.5f).toInt()
-
-        val dialog = Dialog(activity)
-        val panel = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(20), dp(24), dp(18))
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(64, 64, 64))
-                cornerRadius = dp(4).toFloat()
-            }
-        }
-
-        val titleView = TextView(activity).apply {
-            text = title
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            setPadding(0, 0, 0, dp(14))
-        }
-        panel.addView(
-            titleView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+        Win98Dialogs.showMessage(
+            context = activity,
+            title = title,
+            message = message,
+            positiveText = positiveText,
+            negativeText = negativeText,
+            onPositive = onPositive
         )
-
-        val messageView = TextView(activity).apply {
-            text = message
-            setTextColor(Color.WHITE)
-            textSize = 17f
-            setLineSpacing(0f, 1.08f)
-            setPadding(0, 0, 0, dp(20))
-        }
-        panel.addView(
-            messageView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        val buttons = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-        }
-
-        fun makeButton(label: String): Button = Button(activity).apply {
-            text = label
-            isAllCaps = false
-            textSize = 15f
-            setTextColor(Color.BLACK)
-            minHeight = dp(48)
-            minWidth = dp(96)
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(224, 224, 224))
-                cornerRadius = dp(3).toFloat()
-                setStroke(dp(1), Color.rgb(96, 96, 96))
-            }
-        }
-
-        negativeText?.let { label ->
-            val negative = makeButton(label)
-            negative.setOnClickListener { dialog.dismiss() }
-            buttons.addView(
-                negative,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(48)
-                ).apply { marginEnd = dp(10) }
-            )
-        }
-
-        val positive = makeButton(positiveText)
-        positive.setOnClickListener {
-            dialog.dismiss()
-            onPositive?.invoke()
-        }
-        buttons.addView(
-            positive,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(48)
-            )
-        )
-
-        panel.addView(
-            buttons,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        dialog.setContentView(panel)
-        dialog.setCancelable(true)
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            setDimAmount(0.55f)
-            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setLayout(
-                (activity.resources.displayMetrics.widthPixels * 0.88f).toInt(),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        dialog.setOnShowListener {
-            dialog.window?.setLayout(
-                (activity.resources.displayMetrics.widthPixels * 0.88f).toInt(),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        dialog.show()
     }
 }
