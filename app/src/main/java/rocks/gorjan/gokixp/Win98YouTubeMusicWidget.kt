@@ -88,7 +88,7 @@ class Win98YouTubeMusicWidget(
             render()
         }
 
-        override fun onAudioInfoChanged(info: MediaController.PlaybackInfo?) {
+        override fun onAudioInfoChanged(info: MediaController.PlaybackInfo) {
             renderVolume()
         }
     }
@@ -344,36 +344,14 @@ class Win98YouTubeMusicWidget(
         })
 
         shuffleButton = tinyButton("SHUF").apply {
-            setOnClickListener {
-                withControllerOrOpen { c ->
-                    val nextMode = if (
-                        c.shuffleMode == PlaybackState.SHUFFLE_MODE_NONE
-                    ) {
-                        PlaybackState.SHUFFLE_MODE_ALL
-                    } else {
-                        PlaybackState.SHUFFLE_MODE_NONE
-                    }
-                    c.transportControls.setShuffleMode(nextMode)
-                    mainHandler.postDelayed({ render() }, 120L)
-                }
-            }
+            setOnClickListener { runMediaCustomAction("shuffle") }
         }
         controls.addView(shuffleButton, LinearLayout.LayoutParams(dp(43), dp(30)).apply {
             marginEnd = dp(4)
         })
 
         repeatButton = tinyButton("REP").apply {
-            setOnClickListener {
-                withControllerOrOpen { c ->
-                    val nextMode = when (c.repeatMode) {
-                        PlaybackState.REPEAT_MODE_NONE -> PlaybackState.REPEAT_MODE_ALL
-                        PlaybackState.REPEAT_MODE_ALL -> PlaybackState.REPEAT_MODE_ONE
-                        else -> PlaybackState.REPEAT_MODE_NONE
-                    }
-                    c.transportControls.setRepeatMode(nextMode)
-                    mainHandler.postDelayed({ render() }, 120L)
-                }
-            }
+            setOnClickListener { runMediaCustomAction("repeat") }
         }
         controls.addView(repeatButton, LinearLayout.LayoutParams(dp(42), dp(30)).apply {
             marginEnd = dp(5)
@@ -542,15 +520,9 @@ class Win98YouTubeMusicWidget(
         )
         spectrum.playing = playing
 
-        shuffleButton.alpha =
-            if (c.shuffleMode == PlaybackState.SHUFFLE_MODE_NONE) 0.55f else 1f
-        repeatButton.alpha =
-            if (c.repeatMode == PlaybackState.REPEAT_MODE_NONE) 0.55f else 1f
-        repeatButton.text = when (c.repeatMode) {
-            PlaybackState.REPEAT_MODE_ONE -> "R1"
-            PlaybackState.REPEAT_MODE_ALL -> "R ALL"
-            else -> "REP"
-        }
+        shuffleButton.alpha = if (findCustomAction("shuffle") != null) 1f else 0.55f
+        repeatButton.alpha = if (findCustomAction("repeat") != null) 1f else 0.55f
+        repeatButton.text = "REP"
 
         renderPosition()
         renderVolume()
@@ -600,6 +572,35 @@ class Win98YouTubeMusicWidget(
 
     private fun isPlaying(): Boolean =
         controller?.playbackState?.state == PlaybackState.STATE_PLAYING
+
+    private fun findCustomAction(keyword: String): PlaybackState.CustomAction? {
+        return controller?.playbackState?.customActions
+            ?.firstOrNull { action ->
+                action.action.contains(keyword, ignoreCase = true) ||
+                    action.name.toString().contains(keyword, ignoreCase = true)
+            }
+    }
+
+    private fun runMediaCustomAction(keyword: String) {
+        val c = controller
+        if (c == null) {
+            if (hasNotificationAccess()) onOpenYouTubeMusic()
+            else onOpenNotificationAccess()
+            return
+        }
+
+        val action = findCustomAction(keyword)
+        if (action == null) {
+            // YouTube Music does not consistently expose repeat/shuffle as platform
+            // transport methods. If that session does not publish the custom action,
+            // jump to YTM rather than pretending the button changed something.
+            onOpenYouTubeMusic()
+            return
+        }
+
+        c.transportControls.sendCustomAction(action.action, action.extras)
+        mainHandler.postDelayed({ render() }, 150L)
+    }
 
     private fun withControllerOrOpen(action: (MediaController) -> Unit) {
         val c = controller
