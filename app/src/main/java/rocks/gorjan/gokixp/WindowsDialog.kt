@@ -938,7 +938,14 @@ class WindowsDialog @JvmOverloads constructor(
      * Public method to minimize the window - used by both bordered and borderless windows
      */
     fun minimizeWindow() {
-        if(canMinimize) {
+        if (!canMinimize) return
+
+        // WINSUNG Classic/98 intentionally has no running-window taskbar buttons.
+        // A minimized Classic window would therefore become invisible with no restore path.
+        // Treat minimize exactly like the X button so normal close cleanup/listeners still run.
+        if (currentTheme is AppTheme.WindowsClassic) {
+            closeWindow()
+        } else {
             minimize()
         }
     }
