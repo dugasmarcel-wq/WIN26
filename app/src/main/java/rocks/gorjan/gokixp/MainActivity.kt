@@ -1254,10 +1254,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (widget.parent !== mainBackground) {
             (widget.parent as? ViewGroup)?.removeView(widget)
 
-            val availableWidth = (resources.displayMetrics.widthPixels - dp(20))
+            val availableWidth = (resources.displayMetrics.widthPixels - dp(28))
                 .coerceAtLeast(dp(250))
-            val widgetWidth = minOf(availableWidth, dp(382))
-            val widgetHeight = dp(205)
+            val widgetWidth = minOf(availableWidth, dp(334))
+            val widgetHeight = dp(166)
 
             widget.layoutParams = RelativeLayout.LayoutParams(widgetWidth, widgetHeight)
             widget.elevation = 7f
@@ -11445,6 +11445,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun showWin98QuickPage() {
         if (!themeManager.isClassicTheme()) return
         hideStartMenu()
+        win98MusicWidget?.visibility = View.GONE
         if (win98SecondPage?.visibility == View.VISIBLE) {
             hideWin98SecondPage(immediate = true)
         }
@@ -11689,6 +11690,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun showWin98SecondPage() {
         if (!themeManager.isClassicTheme()) return
         hideStartMenu()
+        win98MusicWidget?.visibility = View.GONE
         if (win98QuickPage?.visibility == View.VISIBLE) {
             hideWin98QuickPage(immediate = true)
         }
@@ -11900,20 +11902,27 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun hideWin98QuickPage(immediate: Boolean = false) {
         val page = win98QuickPage ?: return
-        if (page.visibility != View.VISIBLE) return
+        if (page.visibility != View.VISIBLE) {
+            restoreWin98MusicWidgetIfDesktopVisible()
+            return
+        }
         if (immediate) {
             page.animate().cancel()
             page.visibility = View.GONE
             page.translationX = 0f
+            restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
-        animateWin98PageOut(page, toLeft = true)
+        animateWin98PageOut(page, toLeft = true) {
+            restoreWin98MusicWidgetIfDesktopVisible()
+        }
     }
 
     private fun hideWin98SecondPage(immediate: Boolean = false) {
         val page = win98SecondPage ?: return
         if (page.visibility != View.VISIBLE) {
             desktopContainer.visibility = View.VISIBLE
+            restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
         if (immediate) {
@@ -11921,10 +11930,20 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             page.visibility = View.GONE
             page.translationX = 0f
             desktopContainer.visibility = View.VISIBLE
+            restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
         animateWin98PageOut(page, toLeft = false) {
             desktopContainer.visibility = View.VISIBLE
+            restoreWin98MusicWidgetIfDesktopVisible()
+        }
+    }
+
+    private fun restoreWin98MusicWidgetIfDesktopVisible() {
+        val quickVisible = win98QuickPage?.visibility == View.VISIBLE
+        val secondVisible = win98SecondPage?.visibility == View.VISIBLE
+        if (!quickVisible && !secondVisible && themeManager.isClassicTheme()) {
+            win98MusicWidget?.visibility = View.VISIBLE
         }
     }
 

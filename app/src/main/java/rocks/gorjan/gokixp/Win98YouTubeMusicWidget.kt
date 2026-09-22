@@ -17,8 +17,10 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -33,10 +35,10 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Desktop controller for the real YouTube Music media session.
+ * Compact desktop controller for YouTube Music's real Android MediaSession.
  *
- * Playback stays in YouTube Music; WIN26 uses Android MediaSession controls and the
- * metadata YouTube Music already exposes to the operating system.
+ * Playback stays in YouTube Music. WIN26 only presents the controls/metadata that the
+ * operating system exposes, so there is no separate streaming or background network path.
  */
 class Win98YouTubeMusicWidget(
     context: Context,
@@ -48,6 +50,7 @@ class Win98YouTubeMusicWidget(
         private const val YT_MUSIC_PACKAGE = "com.google.android.apps.youtube.music"
         private const val PREF_X = "win98_music_widget_x"
         private const val PREF_Y = "win98_music_widget_y"
+        private const val MOVE_HOLD_MS = 430L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -73,6 +76,7 @@ class Win98YouTubeMusicWidget(
     private val shuffleButton: TextView
     private val repeatButton: TextView
     private val spectrum: SpectrumView
+    private val moveStatus: TextView
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) {
@@ -103,138 +107,138 @@ class Win98YouTubeMusicWidget(
     }
 
     init {
-        setWillNotDraw(false)
-        background = shellBackground()
+        background = outerShell()
         clipToPadding = false
-        elevation = dp(7).toFloat()
+        elevation = dp(6).toFloat()
 
-        val dragBar = LinearLayout(context).apply {
+        val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(7), 0)
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(
-                    Color.rgb(43, 92, 18),
-                    Color.rgb(145, 255, 25),
-                    Color.rgb(43, 92, 18)
-                )
-            ).apply {
-                cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), Color.rgb(23, 56, 8))
-            }
+            setPadding(dp(9), 0, dp(5), 0)
+            background = headerBackground()
         }
-        dragBar.addView(
-            TextView(context).apply {
-                text = "WINSUNG // MUTANT MEDIA"
-                setTextColor(Color.rgb(16, 45, 7))
-                textSize = 10f
-                typeface = Typeface.MONOSPACE
-                setTypeface(typeface, Typeface.BOLD)
-                maxLines = 1
-            },
+
+        val brand = TextView(context).apply {
+            text = "WINSUNG MEDIA DECK 98"
+            setTextColor(Color.rgb(220, 230, 236))
+            textSize = 8.8f
+            typeface = Typeface.MONOSPACE
+            setTypeface(typeface, Typeface.BOLD)
+            letterSpacing = 0.05f
+            maxLines = 1
+        }
+        header.addView(
+            brand,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
                 gravity = Gravity.CENTER_VERTICAL
             }
         )
-        val openButton = tinyButton("YTM").apply {
+
+        moveStatus = TextView(context).apply {
+            text = "HOLD TO MOVE"
+            setTextColor(Color.rgb(135, 157, 171))
+            textSize = 7.2f
+            typeface = Typeface.MONOSPACE
+            gravity = Gravity.CENTER
+            maxLines = 1
+        }
+        header.addView(
+            moveStatus,
+            LinearLayout.LayoutParams(dp(62), ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+
+        val ytmButton = tinyButton("YTM").apply {
             setOnClickListener { onOpenYouTubeMusic() }
         }
-        dragBar.addView(openButton, LinearLayout.LayoutParams(dp(45), dp(22)))
+        header.addView(
+            ytmButton,
+            LinearLayout.LayoutParams(dp(36), dp(19)).apply {
+                marginStart = dp(4)
+            }
+        )
+
         addView(
-            dragBar,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28), Gravity.TOP).apply {
-                leftMargin = dp(5)
-                rightMargin = dp(5)
+            header,
+            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24), Gravity.TOP).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
                 topMargin = dp(4)
             }
         )
-        enableDragging(dragBar)
-
-        addView(makeSpeakerColumn(), LayoutParams(dp(42), dp(112), Gravity.START).apply {
-            leftMargin = dp(4)
-            topMargin = dp(31)
-        })
-        addView(makeSpeakerColumn(), LayoutParams(dp(42), dp(112), Gravity.END).apply {
-            rightMargin = dp(4)
-            topMargin = dp(31)
-        })
+        enableLongPressDragging(header)
 
         val display = FrameLayout(context).apply {
-            background = screenBackground()
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            background = displayBackground()
+            setPadding(dp(6), dp(6), dp(6), dp(6))
         }
         addView(
             display,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(91), Gravity.TOP).apply {
-                leftMargin = dp(47)
-                rightMargin = dp(47)
-                topMargin = dp(33)
+            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(69), Gravity.TOP).apply {
+                leftMargin = dp(8)
+                rightMargin = dp(8)
+                topMargin = dp(31)
             }
         )
 
         albumArt = ImageView(context).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(16, 24, 38))
-                setStroke(dp(1), Color.rgb(96, 255, 72))
-                cornerRadius = dp(5).toFloat()
-            }
+            background = albumBackground()
+            clipToOutline = true
         }
         display.addView(
             albumArt,
-            LayoutParams(dp(68), dp(68), Gravity.START or Gravity.TOP)
+            LayoutParams(dp(55), dp(55), Gravity.START or Gravity.TOP)
         )
 
-        val info = LinearLayout(context).apply {
+        val infoColumn = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(6), 0, 0, 0)
+            setPadding(dp(7), 0, dp(2), 0)
         }
         display.addView(
-            info,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70), Gravity.TOP).apply {
-                leftMargin = dp(72)
+            infoColumn,
+            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(55), Gravity.TOP).apply {
+                leftMargin = dp(58)
             }
         )
 
         titleText = TextView(context).apply {
             text = "YouTube Music"
-            setTextColor(Color.rgb(174, 255, 73))
-            textSize = 13f
-            typeface = Typeface.MONOSPACE
-            setTypeface(typeface, Typeface.BOLD)
-            maxLines = 2
+            setTextColor(Color.rgb(224, 235, 241))
+            textSize = 11.8f
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        info.addView(titleText)
+        infoColumn.addView(titleText)
 
         artistText = TextView(context).apply {
             text = "Open YTM to start"
-            setTextColor(Color.rgb(81, 231, 235))
-            textSize = 10.5f
+            setTextColor(Color.rgb(118, 186, 207))
+            textSize = 9.3f
             typeface = Typeface.MONOSPACE
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(0, dp(3), 0, 0)
+            setPadding(0, dp(2), 0, 0)
         }
-        info.addView(artistText)
+        infoColumn.addView(artistText)
 
         statusText = TextView(context).apply {
-            text = "MEDIA SESSION: STANDBY"
-            setTextColor(Color.rgb(137, 163, 183))
-            textSize = 8.5f
+            text = "SESSION STANDBY"
+            setTextColor(Color.rgb(125, 143, 153))
+            textSize = 7.4f
             typeface = Typeface.MONOSPACE
             maxLines = 1
-            setPadding(0, dp(5), 0, 0)
+            setPadding(0, dp(3), 0, 0)
         }
-        info.addView(statusText)
+        infoColumn.addView(statusText)
 
         spectrum = SpectrumView(context)
         display.addView(
             spectrum,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(13), Gravity.BOTTOM).apply {
-                leftMargin = dp(73)
+            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10), Gravity.BOTTOM).apply {
+                leftMargin = dp(61)
+                rightMargin = dp(2)
             }
         )
 
@@ -269,26 +273,24 @@ class Win98YouTubeMusicWidget(
         }
         addView(
             progress,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24), Gravity.TOP).apply {
-                leftMargin = dp(44)
-                rightMargin = dp(44)
-                topMargin = dp(124)
+            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(18), Gravity.TOP).apply {
+                leftMargin = dp(8)
+                rightMargin = dp(8)
+                topMargin = dp(101)
             }
         )
 
         timeText = TextView(context).apply {
             text = "00:00 / --:--"
-            setTextColor(Color.rgb(18, 59, 10))
-            textSize = 9f
+            setTextColor(Color.rgb(54, 67, 76))
+            textSize = 7.8f
             typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
         }
         addView(
             timeText,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(16), Gravity.TOP).apply {
-                leftMargin = dp(48)
-                rightMargin = dp(48)
-                topMargin = dp(145)
+            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(12), Gravity.TOP).apply {
+                topMargin = dp(117)
             }
         )
 
@@ -296,12 +298,13 @@ class Win98YouTubeMusicWidget(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(7), 0, dp(7), 0)
+            background = lowerRailBackground()
         }
         addView(
             controls,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42), Gravity.BOTTOM).apply {
-                leftMargin = dp(5)
-                rightMargin = dp(5)
+            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32), Gravity.BOTTOM).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
                 bottomMargin = dp(4)
             }
         )
@@ -311,8 +314,8 @@ class Win98YouTubeMusicWidget(
                 withControllerOrOpen { it.transportControls.skipToPrevious() }
             }
         }
-        controls.addView(previous, LinearLayout.LayoutParams(dp(36), dp(34)).apply {
-            marginEnd = dp(4)
+        controls.addView(previous, LinearLayout.LayoutParams(dp(29), dp(27)).apply {
+            marginEnd = dp(3)
         })
 
         playPause = mediaButton(android.R.drawable.ic_media_play, "Play or pause").apply {
@@ -323,15 +326,17 @@ class Win98YouTubeMusicWidget(
                 }
             }
         }
-        controls.addView(playPause, LinearLayout.LayoutParams(dp(40), dp(38)).apply {
-            marginEnd = dp(4)
+        controls.addView(playPause, LinearLayout.LayoutParams(dp(32), dp(29)).apply {
+            marginEnd = dp(3)
         })
 
         val stop = tinyButton("STOP").apply {
-            setOnClickListener { withControllerOrOpen { it.transportControls.stop() } }
+            setOnClickListener {
+                withControllerOrOpen { it.transportControls.stop() }
+            }
         }
-        controls.addView(stop, LinearLayout.LayoutParams(dp(43), dp(30)).apply {
-            marginEnd = dp(4)
+        controls.addView(stop, LinearLayout.LayoutParams(dp(33), dp(24)).apply {
+            marginEnd = dp(3)
         })
 
         val next = mediaButton(android.R.drawable.ic_media_next, "Next").apply {
@@ -339,33 +344,33 @@ class Win98YouTubeMusicWidget(
                 withControllerOrOpen { it.transportControls.skipToNext() }
             }
         }
-        controls.addView(next, LinearLayout.LayoutParams(dp(36), dp(34)).apply {
-            marginEnd = dp(5)
+        controls.addView(next, LinearLayout.LayoutParams(dp(29), dp(27)).apply {
+            marginEnd = dp(4)
         })
 
-        shuffleButton = tinyButton("SHUF").apply {
+        shuffleButton = tinyButton("SHF").apply {
             setOnClickListener { runMediaCustomAction("shuffle") }
         }
-        controls.addView(shuffleButton, LinearLayout.LayoutParams(dp(43), dp(30)).apply {
-            marginEnd = dp(4)
+        controls.addView(shuffleButton, LinearLayout.LayoutParams(dp(31), dp(24)).apply {
+            marginEnd = dp(3)
         })
 
         repeatButton = tinyButton("REP").apply {
             setOnClickListener { runMediaCustomAction("repeat") }
         }
-        controls.addView(repeatButton, LinearLayout.LayoutParams(dp(42), dp(30)).apply {
-            marginEnd = dp(5)
+        controls.addView(repeatButton, LinearLayout.LayoutParams(dp(31), dp(24)).apply {
+            marginEnd = dp(4)
         })
 
         controls.addView(
             TextView(context).apply {
                 text = "VOL"
-                setTextColor(Color.rgb(20, 55, 10))
-                textSize = 8f
+                setTextColor(Color.rgb(66, 78, 87))
+                textSize = 7f
                 typeface = Typeface.MONOSPACE
                 gravity = Gravity.CENTER
             },
-            LinearLayout.LayoutParams(dp(24), ViewGroup.LayoutParams.MATCH_PARENT)
+            LinearLayout.LayoutParams(dp(20), ViewGroup.LayoutParams.MATCH_PARENT)
         )
 
         volume = SeekBar(context).apply {
@@ -380,15 +385,11 @@ class Win98YouTubeMusicWidget(
                     value: Int,
                     fromUser: Boolean
                 ) {
-                    if (!fromUser) return
-                    setMediaVolume(value)
+                    if (fromUser) setMediaVolume(value)
                 }
             })
         }
-        controls.addView(
-            volume,
-            LinearLayout.LayoutParams(0, dp(28), 1f)
-        )
+        controls.addView(volume, LinearLayout.LayoutParams(0, dp(24), 1f))
 
         albumArt.setOnClickListener { onOpenYouTubeMusic() }
         display.setOnClickListener {
@@ -451,24 +452,24 @@ class Win98YouTubeMusicWidget(
         if (c == null) {
             albumArt.setImageResource(R.drawable.winsung_taskbar_ytmusic)
             albumArt.scaleType = ImageView.ScaleType.CENTER_INSIDE
-            albumArt.setPadding(dp(12), dp(12), dp(12), dp(12))
+            albumArt.setPadding(dp(9), dp(9), dp(9), dp(9))
             titleText.text = "YouTube Music"
             artistText.text = if (hasNotificationAccess()) {
                 "Open YTM to wake the player"
             } else {
-                "Tap display: enable media access"
+                "Tap display to enable media access"
             }
             statusText.text = if (hasNotificationAccess()) {
-                "MEDIA SESSION: STANDBY"
+                "SESSION STANDBY"
             } else {
-                "MEDIA SESSION: ACCESS REQUIRED"
+                "MEDIA ACCESS REQUIRED"
             }
             playPause.setImageResource(android.R.drawable.ic_media_play)
             spectrum.playing = false
             progress.progress = 0
             timeText.text = "00:00 / --:--"
-            shuffleButton.alpha = 0.55f
-            repeatButton.alpha = 0.55f
+            shuffleButton.alpha = 0.45f
+            repeatButton.alpha = 0.45f
             renderVolume()
             return
         }
@@ -492,7 +493,7 @@ class Win98YouTubeMusicWidget(
             } else {
                 albumArt.setImageResource(R.drawable.winsung_taskbar_ytmusic)
                 albumArt.scaleType = ImageView.ScaleType.CENTER_INSIDE
-                albumArt.setPadding(dp(12), dp(12), dp(12), dp(12))
+                albumArt.setPadding(dp(9), dp(9), dp(9), dp(9))
             }
         }
 
@@ -507,12 +508,12 @@ class Win98YouTubeMusicWidget(
 
         val playing = state?.state == PlaybackState.STATE_PLAYING
         statusText.text = when (state?.state) {
-            PlaybackState.STATE_PLAYING -> "PLAYING // YTM LINK"
-            PlaybackState.STATE_PAUSED -> "PAUSED // YTM LINK"
-            PlaybackState.STATE_BUFFERING -> "BUFFERING // YTM LINK"
+            PlaybackState.STATE_PLAYING -> "PLAYING  //  YTM SESSION"
+            PlaybackState.STATE_PAUSED -> "PAUSED  //  YTM SESSION"
+            PlaybackState.STATE_BUFFERING -> "BUFFERING  //  YTM SESSION"
             PlaybackState.STATE_SKIPPING_TO_NEXT,
-            PlaybackState.STATE_SKIPPING_TO_PREVIOUS -> "SEEKING // YTM LINK"
-            else -> "READY // YTM LINK"
+            PlaybackState.STATE_SKIPPING_TO_PREVIOUS -> "SEEKING  //  YTM SESSION"
+            else -> "READY  //  YTM SESSION"
         }
         playPause.setImageResource(
             if (playing) android.R.drawable.ic_media_pause
@@ -520,8 +521,8 @@ class Win98YouTubeMusicWidget(
         )
         spectrum.playing = playing
 
-        shuffleButton.alpha = if (findCustomAction("shuffle") != null) 1f else 0.55f
-        repeatButton.alpha = if (findCustomAction("repeat") != null) 1f else 0.55f
+        shuffleButton.alpha = if (findCustomAction("shuffle") != null) 1f else 0.45f
+        repeatButton.alpha = if (findCustomAction("repeat") != null) 1f else 0.45f
         repeatButton.text = "REP"
 
         renderPosition()
@@ -591,9 +592,6 @@ class Win98YouTubeMusicWidget(
 
         val action = findCustomAction(keyword)
         if (action == null) {
-            // YouTube Music does not consistently expose repeat/shuffle as platform
-            // transport methods. If that session does not publish the custom action,
-            // jump to YTM rather than pretending the button changed something.
             onOpenYouTubeMusic()
             return
         }
@@ -661,7 +659,7 @@ class Win98YouTubeMusicWidget(
         ImageButton(context).apply {
             setImageResource(iconRes)
             contentDescription = description
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(6), dp(6), dp(6), dp(6))
             background = controlBackground()
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
@@ -670,8 +668,8 @@ class Win98YouTubeMusicWidget(
         TextView(context).apply {
             text = label
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(25, 54, 17))
-            textSize = 8f
+            setTextColor(Color.rgb(51, 63, 71))
+            textSize = 7.4f
             typeface = Typeface.MONOSPACE
             setTypeface(typeface, Typeface.BOLD)
             background = controlBackground()
@@ -679,67 +677,88 @@ class Win98YouTubeMusicWidget(
             isFocusable = true
         }
 
-    private fun makeSpeakerColumn(): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            repeat(3) {
-                addView(
-                    View(context).apply {
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(Color.rgb(74, 74, 70))
-                            setStroke(dp(3), Color.rgb(194, 255, 76))
-                        }
-                    },
-                    LinearLayout.LayoutParams(dp(34), dp(34)).apply {
-                        topMargin = dp(1)
-                        bottomMargin = dp(1)
-                    }
-                )
-            }
-        }
-
-    private fun shellBackground() = GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
+    private fun outerShell() = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
         intArrayOf(
-            Color.rgb(56, 112, 22),
-            Color.rgb(150, 255, 30),
-            Color.rgb(82, 181, 22),
-            Color.rgb(150, 255, 30),
-            Color.rgb(56, 112, 22)
+            Color.rgb(104, 124, 138),
+            Color.rgb(190, 200, 205),
+            Color.rgb(121, 139, 150)
         )
     ).apply {
-        cornerRadius = dp(38).toFloat()
-        setStroke(dp(2), Color.rgb(26, 61, 9))
+        cornerRadius = dp(15).toFloat()
+        setStroke(dp(2), Color.rgb(48, 61, 70))
     }
 
-    private fun screenBackground() = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(Color.rgb(4, 7, 22), Color.rgb(0, 24, 37))
+    private fun headerBackground() = GradientDrawable(
+        GradientDrawable.Orientation.LEFT_RIGHT,
+        intArrayOf(
+            Color.rgb(27, 42, 54),
+            Color.rgb(48, 73, 91),
+            Color.rgb(27, 42, 54)
+        )
     ).apply {
-        cornerRadius = dp(12).toFloat()
-        setStroke(dp(2), Color.rgb(76, 255, 75))
+        cornerRadius = dp(10).toFloat()
+        setStroke(dp(1), Color.rgb(98, 121, 136))
+    }
+
+    private fun displayBackground() = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(
+            Color.rgb(6, 13, 19),
+            Color.rgb(11, 28, 38),
+            Color.rgb(7, 17, 24)
+        )
+    ).apply {
+        cornerRadius = dp(8).toFloat()
+        setStroke(dp(1), Color.rgb(88, 138, 157))
+    }
+
+    private fun albumBackground() = GradientDrawable().apply {
+        setColor(Color.rgb(18, 29, 37))
+        setStroke(dp(1), Color.rgb(87, 118, 132))
+        cornerRadius = dp(5).toFloat()
+    }
+
+    private fun lowerRailBackground() = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(
+            Color.rgb(203, 210, 214),
+            Color.rgb(154, 167, 174)
+        )
+    ).apply {
+        cornerRadius = dp(10).toFloat()
+        setStroke(dp(1), Color.rgb(78, 92, 101))
     }
 
     private fun controlBackground() = GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
         intArrayOf(
-            Color.rgb(244, 244, 238),
-            Color.rgb(164, 168, 157),
-            Color.rgb(230, 230, 223)
+            Color.rgb(242, 244, 245),
+            Color.rgb(187, 196, 201),
+            Color.rgb(225, 229, 231)
         )
     ).apply {
-        cornerRadius = dp(15).toFloat()
-        setStroke(dp(1), Color.rgb(50, 72, 42))
+        cornerRadius = dp(11).toFloat()
+        setStroke(dp(1), Color.rgb(76, 88, 96))
     }
 
-    private fun enableDragging(handle: View) {
+    private fun enableLongPressDragging(handle: View) {
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
         var downRawX = 0f
         var downRawY = 0f
         var startX = 0f
         var startY = 0f
-        var dragging = false
+        var moveArmed = false
+        var gestureCancelled = false
+
+        val armMove = Runnable {
+            if (!gestureCancelled) {
+                moveArmed = true
+                moveStatus.text = "MOVE MODE"
+                moveStatus.setTextColor(Color.rgb(236, 196, 96))
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+        }
 
         handle.setOnTouchListener { _, event ->
             when (event.actionMasked) {
@@ -748,32 +767,44 @@ class Win98YouTubeMusicWidget(
                     downRawY = event.rawY
                     startX = x
                     startY = y
-                    dragging = false
+                    moveArmed = false
+                    gestureCancelled = false
+                    mainHandler.removeCallbacks(armMove)
+                    mainHandler.postDelayed(armMove, MOVE_HOLD_MS)
                     true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - downRawX
                     val dy = event.rawY - downRawY
-                    if (!dragging && abs(dx) + abs(dy) > dp(8)) dragging = true
 
-                    if (dragging) {
+                    if (!moveArmed && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        gestureCancelled = true
+                        mainHandler.removeCallbacks(armMove)
+                    }
+
+                    if (moveArmed) {
                         val parentView = parent as? ViewGroup
                         val maxX = max(0f, (parentView?.width ?: 0) - width.toFloat())
                         val maxY = max(0f, (parentView?.height ?: 0) - height.toFloat())
                         x = (startX + dx).coerceIn(0f, maxX)
-                        y = (startY + dy).coerceIn(dp(36).toFloat(), maxY)
+                        y = (startY + dy).coerceIn(dp(34).toFloat(), maxY)
                     }
                     true
                 }
 
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL -> {
-                    if (dragging) savePosition()
+                    mainHandler.removeCallbacks(armMove)
+                    if (moveArmed) savePosition()
+                    moveArmed = false
+                    gestureCancelled = false
+                    moveStatus.text = "HOLD TO MOVE"
+                    moveStatus.setTextColor(Color.rgb(135, 157, 171))
                     true
                 }
 
-                else -> false
+                else -> true
             }
         }
     }
@@ -784,15 +815,15 @@ class Win98YouTubeMusicWidget(
 
         val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
         val defaultX = ((parentView.width - width) / 2f).coerceAtLeast(0f)
-        val defaultY = (parentView.height - height - dp(104)).toFloat()
-            .coerceAtLeast(dp(80).toFloat())
+        val defaultY = (parentView.height - height - dp(92)).toFloat()
+            .coerceAtLeast(dp(70).toFloat())
         val savedX = prefs.getFloat(PREF_X, defaultX)
         val savedY = prefs.getFloat(PREF_Y, defaultY)
 
         x = savedX.coerceIn(0f, max(0f, parentView.width - width.toFloat()))
         y = savedY.coerceIn(
-            dp(36).toFloat(),
-            max(dp(36).toFloat(), parentView.height - height.toFloat())
+            dp(34).toFloat(),
+            max(dp(34).toFloat(), parentView.height - height.toFloat())
         )
     }
 
@@ -815,22 +846,22 @@ class Win98YouTubeMusicWidget(
             }
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(92, 255, 72)
+            color = Color.rgb(91, 179, 205)
             style = Paint.Style.FILL
         }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val bars = 18
-            val gap = width / (bars * 3f)
-            val barWidth = max(1f, gap * 1.8f)
-            val phase = SystemClock.uptimeMillis() / 145.0
+            val bars = 20
+            val gap = width / (bars * 3.1f)
+            val barWidth = max(1f, gap * 1.7f)
+            val phase = SystemClock.uptimeMillis() / 160.0
 
             for (i in 0 until bars) {
                 val normalized = if (playing) {
-                    0.25 + 0.75 * ((sin(phase + i * 0.83) + 1.0) / 2.0)
+                    0.22 + 0.78 * ((sin(phase + i * 0.77) + 1.0) / 2.0)
                 } else {
-                    0.16 + (i % 4) * 0.04
+                    0.16 + (i % 5) * 0.025
                 }
                 val h = (height * normalized).toFloat()
                 val left = i * (barWidth + gap)
