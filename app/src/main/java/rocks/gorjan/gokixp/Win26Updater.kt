@@ -127,14 +127,35 @@ class Win26Updater(private val activity: Activity) {
 
         val progress = AlertDialog.Builder(activity)
             .setTitle("Windows Update")
-            .setMessage("Downloading update...")
+            .setMessage("Starting download...")
             .setCancelable(false)
             .create()
         progress.show()
 
         Thread {
             try {
-                val apk = downloadApk(update)
+                val apk = downloadApk(update) { downloaded, total ->
+                    val downloadedMb = downloaded / (1024.0 * 1024.0)
+                    val text = if (total > 0L) {
+                        val totalMb = total / (1024.0 * 1024.0)
+                        val percent = ((downloaded * 100L) / total).coerceIn(0L, 100L)
+                        "Downloading update...\n\n%.1f MB / %.1f MB  (%d%%)".format(
+                            downloadedMb,
+                            totalMb,
+                            percent
+                        )
+                    } else {
+                        "Downloading update...\n\n%.1f MB downloaded".format(downloadedMb)
+                    }
+                    activity.runOnUiThread {
+                        if (progress.isShowing) progress.setMessage(text)
+                    }
+                }
+                activity.runOnUiThread {
+                    if (progress.isShowing) {
+                        progress.setMessage("Verifying update...")
+                    }
+                }
                 verifyDownloadedApk(apk, update)
                 activity.runOnUiThread {
                     progress.dismiss()
@@ -181,7 +202,10 @@ class Win26Updater(private val activity: Activity) {
         }
     }
 
-    private fun downloadApk(update: UpdateInfo): File {
+    private fun downloadApk(
+        update: UpdateInfo,
+        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit
+    ): File {
         val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
         val target = File(dir, APK_FILE_NAME)
         val temp = File(dir, "$APK_FILE_NAME.part")
@@ -192,11 +216,33 @@ class Win26Updater(private val activity: Activity) {
             require(connection.responseCode in 200..299) {
                 "APK server returned HTTP ${connection.responseCode}"
             }
+
+            val totalBytes = connection.contentLengthLong
+            var downloadedBytes = 0L
+            var lastUiUpdate = 0L
+            val buffer = ByteArray(64 * 1024)
+
             connection.inputStream.use { input ->
                 FileOutputStream(temp).use { output ->
-                    input.copyTo(output)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+
+                        output.write(buffer, 0, count)
+                        downloadedBytes += count
+
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (now - lastUiUpdate >= 350L || downloadedBytes == totalBytes) {
+                            onProgress(downloadedBytes, totalBytes)
+                            lastUiUpdate = now
+                        }
+                    }
+                    output.flush()
                 }
             }
+
+            onProgress(downloadedBytes, totalBytes)
         } finally {
             connection.disconnect()
         }
@@ -213,7 +259,7 @@ class Win26Updater(private val activity: Activity) {
         return (url.openConnection() as HttpsURLConnection).apply {
             instanceFollowRedirects = true
             connectTimeout = 15_000
-            readTimeout = 60_000
+            readTimeout = 30_000
             requestMethod = "GET"
             setRequestProperty("User-Agent", "WIN26-Updater")
             setRequestProperty("Accept", "application/json, application/vnd.android.package-archive, */*")
