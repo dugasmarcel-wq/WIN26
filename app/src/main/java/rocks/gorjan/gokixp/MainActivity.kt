@@ -82,6 +82,7 @@ import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.appcompat.content.res.AppCompatResources
+import com.bumptech.glide.Glide
 import rocks.gorjan.gokixp.agent.Agent
 import rocks.gorjan.gokixp.agent.AgentView
 import rocks.gorjan.gokixp.agent.TTSService
@@ -3852,16 +3853,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         showStartMenuWithSearch()
                         return true
                     } else if (
-                        isSwipeLeft &&
+                        isSwipeRight &&
                         isMinimumDistanceX &&
                         isMinimumVelocityX &&
                         themeManager.isClassicTheme()
                     ) {
-                        Log.d("MainActivity", "Swipe left detected: opening WINSUNG 98 Quick Glance")
+                        Log.d("MainActivity", "Swipe right detected: opening WINSUNG 98 Quick Glance")
                         showWin98QuickPage()
                         return true
-                    } else if (isSwipeRight && isMinimumDistanceX && isMinimumVelocityX) {
-                        Log.d("MainActivity", "Swipe right disabled for the Win98 daily shell")
+                    } else if (isSwipeLeft && isMinimumDistanceX && isMinimumVelocityX) {
+                        Log.d("MainActivity", "Swipe left has no desktop action in the Win98 daily shell")
                         return false
                     }
                 }
@@ -11144,7 +11145,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         hideStartMenu()
 
-        // Rebuild whenever it is opened so the clock, battery and headlines are current.
+        // Rebuild on each open so the date, battery and user-triggered news are current.
         win98QuickPage?.let { existing ->
             (existing.parent as? ViewGroup)?.removeView(existing)
         }
@@ -11154,36 +11155,51 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
         val scroll = android.widget.ScrollView(this).apply {
             id = View.generateViewId()
-            setBackgroundColor(Color.parseColor("#d3cec7"))
+            setBackgroundColor(Color.parseColor("#D6D2CB"))
             isFillViewport = true
-            elevation = 12f
+            elevation = 18f
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = RelativeLayout.LayoutParams(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
                 RelativeLayout.LayoutParams.MATCH_PARENT
             ).apply {
-                setMargins(dp(10), dp(20), dp(10), dp(70))
+                setMargins(0, 0, 0, dp(70))
             }
         }
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(14))
+            setPadding(dp(18), dp(18), dp(18), dp(22))
         }
         scroll.addView(content)
 
-        val title = TextView(this).apply {
-            text = "WINSUNG 98 - QUICK GLANCE\n" +
-                SimpleDateFormat("EEEE, MMMM d h:mm a", Locale.getDefault()).format(Date())
-            setTextColor(Color.WHITE)
-            textSize = 22f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = win98BlueHeader()
+        val glanceHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(14), dp(18), dp(16))
+            background = quickGlanceBlueCard()
+            elevation = 4f
         }
-        content.addView(title, LinearLayout.LayoutParams(
+        glanceHeader.addView(TextView(this).apply {
+            text = "WINSUNG 98  ·  QUICK GLANCE"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            letterSpacing = 0.08f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        })
+        glanceHeader.addView(TextView(this).apply {
+            text = SimpleDateFormat(
+                "EEEE, MMMM d  h:mm a",
+                Locale.getDefault()
+            ).format(Date())
+            setTextColor(Color.WHITE)
+            textSize = 26f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, dp(3), 0, 0)
+        })
+        content.addView(glanceHeader, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(12) })
+        ).apply { bottomMargin = dp(14) })
 
         val infoRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -11191,8 +11207,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
         content.addView(infoRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(82)
-        ).apply { bottomMargin = dp(12) })
+            dp(92)
+        ).apply { bottomMargin = dp(14) })
 
         addInfoTile(infoRow, "Weather", "Open app") { openWeatherApp() }
         addInfoTile(
@@ -11204,18 +11220,19 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         val storiesPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = win98PanelBackground()
+            background = quickGlanceCardBackground("#CFCBC5", 10)
+            elevation = 3f
         }
         content.addView(storiesPanel, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(12) })
+        ).apply { bottomMargin = dp(14) })
 
         val storiesHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = win98BlueHeader()
-            setPadding(dp(8), dp(5), dp(7), dp(5))
+            background = quickGlanceBlueCard()
+            setPadding(dp(12), dp(7), dp(8), dp(7))
         }
         storiesPanel.addView(storiesHeader, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -11231,15 +11248,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         val storyContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(4))
         }
 
         lateinit var refreshButton: TextView
         refreshButton = TextView(this).apply {
             text = "Refresh"
             gravity = Gravity.CENTER
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            textSize = 14f
+            setTextColor(Color.BLACK)
+            setPadding(dp(13), dp(6), dp(13), dp(6))
             background = AppCompatResources.getDrawable(
                 this@MainActivity,
                 R.drawable.window_button_background
@@ -11258,44 +11276,27 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         content.addView(sourcesPanel, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(12) })
+        ).apply { bottomMargin = dp(14) })
 
         val sourceRows = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
         }
         sourcesPanel.addView(sourceRows)
-
-        val sourceRowOne = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        sourceRows.addView(sourceRowOne, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(8) })
-        sourceRowOne.addView(
+        sourceRows.addView(
             createWin98SourceButton("Google News", "https://news.google.com"),
-            LinearLayout.LayoutParams(0, dp(58), 1f).apply { marginEnd = dp(5) }
+            LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginEnd = dp(5) }
         )
-        sourceRowOne.addView(
+        sourceRows.addView(
             createWin98SourceButton("Reuters", "https://www.reuters.com"),
-            LinearLayout.LayoutParams(0, dp(58), 1f).apply { marginStart = dp(5) }
+            LinearLayout.LayoutParams(0, dp(54), 1f).apply {
+                marginStart = dp(2)
+                marginEnd = dp(2)
+            }
         )
-
-        val sourceRowTwo = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        sourceRows.addView(sourceRowTwo, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
-        sourceRowTwo.addView(
+        sourceRows.addView(
             createWin98SourceButton("AP", "https://apnews.com"),
-            LinearLayout.LayoutParams(0, dp(58), 1f).apply { marginEnd = dp(5) }
-        )
-        sourceRowTwo.addView(
-            View(this),
-            LinearLayout.LayoutParams(0, dp(58), 1f).apply { marginStart = dp(5) }
+            LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginStart = dp(5) }
         )
 
         val quickPanel = createWin98Panel("Quick launch")
@@ -11307,7 +11308,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val quickRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 5f
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setPadding(dp(8), dp(10), dp(8), dp(10))
         }
         quickPanel.addView(quickRow)
 
@@ -11337,6 +11338,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
         )
 
+        // Quick Glance is the page to the left of the desktop: swipe right to reveal it,
+        // then swipe left on the page to return to the desktop.
         val pageGesture = GestureDetectorCompat(
             this,
             object : GestureDetector.SimpleOnGestureListener() {
@@ -11352,7 +11355,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     val deltaX = e2.x - e1.x
                     val deltaY = e2.y - e1.y
                     if (
-                        deltaX > dp(80) &&
+                        deltaX < -dp(80) &&
                         abs(deltaX) > abs(deltaY) &&
                         abs(velocityX) > 300
                     ) {
@@ -11372,8 +11375,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         win98QuickPage = scroll
 
         scroll.post {
-            scroll.translationX = scroll.width.toFloat()
-            scroll.animate().translationX(0f).setDuration(180L).start()
+            scroll.translationX = -scroll.width.toFloat()
+            scroll.animate().translationX(0f).setDuration(190L).start()
         }
 
         refreshWin98News(storyContainer, refreshButton)
@@ -11383,8 +11386,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val page = win98QuickPage ?: return
         if (page.visibility != View.VISIBLE) return
         page.animate()
-            .translationX(page.width.toFloat())
-            .setDuration(180L)
+            .translationX(-page.width.toFloat())
+            .setDuration(190L)
             .withEndAction {
                 page.visibility = View.GONE
                 page.translationX = 0f
@@ -11396,19 +11399,19 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (win98NewsLoading) return
         win98NewsLoading = true
         refreshButton.isEnabled = false
-        refreshButton.alpha = 0.65f
+        refreshButton.alpha = 0.6f
 
         container.removeAllViews()
         container.addView(TextView(this).apply {
-            text = "Loading headlines..."
+            text = "Loading headlines and photos..."
             gravity = Gravity.CENTER
-            setTextColor(Color.BLACK)
-            textSize = 16f
-            setPadding(dp(10), dp(24), dp(10), dp(24))
+            setTextColor(Color.DKGRAY)
+            textSize = 15f
+            setPadding(dp(10), dp(28), dp(10), dp(28))
         })
 
         lifecycleScope.launch {
-            val result = Win98QuickGlanceNews.fetchHeadlines(6)
+            val result = Win98QuickGlanceNews.fetchHeadlines(7)
             if (win98QuickPage == null || !container.isAttachedToWindow) return@launch
 
             win98NewsLoading = false
@@ -11424,8 +11427,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                             "Use the source buttons below or tap Refresh."
                         gravity = Gravity.CENTER
                         setTextColor(Color.BLACK)
-                        textSize = 16f
-                        setPadding(dp(10), dp(24), dp(10), dp(24))
+                        textSize = 15f
+                        setPadding(dp(12), dp(28), dp(12), dp(28))
                     })
                 }
             )
@@ -11439,64 +11442,149 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 text = "No headlines are available right now."
                 gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
-                textSize = 16f
-                setPadding(dp(10), dp(24), dp(10), dp(24))
+                textSize = 15f
+                setPadding(dp(10), dp(28), dp(10), dp(28))
             })
             return
         }
 
-        items.forEachIndexed { index, item ->
-            val story = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(10), dp(9), dp(10), dp(9))
+        // Lead story gets a large photo so the page reads like a real glance/feed page.
+        val lead = items.first()
+        val leadCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(10))
+            background = quickGlanceCardBackground("#F1EEE8", 9)
+            elevation = 2f
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { showInternetExplorerDialog(lead.url) }
+        }
+        val leadImage = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = quickGlanceCardBackground("#B8B8B8", 8)
+            clipToOutline = true
+        }
+        leadCard.addView(leadImage, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(176)
+        ))
+        loadQuickGlanceImage(leadImage, lead.imageUrl)
+
+        leadCard.addView(TextView(this).apply {
+            text = lead.title
+            setTextColor(Color.BLACK)
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dp(4), dp(10), dp(4), 0)
+        })
+        leadCard.addView(TextView(this).apply {
+            text = quickGlanceStoryMeta(lead)
+            setTextColor(Color.DKGRAY)
+            textSize = 12f
+            setPadding(dp(4), dp(5), dp(4), 0)
+        })
+        container.addView(leadCard, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(10) })
+
+        items.drop(1).forEach { item ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                background = quickGlanceCardBackground("#F1EEE8", 9)
+                elevation = 1.5f
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { showInternetExplorerDialog(item.url) }
             }
-            story.addView(TextView(this).apply {
+
+            val image = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = quickGlanceCardBackground("#B8B8B8", 7)
+                clipToOutline = true
+            }
+            card.addView(image, LinearLayout.LayoutParams(dp(108), dp(82)).apply {
+                marginEnd = dp(10)
+            })
+            loadQuickGlanceImage(image, item.imageUrl)
+
+            val textColumn = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            textColumn.addView(TextView(this).apply {
                 text = item.title
                 setTextColor(Color.BLACK)
-                textSize = 16f
+                textSize = 15f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
+                maxLines = 3
+                ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            story.addView(TextView(this).apply {
-                text = item.source
+            textColumn.addView(TextView(this).apply {
+                text = quickGlanceStoryMeta(item)
                 setTextColor(Color.DKGRAY)
-                textSize = 12f
-                setPadding(0, dp(3), 0, 0)
+                textSize = 11.5f
+                setPadding(0, dp(5), 0, 0)
             })
-            container.addView(story, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+            card.addView(textColumn, LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
             ))
 
-            if (index != items.lastIndex) {
-                container.addView(View(this).apply {
-                    setBackgroundColor(Color.parseColor("#808080"))
-                }, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(1)
-                ).apply {
-                    marginStart = dp(8)
-                    marginEnd = dp(8)
-                })
-            }
+            container.addView(card, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(9) })
         }
 
         container.addView(TextView(this).apply {
-            text = "Headlines load from Google News only when this page is opened or refreshed."
+            text = "News loads only when Quick Glance is opened or refreshed."
             setTextColor(Color.DKGRAY)
             textSize = 11f
             gravity = Gravity.CENTER
-            setPadding(dp(8), dp(8), dp(8), dp(9))
+            setPadding(dp(8), dp(3), dp(8), dp(7))
         })
+    }
+
+    private fun quickGlanceStoryMeta(item: Win98NewsItem): String {
+        val age = item.publishedAtMs?.let { published ->
+            val elapsed = (System.currentTimeMillis() - published).coerceAtLeast(0L)
+            when {
+                elapsed < 60_000L -> "now"
+                elapsed < 3_600_000L -> "${elapsed / 60_000L}m ago"
+                elapsed < 86_400_000L -> "${elapsed / 3_600_000L}h ago"
+                else -> "${elapsed / 86_400_000L}d ago"
+            }
+        }
+        return if (age != null) "${item.source}  ·  $age" else item.source
+    }
+
+    private fun loadQuickGlanceImage(view: ImageView, url: String?) {
+        if (url.isNullOrBlank()) {
+            view.setImageResource(R.drawable.icon)
+            view.scaleType = ImageView.ScaleType.CENTER_INSIDE
+            view.setPadding(dp(18), dp(18), dp(18), dp(18))
+            return
+        }
+
+        view.setPadding(0, 0, 0, 0)
+        view.scaleType = ImageView.ScaleType.CENTER_CROP
+        Glide.with(this)
+            .load(url)
+            .centerCrop()
+            .error(R.drawable.icon)
+            .into(view)
     }
 
     private fun createWin98SourceButton(label: String, url: String): TextView {
         return TextView(this).apply {
             text = label
             gravity = Gravity.CENTER
-            textSize = 16f
+            textSize = 14f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(Color.BLACK)
             background = AppCompatResources.getDrawable(
                 this@MainActivity,
@@ -11514,7 +11602,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(2), dp(7), dp(2), dp(6))
+            setPadding(dp(2), dp(8), dp(2), dp(6))
             background = AppCompatResources.getDrawable(
                 this@MainActivity,
                 R.drawable.window_button_background
@@ -11523,7 +11611,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             isFocusable = true
             contentDescription = label
             setOnClickListener { action() }
-            layoutParams = LinearLayout.LayoutParams(0, dp(86), 1f).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(88), 1f).apply {
                 marginStart = dp(2)
                 marginEnd = dp(2)
             }
@@ -11539,7 +11627,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 text = label
                 gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
-                textSize = 11f
+                textSize = 10.5f
                 maxLines = 2
             }, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -11549,17 +11637,35 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
+    private fun quickGlanceCardBackground(fill: String, radiusDp: Int): Drawable {
+        return GradientDrawable().apply {
+            setColor(Color.parseColor(fill))
+            setStroke(dp(1), Color.parseColor("#8B8B8B"))
+            cornerRadius = dp(radiusDp).toFloat()
+        }
+    }
+
+    private fun quickGlanceBlueCard(): Drawable {
+        return GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(Color.parseColor("#000080"), Color.parseColor("#1296D8"))
+        ).apply {
+            cornerRadius = dp(9).toFloat()
+        }
+    }
+
     private fun createWin98Panel(title: String): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = win98PanelBackground()
+            background = quickGlanceCardBackground("#CFCBC5", 9)
+            elevation = 2f
             addView(TextView(this@MainActivity).apply {
                 text = title
                 setTextColor(Color.WHITE)
-                textSize = 18f
+                textSize = 17f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setPadding(dp(8), dp(7), dp(8), dp(7))
-                background = win98BlueHeader()
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = quickGlanceBlueCard()
             }, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -11568,15 +11674,38 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun addInfoTile(row: LinearLayout, label: String, value: String, action: () -> Unit) {
-        row.addView(TextView(this).apply {
-            text = "$label\n\n$value"
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setTextColor(Color.BLACK)
-            textSize = 16f
-            background = win98PanelBackground()
+            setPadding(dp(6), dp(10), dp(6), dp(10))
+            background = quickGlanceCardBackground("#ECE9E2", 9)
+            elevation = 2f
+            isClickable = true
+            isFocusable = true
             setOnClickListener { action() }
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
-            marginEnd = dp(6)
+
+            addView(TextView(this@MainActivity).apply {
+                text = label
+                gravity = Gravity.CENTER
+                setTextColor(Color.DKGRAY)
+                textSize = 12f
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = value
+                gravity = Gravity.CENTER
+                setTextColor(Color.BLACK)
+                textSize = 17f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
+        row.addView(tile, LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            1f
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
         })
     }
 
@@ -12321,13 +12450,35 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
 
                 quickLaunchBadgeViews.forEach { (packageName, badgeView) ->
-                    val count = if (showNotificationDots) {
+                    val hasNotification = showNotificationDots &&
+                        NotificationListenerService.hasNotification(packageName)
+                    val count = if (hasNotification) {
                         NotificationListenerService.getNotificationCount(packageName)
                     } else {
                         0
                     }
-                    badgeView.visibility = if (count > 0) View.VISIBLE else View.GONE
-                    badgeView.text = if (count > 99) "99+" else count.toString()
+
+                    badgeView.visibility = if (hasNotification) View.VISIBLE else View.GONE
+                    val params = badgeView.layoutParams as? android.widget.FrameLayout.LayoutParams
+
+                    if (count > 0) {
+                        // Android's Notification.number is an app-supplied badge count.
+                        // Use it when present instead of inventing a count from notification rows.
+                        badgeView.text = if (count > 99) "99+" else count.toString()
+                        badgeView.setMinWidth(dp(18))
+                        badgeView.setPadding(dp(3), 0, dp(3), 0)
+                        params?.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                        params?.height = dp(18)
+                    } else {
+                        // Many apps do not expose a numeric unread count. In that case show
+                        // an honest dot instead of a fake 1, 2, 3 based on active notifications.
+                        badgeView.text = ""
+                        badgeView.setMinWidth(0)
+                        badgeView.setPadding(0, 0, 0, 0)
+                        params?.width = dp(12)
+                        params?.height = dp(12)
+                    }
+                    if (params != null) badgeView.layoutParams = params
                 }
             } catch (e: Exception) {
                 Log.e("MainActivity", "Error updating notification dots", e)

@@ -169,18 +169,27 @@ class NotificationListenerService : NotificationListenerService() {
             activeNotificationCounts.clear()
 
             val notifications = getActiveNotifications()
+                .filter { shouldShowNotification(it) }
 
-            for (notification in notifications) {
-                val shouldShow = shouldShowNotification(notification)
+            notifications
+                .groupBy { it.packageName }
+                .forEach { (packageName, packageNotifications) ->
+                    activeNotificationPackages.add(packageName)
 
-                if (shouldShow) {
-                    activeNotificationPackages.add(notification.packageName)
-                    activeNotificationCounts[notification.packageName] =
-                        (activeNotificationCounts[notification.packageName] ?: 0) + 1
+                    // Notification.number is the only standard app-provided badge number.
+                    // Do not use the number of StatusBarNotification rows as an unread count:
+                    // group summaries and per-conversation notifications make that become the
+                    // misleading 1, 2, 3 counter the launcher was showing.
+                    calculateAppProvidedBadgeCount(packageNotifications)?.let { count ->
+                        activeNotificationCounts[packageName] = count
+                    }
                 }
-            }
 
-            Log.d(TAG, "Refreshed active notifications: ${activeNotificationPackages.size} packages: $activeNotificationPackages")
+            Log.d(
+                TAG,
+                "Refreshed active notifications: ${activeNotificationPackages.size} packages; " +
+                    "numeric counts=$activeNotificationCounts"
+            )
             notifyMainActivity()
 
         } catch (e: Exception) {
@@ -188,6 +197,32 @@ class NotificationListenerService : NotificationListenerService() {
         }
     }
     
+    private fun calculateAppProvidedBadgeCount(
+        notifications: List<StatusBarNotification>
+    ): Int? {
+        // A group summary normally carries the package/conversation aggregate, so prefer it.
+        val summaryCount = notifications
+            .asSequence()
+            .filter {
+                it.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY != 0
+            }
+            .map { it.notification.number }
+            .filter { it > 0 }
+            .maxOrNull()
+        if (summaryCount != null) return summaryCount
+
+        // If there is no counted summary, use the largest explicit number supplied by an
+        // individual notification. Never sum notification rows; those are not unread items.
+        return notifications
+            .asSequence()
+            .filter {
+                it.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY == 0
+            }
+            .map { it.notification.number }
+            .filter { it > 0 }
+            .maxOrNull()
+    }
+
     private fun shouldShowNotification(sbn: StatusBarNotification): Boolean {
         val notification = sbn.notification
 
