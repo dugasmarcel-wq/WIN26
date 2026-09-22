@@ -12698,7 +12698,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val baseTaskbarMarginBottom = 30 // Base margin in dp
         val baseFloatingWindowsMarginBottom = 70 // Base margin in dp
         val baseDesktopIconsMarginBottom = 20 // Base margin in dp
-        val baseStartMenuMarginBottom = 70 // Base margin in dp
+        // 30dp navigation/gesture strip + 58dp taskbar = 88dp.
+        // Keep the Start menu anchored immediately above the taskbar instead of overlapping it.
+        val baseStartMenuMarginBottom = 88 // Base margin in dp
         val baseNotificationBubbleMarginBottom = 60 // Base margin in dp
 
         val newGestureBarHeight = baseGestureBarHeight + offset
