@@ -69,7 +69,9 @@ jobs:
           echo "WIN26_VERSION_NAME=0.4.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
 
       - name: Build release APK
-        run: ./gradlew --no-daemon assembleRelease
+        # Source already passed assembleDebug above. Skip release lint-vital here because
+        # its tool-only dependencies can intermittently fail to resolve on GitHub runners.
+        run: ./gradlew --no-daemon assembleRelease -x lintVitalAnalyzeRelease
 
       - name: Align and sign release APK with stable public test key
         run: |
