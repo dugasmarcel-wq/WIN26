@@ -9364,13 +9364,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         val (pathKey, uriKey) = getCurrentThemeWallpaperKeys()
 
-        // A Plus! theme's bundled wallpaper is the source of truth for the Classic desktop.
-        // Apply it up front so that switching the base theme to Classic (which recreates the
-        // activity and lands here) shows the theme's own wallpaper immediately, instead of the
-        // previously-saved Classic wallpaper until the theme is manually re-applied. A user
-        // picked custom image (uriKey) still takes precedence if one has been set.
+        // Plus! writes its own bundled wallpaper when the Plus! theme is actually selected.
+        // On normal startup/resume, however, an existing saved Classic wallpaper is the user's
+        // choice and must win. Only seed the Plus! wallpaper when Classic has no saved wallpaper
+        // path and no saved custom URI at all.
         val plus95 = themeManager.getActivePlus95()
-        if (plus95 != null && prefs.getString(uriKey, null) == null) {
+        if (
+            plus95 != null &&
+            prefs.getString(uriKey, null) == null &&
+            prefs.getString(pathKey, null) == null
+        ) {
             val plusWall = plus95WallpaperPath(plus95.slug)
             if (plusWall != null) {
                 prefs.edit { putString(pathKey, plusWall) }
