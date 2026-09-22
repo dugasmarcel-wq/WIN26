@@ -152,6 +152,12 @@
                                 android:textSize="13sp" />
                         </LinearLayout>
 
+                        <LinearLayout
+                            android:id="@+id/start_custom_rows_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical" />
+
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="2dp"

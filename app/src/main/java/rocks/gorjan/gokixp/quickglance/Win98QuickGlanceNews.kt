@@ -15,97 +15,212 @@ data class Win98NewsItem(
     val source: String,
     val url: String,
     val imageUrl: String? = null,
-    val publishedAtMs: Long? = null
+    val publishedAtMs: Long? = null,
+    val publishedLabel: String? = null
 )
 
 /**
  * User-triggered headline loader for the Windows 98 Quick Glance page.
  *
- * No background polling is performed. A request is made only when Quick Glance is opened
- * or when the user presses Refresh. Story images are resolved in that same foreground load.
+ * No background polling is performed. The visual Google News page is read only when
+ * Quick Glance is opened or the user presses Refresh. That page exposes the same
+ * Google-hosted story thumbnails seen in the normal Google News UI, which avoids the
+ * image-less RSS-only cards that were previously shown by WIN26.
  */
 object Win98QuickGlanceNews {
+    private const val HOME_URL =
+        "https://news.google.com/home?hl=en-US&gl=US&ceid=US:en"
     private const val FEED_URL =
         "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-    private const val MAX_HTML_CHARS = 350_000
-
-    private data class RawItem(
-        val title: String,
-        val source: String,
-        val url: String,
-        val description: String,
-        val imageUrl: String?,
-        val publishedAtMs: Long?
-    )
+    private const val MAX_HOME_HTML_CHARS = 4_000_000
 
     suspend fun fetchHeadlines(limit: Int = 7): Result<List<Win98NewsItem>> =
         withContext(Dispatchers.IO) {
-            try {
-                Result.success(loadHeadlines(limit))
-            } catch (e: Exception) {
-                Result.failure(e)
+            runCatching {
+                val visual = loadVisualHeadlines(limit)
+                if (visual.size >= minOf(4, limit)) {
+                    visual.take(limit)
+                } else {
+                    val fallback = loadRssHeadlines(limit)
+                    (visual + fallback)
+                        .distinctBy { it.title.lowercase(Locale.US) }
+                        .take(limit)
+                }
             }
         }
 
-    private fun loadHeadlines(limit: Int): List<Win98NewsItem> {
-        val connection = openConnection(FEED_URL, 8_000)
+    private fun loadVisualHeadlines(limit: Int): List<Win98NewsItem> {
+        val connection = openConnection(HOME_URL, 9_000, "text/html,application/xhtml+xml")
+        try {
+            if (connection.responseCode !in 200..299) return emptyList()
+            val html = connection.inputStream.bufferedReader().use { reader ->
+                val out = StringBuilder()
+                val buffer = CharArray(16_384)
+                while (out.length < MAX_HOME_HTML_CHARS) {
+                    val read = reader.read(buffer)
+                    if (read <= 0) break
+                    val remaining = MAX_HOME_HTML_CHARS - out.length
+                    out.append(buffer, 0, minOf(read, remaining))
+                }
+                out.toString()
+            }
+            return parseVisualCards(html, limit)
+        } catch (_: Exception) {
+            return emptyList()
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun parseVisualCards(html: String, limit: Int): List<Win98NewsItem> {
+        if (html.isBlank()) return emptyList()
+
+        val items = mutableListOf<Win98NewsItem>()
+        var cursor = 0
+        var previousArticleEnd = 0
+
+        while (items.size < limit && cursor < html.length) {
+            val articleStart = html.indexOf("<article", cursor, ignoreCase = true)
+            if (articleStart < 0) break
+            val articleEndTag = html.indexOf("</article>", articleStart, ignoreCase = true)
+            if (articleEndTag < 0) break
+            val articleEnd = articleEndTag + "</article>".length
+            val article = html.substring(articleStart, articleEnd)
+
+            val headingHtml = firstMatch(
+                article,
+                listOf(
+                    Regex("""(?is)<h3\b[^>]*>(.*?)</h3>"""),
+                    Regex("""(?is)<h4\b[^>]*>(.*?)</h4>""")
+                )
+            )
+            val title = headingHtml?.let(::cleanHtmlText).orEmpty()
+
+            if (title.length >= 12) {
+                val href = headingHtml?.let {
+                    Regex("""(?is)href\s*=\s*["']([^"']+)["']""")
+                        .find(it)?.groupValues?.getOrNull(1)
+                } ?: Regex("""(?is)href\s*=\s*["']([^"']+)["']""")
+                    .find(article)?.groupValues?.getOrNull(1)
+
+                val storyUrl = href?.let(::normalizeGoogleNewsUrl)
+
+                if (storyUrl != null) {
+                    val sourceHtml = Regex(
+                        """(?is)<a\b[^>]*data-n-tid[^>]*>(.*?)</a>"""
+                    ).find(article)?.groupValues?.getOrNull(1)
+                    val source = sourceHtml?.let(::cleanHtmlText)
+                        ?.takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) }
+                        ?: "Google News"
+
+                    val publishedLabel = Regex(
+                        """(?is)<time\b[^>]*>(.*?)</time>"""
+                    ).find(article)?.groupValues?.getOrNull(1)
+                        ?.let(::cleanHtmlText)
+                        ?.takeIf { it.isNotBlank() }
+
+                    // Google places the thumbnail in a sibling immediately before the
+                    // <article>, so include a bounded chunk of preceding card markup.
+                    val imageContextStart = maxOf(previousArticleEnd, articleStart - 3500)
+                    val imageContext = html.substring(imageContextStart, articleEnd)
+                    val imageUrl = Regex(
+                        """(?is)<img\b[^>]*(?:src|data-src)\s*=\s*["']([^"']+)["'][^>]*>"""
+                    ).findAll(imageContext)
+                        .mapNotNull { it.groupValues.getOrNull(1) }
+                        .map(::decodeHtml)
+                        .filter { it.startsWith("https://") || it.startsWith("http://") }
+                        .lastOrNull()
+
+                    items += Win98NewsItem(
+                        title = title,
+                        source = source,
+                        url = storyUrl,
+                        imageUrl = imageUrl,
+                        publishedLabel = publishedLabel
+                    )
+                }
+            }
+
+            previousArticleEnd = articleEnd
+            cursor = articleEnd
+        }
+
+        return items.distinctBy { it.title.lowercase(Locale.US) }
+    }
+
+    private fun firstMatch(text: String, patterns: List<Regex>): String? {
+        for (pattern in patterns) {
+            val value = pattern.find(text)?.groupValues?.getOrNull(1)
+            if (!value.isNullOrBlank()) return value
+        }
+        return null
+    }
+
+    private fun cleanHtmlText(value: String): String {
+        return Html.fromHtml(value, Html.FROM_HTML_MODE_LEGACY)
+            .toString()
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun decodeHtml(value: String): String {
+        return Html.fromHtml(value, Html.FROM_HTML_MODE_LEGACY)
+            .toString()
+            .replace("&amp;", "&")
+            .trim()
+    }
+
+    private fun normalizeGoogleNewsUrl(raw: String): String? {
+        val href = decodeHtml(raw)
+        return when {
+            href.startsWith("https://") || href.startsWith("http://") -> href
+            href.startsWith("./") -> "https://news.google.com/" + href.removePrefix("./")
+            href.startsWith("/") -> "https://news.google.com$href"
+            else -> null
+        }
+    }
+
+    private fun loadRssHeadlines(limit: Int): List<Win98NewsItem> {
+        val connection = openConnection(
+            FEED_URL,
+            8_000,
+            "application/rss+xml,application/xml,text/xml"
+        )
         try {
             val code = connection.responseCode
             if (code !in 200..299) {
                 throw IllegalStateException("Headline request failed with HTTP $code")
             }
 
-            val rawItems = connection.inputStream.use { input ->
+            return connection.inputStream.use { input ->
                 val parser = Xml.newPullParser().apply {
                     setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
                     setInput(input, "UTF-8")
                 }
 
-                val items = mutableListOf<RawItem>()
+                val items = mutableListOf<Win98NewsItem>()
                 var inItem = false
                 var title = ""
                 var link = ""
                 var source = ""
-                var description = ""
-                var imageUrl: String? = null
                 var publishedAtMs: Long? = null
 
                 var event = parser.eventType
                 while (event != XmlPullParser.END_DOCUMENT && items.size < limit) {
                     when (event) {
-                        XmlPullParser.START_TAG -> {
-                            val tag = parser.name.lowercase(Locale.US)
-                            when {
-                                tag == "item" -> {
-                                    inItem = true
-                                    title = ""
-                                    link = ""
-                                    source = ""
-                                    description = ""
-                                    imageUrl = null
-                                    publishedAtMs = null
-                                }
-                                inItem && tag == "title" -> title = parser.nextText().trim()
-                                inItem && tag == "link" -> link = parser.nextText().trim()
-                                inItem && tag == "source" -> source = parser.nextText().trim()
-                                inItem && tag == "description" -> description = parser.nextText()
-                                inItem && tag == "pubdate" -> {
-                                    publishedAtMs = parseRssDate(parser.nextText())
-                                }
-                                inItem && (
-                                    tag.endsWith("thumbnail") ||
-                                        tag.endsWith("content") ||
-                                        tag == "enclosure"
-                                    ) -> {
-                                    val candidate = parser.getAttributeValue(null, "url")
-                                    val type = parser.getAttributeValue(null, "type").orEmpty()
-                                    if (
-                                        !candidate.isNullOrBlank() &&
-                                        (type.isBlank() || type.startsWith("image/"))
-                                    ) {
-                                        imageUrl = candidate
-                                    }
-                                }
+                        XmlPullParser.START_TAG -> when (parser.name.lowercase(Locale.US)) {
+                            "item" -> {
+                                inItem = true
+                                title = ""
+                                link = ""
+                                source = ""
+                                publishedAtMs = null
+                            }
+                            "title" -> if (inItem) title = parser.nextText().trim()
+                            "link" -> if (inItem) link = parser.nextText().trim()
+                            "source" -> if (inItem) source = parser.nextText().trim()
+                            "pubdate" -> if (inItem) {
+                                publishedAtMs = parseRssDate(parser.nextText())
                             }
                         }
 
@@ -124,12 +239,10 @@ object Win98QuickGlanceNews {
                                 } else {
                                     title
                                 }
-                                items += RawItem(
+                                items += Win98NewsItem(
                                     title = cleanTitle,
                                     source = resolvedSource.ifBlank { "Google News" },
                                     url = link,
-                                    description = description,
-                                    imageUrl = imageUrl ?: findImageInHtml(description),
                                     publishedAtMs = publishedAtMs
                                 )
                             }
@@ -139,20 +252,6 @@ object Win98QuickGlanceNews {
                     event = parser.next()
                 }
                 items
-            }
-
-            if (rawItems.isEmpty()) {
-                throw IllegalStateException("Headline feed contained no stories")
-            }
-
-            return rawItems.map { item ->
-                Win98NewsItem(
-                    title = item.title,
-                    source = item.source,
-                    url = item.url,
-                    imageUrl = item.imageUrl ?: resolveOpenGraphImage(item.url),
-                    publishedAtMs = item.publishedAtMs
-                )
             }
         } finally {
             connection.disconnect()
@@ -174,63 +273,11 @@ object Win98QuickGlanceNews {
         return null
     }
 
-    private fun resolveOpenGraphImage(articleUrl: String): String? {
-        return try {
-            val connection = openConnection(articleUrl, 5_000)
-            try {
-                if (connection.responseCode !in 200..299) return null
-                val html = connection.inputStream.bufferedReader().use { reader ->
-                    val out = StringBuilder()
-                    val buffer = CharArray(8_192)
-                    while (out.length < MAX_HTML_CHARS) {
-                        val read = reader.read(buffer)
-                        if (read <= 0) break
-                        val remaining = MAX_HTML_CHARS - out.length
-                        out.append(buffer, 0, minOf(read, remaining))
-                    }
-                    out.toString()
-                }
-                findImageInHtml(html)
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun findImageInHtml(html: String): String? {
-        if (html.isBlank()) return null
-
-        val patterns = listOf(
-            Regex(
-                """<meta[^>]+(?:property|name)\s*=\s*["'](?:og:image|twitter:image(?::src)?)["'][^>]+content\s*=\s*["']([^"']+)["'][^>]*>""",
-                RegexOption.IGNORE_CASE
-            ),
-            Regex(
-                """<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]+(?:property|name)\s*=\s*["'](?:og:image|twitter:image(?::src)?)["'][^>]*>""",
-                RegexOption.IGNORE_CASE
-            ),
-            Regex(
-                """<img[^>]+src\s*=\s*["'](https?://[^"']+)["'][^>]*>""",
-                RegexOption.IGNORE_CASE
-            )
-        )
-
-        for (pattern in patterns) {
-            val raw = pattern.find(html)?.groupValues?.getOrNull(1) ?: continue
-            val decoded = Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY)
-                .toString()
-                .replace("&amp;", "&")
-                .trim()
-            if (decoded.startsWith("https://") || decoded.startsWith("http://")) {
-                return decoded
-            }
-        }
-        return null
-    }
-
-    private fun openConnection(url: String, timeoutMs: Int): HttpURLConnection {
+    private fun openConnection(
+        url: String,
+        timeoutMs: Int,
+        accept: String
+    ): HttpURLConnection {
         return (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = timeoutMs
             readTimeout = timeoutMs
@@ -241,10 +288,7 @@ object Win98QuickGlanceNews {
                 "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
                     "(KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"
             )
-            setRequestProperty(
-                "Accept",
-                "application/rss+xml, application/xml, text/xml, text/html,application/xhtml+xml"
-            )
+            setRequestProperty("Accept", accept)
         }
     }
 }

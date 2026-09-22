@@ -164,7 +164,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var notificationTapCallback: (() -> Unit)? = null
     private val quickLaunchBadgeViews = mutableMapOf<String, TextView>()
     private var win98QuickPage: View? = null
+    private var win98SecondPage: View? = null
     private var win98NewsLoading = false
+    private var win98QuickHeaderTime: TextView? = null
+    private var win98QuickCalendarValue: TextView? = null
+    private var win98QuickBatteryValue: TextView? = null
+    private var win98QuickStoryContainer: LinearLayout? = null
+    private var win98QuickRefreshButton: TextView? = null
+    private var win98SecondPageSlots: LinearLayout? = null
     var isStartMenuVisible = false
 
     // Back gesture tracking
@@ -581,6 +588,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_WINDOW_STATES = "window_states"
         private const val KEY_TAP_TO_HIDE_ICONS = "tap_to_hide_icons"
         private const val KEY_QUICK_LAUNCH_PREFIX = "quick_launch_slot_"
+        private const val KEY_START_ROW_PREFIX = "classic_start_row_"
+        private const val KEY_SECOND_PAGE_SLOT_PREFIX = "classic_second_page_slot_"
+        private const val START_ROW_PHONE_ACTION = "__device_phone__"
+        private const val CONFIGURED_SLOT_EMPTY = "__empty__"
+        private const val CONFIGURED_SLOT_HIDDEN = "__hidden__"
         private const val QUICK_LAUNCH_FIREFOX = "org.mozilla.firefox"
         private const val QUICK_LAUNCH_YTMUSIC = "com.google.android.apps.youtube.music"
         private const val QUICK_LAUNCH_WHATSAPP = "com.whatsapp"
@@ -1323,6 +1335,214 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun classicStartRowDefaults(): List<String> = listOf(
+        START_ROW_PHONE_ACTION,
+        QUICK_LAUNCH_FIREFOX,
+        QUICK_LAUNCH_SIGNAL
+    )
+
+    private fun secondPageDefaults(): List<String> = listOf(
+        QUICK_LAUNCH_FIREFOX,
+        QUICK_LAUNCH_YTMUSIC,
+        QUICK_LAUNCH_WHATSAPP,
+        QUICK_LAUNCH_SIGNAL,
+        START_ROW_PHONE_ACTION,
+        "system.notepad",
+        "system.clock",
+        "system.internet_explorer"
+    )
+
+    private fun getClassicStartRow(index: Int): String {
+        val defaults = classicStartRowDefaults()
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getString("${KEY_START_ROW_PREFIX}$index", defaults[index])
+            ?: defaults[index]
+    }
+
+    private fun getSecondPageSlot(index: Int): String {
+        val defaults = secondPageDefaults()
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getString("${KEY_SECOND_PAGE_SLOT_PREFIX}$index", defaults[index])
+            ?: defaults[index]
+    }
+
+    private fun configuredAppLabel(packageName: String): String {
+        if (packageName == START_ROW_PHONE_ACTION) return "Phone"
+        if (packageName == CONFIGURED_SLOT_EMPTY) return "Add app"
+
+        if (packageName.startsWith("system.")) {
+            return getSystemAppsList().find { it.packageName == packageName }?.name
+                ?: packageName.removePrefix("system.").replace('_', ' ')
+        }
+
+        return try {
+            val info = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (_: Exception) {
+            packageName.substringAfterLast('.')
+        }
+    }
+
+    private fun configuredAppIcon(packageName: String): Drawable? {
+        if (packageName == START_ROW_PHONE_ACTION) {
+            return AppCompatResources.getDrawable(this, R.drawable.dialer_icon)
+        }
+        if (packageName == CONFIGURED_SLOT_EMPTY) return null
+        return loadAppIcon(packageName)
+    }
+
+    private fun launchConfiguredApp(packageName: String, fallbackName: String) {
+        if (packageName == START_ROW_PHONE_ACTION) {
+            try {
+                startActivity(Intent(Intent.ACTION_DIAL).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                })
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Unable to open device Phone app", e)
+                showNotification("Phone", "Unable to open the phone app")
+            }
+            return
+        }
+        launchQuickLaunchPackage(packageName, fallbackName)
+    }
+
+    private fun populateClassicStartRows() {
+        val container = findViewById<LinearLayout>(R.id.start_custom_rows_container) ?: return
+        container.removeAllViews()
+
+        classicStartRowDefaults().indices.forEach { index ->
+            val packageName = getClassicStartRow(index)
+            if (packageName == CONFIGURED_SLOT_HIDDEN) return@forEach
+
+            val label = configuredAppLabel(packageName)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(4), dp(4), dp(12), dp(4))
+                background = AppCompatResources.getDrawable(
+                    this@MainActivity,
+                    R.drawable.start_menu_item_background
+                )
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    hideStartMenu()
+                    launchConfiguredApp(packageName, label)
+                }
+                setOnLongClickListener {
+                    showStartRowPicker(index)
+                    true
+                }
+            }
+
+            row.addView(ImageView(this).apply {
+                val icon = configuredAppIcon(packageName)
+                if (icon != null) setImageDrawable(icon) else setImageResource(R.drawable.icon)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setPadding(dp(3), dp(3), dp(3), dp(3))
+            }, LinearLayout.LayoutParams(dp(35), dp(35)).apply {
+                marginEnd = dp(2)
+            })
+
+            row.addView(TextView(this).apply {
+                text = label
+                setTextColor(Color.BLACK)
+                textSize = 13f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            ))
+
+            container.addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+    }
+
+    private fun showStartRowsEditor() {
+        val labels = classicStartRowDefaults().indices.map { index ->
+            val value = getClassicStartRow(index)
+            val current = if (value == CONFIGURED_SLOT_HIDDEN) {
+                "Hidden"
+            } else {
+                configuredAppLabel(value)
+            }
+            "Row ${index + 1}: $current"
+        }.toTypedArray()
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Customize Start Rows")
+            .setItems(labels) { _, which -> showStartRowPicker(which) }
+            .setNeutralButton("Reset") { _, _ ->
+                val editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                classicStartRowDefaults().indices.forEach { index ->
+                    editor.remove("${KEY_START_ROW_PREFIX}$index")
+                }
+                editor.apply()
+                populateClassicStartRows()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showStartRowPicker(index: Int) {
+        Thread {
+            val apps = loadAppsInBackground()
+            runOnUiThread {
+                val labels = mutableListOf("Hide this row", "Phone")
+                labels.addAll(apps.map { it.name })
+
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Set Start row ${index + 1}")
+                    .setItems(labels.toTypedArray()) { _, which ->
+                        val value = when (which) {
+                            0 -> CONFIGURED_SLOT_HIDDEN
+                            1 -> START_ROW_PHONE_ACTION
+                            else -> apps[which - 2].packageName
+                        }
+                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putString("${KEY_START_ROW_PREFIX}$index", value)
+                            .apply()
+                        populateClassicStartRows()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun showSecondPageSlotPicker(index: Int) {
+        Thread {
+            val apps = loadAppsInBackground()
+            runOnUiThread {
+                val labels = mutableListOf("Empty slot", "Phone")
+                labels.addAll(apps.map { it.name })
+
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Set Page 2 slot ${index + 1}")
+                    .setItems(labels.toTypedArray()) { _, which ->
+                        val value = when (which) {
+                            0 -> CONFIGURED_SLOT_EMPTY
+                            1 -> START_ROW_PHONE_ACTION
+                            else -> apps[which - 2].packageName
+                        }
+                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putString("${KEY_SECOND_PAGE_SLOT_PREFIX}$index", value)
+                            .apply()
+                        populateWin98SecondPageSlots()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }.start()
     }
 
     private fun openMyComputerFromStartMenu() {
@@ -2088,6 +2308,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 Win26Updater(this).checkForUpdates()
             }
 
+            if (selectedTheme is AppTheme.WindowsClassic) {
+                populateClassicStartRows()
+            }
+
             // Setup XP/Vista-specific All Programs toggle
             if (selectedTheme !is AppTheme.WindowsClassic) {
                 val allProgramsWrapper = findViewById<LinearLayout>(R.id.all_programs)
@@ -2308,6 +2532,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 name = "Phone Settings",
                 iconResourceId = R.drawable.settings_98,
                 action = { openPhoneSettings() }
+            )))
+            items.add(CommandListItem.Command(CommandItem(
+                name = "Customize Start Rows",
+                iconResourceId = R.drawable.winsung_settings,
+                action = { showStartRowsEditor() }
             )))
             items.add(CommandListItem.Divider)
         }
@@ -3191,18 +3420,22 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
 
         if (isKeyboardOpen) {
-            // Calculate available space above keyboard
+            // Calculate the visible area above the keyboard. Classic deliberately leaves
+            // breathing room below the Android status strip so the app list has a visible
+            // top edge instead of looking like an endless column running off-screen.
             val rootView = findViewById<View>(android.R.id.content)
             val rect = android.graphics.Rect()
             rootView.getWindowVisibleDisplayFrame(rect)
+            val topGap = if (themeManager.isClassicTheme()) {
+                rect.top + dp(14)
+            } else {
+                rect.top
+            }
+            val availableHeight = (rect.bottom - topGap).coerceAtLeast(dp(240))
 
-            // Calculate available height above keyboard (rect.bottom is where keyboard starts)
-            val availableHeight = rect.bottom
-
-            // Adjust container to fill available space
             layoutParams.removeRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
             layoutParams.height = availableHeight
-            layoutParams.topMargin = 0
+            layoutParams.topMargin = topGap
             layoutParams.bottomMargin = 0
 
         } else {
@@ -3708,6 +3941,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         Log.d("MainActivity", "Back pressed (modern): closing Quick Glance")
                         hideWin98QuickPage()
                     }
+                    win98SecondPage?.visibility == View.VISIBLE -> {
+                        Log.d("MainActivity", "Back pressed (modern): closing Page 2")
+                        hideWin98SecondPage()
+                    }
                     isStartMenuVisible -> {
                         // If start menu is open, close it
                         Log.d("MainActivity", "Back pressed (modern): closing start menu")
@@ -3861,9 +4098,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         Log.d("MainActivity", "Swipe right detected: opening WINSUNG 98 Quick Glance")
                         showWin98QuickPage()
                         return true
-                    } else if (isSwipeLeft && isMinimumDistanceX && isMinimumVelocityX) {
-                        Log.d("MainActivity", "Swipe left has no desktop action in the Win98 daily shell")
-                        return false
+                    } else if (
+                        isSwipeLeft &&
+                        isMinimumDistanceX &&
+                        isMinimumVelocityX &&
+                        themeManager.isClassicTheme()
+                    ) {
+                        Log.d("MainActivity", "Swipe left detected: opening WINSUNG 98 Page 2")
+                        showWin98SecondPage()
+                        return true
                     }
                 }
                 return false
@@ -11142,64 +11385,83 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun showWin98QuickPage() {
         if (!themeManager.isClassicTheme()) return
-
         hideStartMenu()
-
-        // Rebuild on each open so the date, battery and user-triggered news are current.
-        win98QuickPage?.let { existing ->
-            (existing.parent as? ViewGroup)?.removeView(existing)
+        if (win98SecondPage?.visibility == View.VISIBLE) {
+            hideWin98SecondPage(immediate = true)
         }
-        win98QuickPage = null
-        win98NewsLoading = false
 
+        val page = win98QuickPage ?: buildWin98QuickPage()
+        win98QuickHeaderTime?.text = SimpleDateFormat(
+            "EEE, MMM d  ·  h:mm a",
+            Locale.getDefault()
+        ).format(Date())
+        win98QuickCalendarValue?.text =
+            SimpleDateFormat("MMM d", Locale.getDefault()).format(Date())
+        win98QuickBatteryValue?.text = "${getBatteryPercent()}%"
+
+        animateWin98PageIn(page, fromLeft = true) {
+            val stories = win98QuickStoryContainer
+            val refresh = win98QuickRefreshButton
+            if (stories != null && refresh != null) {
+                refreshWin98News(stories, refresh)
+            }
+        }
+    }
+
+    private fun buildWin98QuickPage(): View {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
         val scroll = android.widget.ScrollView(this).apply {
             id = View.generateViewId()
             setBackgroundColor(Color.parseColor("#D6D2CB"))
             isFillViewport = true
-            elevation = 18f
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            visibility = View.GONE
+            elevation = 12f
             layoutParams = RelativeLayout.LayoutParams(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
                 RelativeLayout.LayoutParams.MATCH_PARENT
             ).apply {
-                setMargins(0, 0, 0, dp(70))
+                // Keep the page below the launcher's gray status strip and above the taskbar.
+                setMargins(0, dp(36), 0, dp(70))
             }
         }
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(22))
+            setPadding(dp(12), dp(10), dp(12), dp(16))
         }
         scroll.addView(content)
 
-        val glanceHeader = LinearLayout(this).apply {
+        val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(14), dp(18), dp(16))
+            setPadding(dp(14), dp(10), dp(14), dp(11))
             background = quickGlanceBlueCard()
-            elevation = 4f
+            elevation = 3f
         }
-        glanceHeader.addView(TextView(this).apply {
-            text = "WINSUNG 98  ·  QUICK GLANCE"
+        header.addView(TextView(this).apply {
+            text = "QUICK GLANCE"
             setTextColor(Color.WHITE)
-            textSize = 11f
+            textSize = 10f
             letterSpacing = 0.08f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         })
-        glanceHeader.addView(TextView(this).apply {
+        win98QuickHeaderTime = TextView(this).apply {
             text = SimpleDateFormat(
-                "EEEE, MMMM d  h:mm a",
+                "EEE, MMM d  ·  h:mm a",
                 Locale.getDefault()
             ).format(Date())
             setTextColor(Color.WHITE)
-            textSize = 26f
+            textSize = 23f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(3), 0, 0)
-        })
-        content.addView(glanceHeader, LinearLayout.LayoutParams(
+            setPadding(0, dp(2), 0, 0)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        header.addView(win98QuickHeaderTime)
+        content.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(14) })
+        ).apply { bottomMargin = dp(10) })
 
         val infoRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -11207,32 +11469,36 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
         content.addView(infoRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(92)
-        ).apply { bottomMargin = dp(14) })
+            dp(76)
+        ).apply { bottomMargin = dp(10) })
 
-        addInfoTile(infoRow, "Weather", "Open app") { openWeatherApp() }
-        addInfoTile(
+        addCompactGlanceTile(infoRow, "Weather", "Open") { openWeatherApp() }
+        win98QuickCalendarValue = addCompactGlanceTile(
             infoRow,
             "Calendar",
             SimpleDateFormat("MMM d", Locale.getDefault()).format(Date())
         ) { openCalendarApp() }
-        addInfoTile(infoRow, "Battery", "${getBatteryPercent()}%") {}
+        win98QuickBatteryValue = addCompactGlanceTile(
+            infoRow,
+            "Battery",
+            "${getBatteryPercent()}%"
+        ) {}
 
         val storiesPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = quickGlanceCardBackground("#CFCBC5", 10)
-            elevation = 3f
+            background = quickGlanceCardBackground("#CFCBC5", 8)
+            elevation = 2f
         }
         content.addView(storiesPanel, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(14) })
+        ).apply { bottomMargin = dp(10) })
 
         val storiesHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = quickGlanceBlueCard()
-            setPadding(dp(12), dp(7), dp(8), dp(7))
+            setPadding(dp(11), dp(6), dp(7), dp(6))
         }
         storiesPanel.addView(storiesHeader, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -11242,79 +11508,53 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         storiesHeader.addView(TextView(this).apply {
             text = "Top stories"
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 17f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
         val storyContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(4))
+            setPadding(dp(8), dp(8), dp(8), dp(2))
         }
+        win98QuickStoryContainer = storyContainer
 
-        lateinit var refreshButton: TextView
-        refreshButton = TextView(this).apply {
+        val refreshButton = TextView(this).apply {
             text = "Refresh"
             gravity = Gravity.CENTER
-            textSize = 14f
+            textSize = 13f
             setTextColor(Color.BLACK)
-            setPadding(dp(13), dp(6), dp(13), dp(6))
+            setPadding(dp(10), dp(5), dp(10), dp(5))
             background = AppCompatResources.getDrawable(
                 this@MainActivity,
                 R.drawable.window_button_background
             )
             setOnClickListener {
-                refreshWin98News(storyContainer, refreshButton)
+                refreshWin98News(storyContainer, this)
             }
         }
+        win98QuickRefreshButton = refreshButton
         storiesHeader.addView(refreshButton, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
         storiesPanel.addView(storyContainer)
 
-        val sourcesPanel = createWin98Panel("News sources")
-        content.addView(sourcesPanel, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(14) })
-
-        val sourceRows = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-        }
-        sourcesPanel.addView(sourceRows)
-        sourceRows.addView(
-            createWin98SourceButton("Google News", "https://news.google.com"),
-            LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginEnd = dp(5) }
-        )
-        sourceRows.addView(
-            createWin98SourceButton("Reuters", "https://www.reuters.com"),
-            LinearLayout.LayoutParams(0, dp(54), 1f).apply {
-                marginStart = dp(2)
-                marginEnd = dp(2)
-            }
-        )
-        sourceRows.addView(
-            createWin98SourceButton("AP", "https://apnews.com"),
-            LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginStart = dp(5) }
-        )
-
         val quickPanel = createWin98Panel("Quick launch")
         content.addView(quickPanel, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
+        ).apply { bottomMargin = dp(8) })
 
         val quickRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 5f
-            setPadding(dp(8), dp(10), dp(8), dp(10))
+            setPadding(dp(6), dp(7), dp(6), dp(7))
         }
         quickPanel.addView(quickRow)
 
         quickRow.addView(
             createQuickGlanceLaunchButton("Phone", R.drawable.dialer_icon) {
-                launchSystemApp("system.dialer")
+                launchConfiguredApp(START_ROW_PHONE_ACTION, "Phone")
             }
         )
         quickRow.addView(
@@ -11338,8 +11578,19 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
         )
 
-        // Quick Glance is the page to the left of the desktop: swipe right to reveal it,
-        // then swipe left on the page to return to the desktop.
+        val sources = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(1), 0, 0)
+        }
+        sources.addView(createTinyNewsSource("Google News", "https://news.google.com"))
+        sources.addView(createTinyNewsSource("Reuters", "https://www.reuters.com"))
+        sources.addView(createTinyNewsSource("AP", "https://apnews.com"))
+        content.addView(sources, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
         val pageGesture = GestureDetectorCompat(
             this,
             object : GestureDetector.SimpleOnGestureListener() {
@@ -11355,9 +11606,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     val deltaX = e2.x - e1.x
                     val deltaY = e2.y - e1.y
                     if (
-                        deltaX < -dp(80) &&
+                        deltaX < -dp(70) &&
                         abs(deltaX) > abs(deltaY) &&
-                        abs(velocityX) > 300
+                        abs(velocityX) > 250
                     ) {
                         hideWin98QuickPage()
                         return true
@@ -11373,26 +11624,321 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         mainBackground.addView(scroll)
         win98QuickPage = scroll
-
-        scroll.post {
-            scroll.translationX = -scroll.width.toFloat()
-            scroll.animate().translationX(0f).setDuration(190L).start()
-        }
-
-        refreshWin98News(storyContainer, refreshButton)
+        return scroll
     }
 
-    private fun hideWin98QuickPage() {
+    private fun showWin98SecondPage() {
+        if (!themeManager.isClassicTheme()) return
+        hideStartMenu()
+        if (win98QuickPage?.visibility == View.VISIBLE) {
+            hideWin98QuickPage(immediate = true)
+        }
+
+        val page = win98SecondPage ?: buildWin98SecondPage()
+        populateWin98SecondPageSlots()
+        desktopContainer.visibility = View.INVISIBLE
+        animateWin98PageIn(page, fromLeft = false)
+    }
+
+    private fun buildWin98SecondPage(): View {
+        val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(14), dp(18), dp(18))
+            setBackgroundColor(Color.TRANSPARENT)
+            visibility = View.GONE
+            elevation = 11f
+            layoutParams = RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.MATCH_PARENT,
+                RelativeLayout.LayoutParams.MATCH_PARENT
+            ).apply {
+                setMargins(0, dp(36), 0, dp(70))
+            }
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(9), dp(14), dp(10))
+            background = quickGlanceBlueCard()
+            elevation = 3f
+        }
+        header.addView(TextView(this).apply {
+            text = "WINSUNG 98"
+            setTextColor(Color.WHITE)
+            textSize = 10f
+            letterSpacing = 0.08f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        })
+        header.addView(TextView(this).apply {
+            text = "My Page"
+            setTextColor(Color.WHITE)
+            textSize = 24f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        })
+        page.addView(header, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
+
+        val slots = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = quickGlanceCardBackground("#D6D2CB", 9)
+            elevation = 2f
+        }
+        win98SecondPageSlots = slots
+        page.addView(slots, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        val pageGesture = GestureDetectorCompat(
+            this,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent): Boolean = true
+
+                override fun onFling(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float
+                ): Boolean {
+                    if (e1 == null) return false
+                    val deltaX = e2.x - e1.x
+                    val deltaY = e2.y - e1.y
+                    if (
+                        deltaX > dp(70) &&
+                        abs(deltaX) > abs(deltaY) &&
+                        abs(velocityX) > 250
+                    ) {
+                        hideWin98SecondPage()
+                        return true
+                    }
+                    return false
+                }
+            }
+        )
+        page.setOnTouchListener { _, event ->
+            pageGesture.onTouchEvent(event)
+            true
+        }
+
+        mainBackground.addView(page)
+        win98SecondPage = page
+        populateWin98SecondPageSlots()
+        return page
+    }
+
+    private fun populateWin98SecondPageSlots() {
+        val container = win98SecondPageSlots ?: return
+        container.removeAllViews()
+
+        for (rowIndex in 0 until 2) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                weightSum = 4f
+            }
+            container.addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(112)
+            ).apply {
+                if (rowIndex == 0) bottomMargin = dp(7)
+            })
+
+            for (column in 0 until 4) {
+                val index = rowIndex * 4 + column
+                val packageName = getSecondPageSlot(index)
+                val label = configuredAppLabel(packageName)
+
+                val tile = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    setPadding(dp(4), dp(8), dp(4), dp(6))
+                    background = AppCompatResources.getDrawable(
+                        this@MainActivity,
+                        R.drawable.window_button_background
+                    )
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        if (packageName == CONFIGURED_SLOT_EMPTY) {
+                            showSecondPageSlotPicker(index)
+                        } else {
+                            launchConfiguredApp(packageName, label)
+                        }
+                    }
+                    setOnLongClickListener {
+                        showSecondPageSlotPicker(index)
+                        true
+                    }
+                }
+
+                val iconView = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    val icon = configuredAppIcon(packageName)
+                    if (icon != null) {
+                        setImageDrawable(icon)
+                    } else {
+                        setImageResource(R.drawable.programs_98)
+                        alpha = 0.45f
+                    }
+                }
+                tile.addView(iconView, LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                })
+                tile.addView(TextView(this).apply {
+                    text = label
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.BLACK)
+                    textSize = 11f
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(0, dp(6), 0, 0)
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                ))
+
+                row.addView(tile, LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    1f
+                ).apply {
+                    marginStart = dp(3)
+                    marginEnd = dp(3)
+                })
+            }
+        }
+    }
+
+    private fun animateWin98PageIn(
+        page: View,
+        fromLeft: Boolean,
+        onFinished: (() -> Unit)? = null
+    ) {
+        page.animate().cancel()
+        val width = if (page.width > 0) {
+            page.width.toFloat()
+        } else {
+            resources.displayMetrics.widthPixels.toFloat()
+        }
+        page.translationX = if (fromLeft) -width else width
+        page.alpha = 0.96f
+        page.visibility = View.VISIBLE
+        page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        page.animate()
+            .translationX(0f)
+            .alpha(1f)
+            .setDuration(245L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.18f, 0f, 0f, 1f))
+            .withEndAction {
+                page.setLayerType(View.LAYER_TYPE_NONE, null)
+                onFinished?.invoke()
+            }
+            .start()
+    }
+
+    private fun hideWin98QuickPage(immediate: Boolean = false) {
         val page = win98QuickPage ?: return
         if (page.visibility != View.VISIBLE) return
+        if (immediate) {
+            page.animate().cancel()
+            page.visibility = View.GONE
+            page.translationX = 0f
+            return
+        }
+        animateWin98PageOut(page, toLeft = true)
+    }
+
+    private fun hideWin98SecondPage(immediate: Boolean = false) {
+        val page = win98SecondPage ?: return
+        if (page.visibility != View.VISIBLE) {
+            desktopContainer.visibility = View.VISIBLE
+            return
+        }
+        if (immediate) {
+            page.animate().cancel()
+            page.visibility = View.GONE
+            page.translationX = 0f
+            desktopContainer.visibility = View.VISIBLE
+            return
+        }
+        animateWin98PageOut(page, toLeft = false) {
+            desktopContainer.visibility = View.VISIBLE
+        }
+    }
+
+    private fun animateWin98PageOut(
+        page: View,
+        toLeft: Boolean,
+        onFinished: (() -> Unit)? = null
+    ) {
+        page.animate().cancel()
+        val width = if (page.width > 0) {
+            page.width.toFloat()
+        } else {
+            resources.displayMetrics.widthPixels.toFloat()
+        }
+        page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         page.animate()
-            .translationX(-page.width.toFloat())
-            .setDuration(190L)
+            .translationX(if (toLeft) -width else width)
+            .alpha(0.97f)
+            .setDuration(220L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 0f, 0f, 1f))
             .withEndAction {
                 page.visibility = View.GONE
                 page.translationX = 0f
+                page.alpha = 1f
+                page.setLayerType(View.LAYER_TYPE_NONE, null)
+                onFinished?.invoke()
             }
             .start()
+    }
+
+    private fun addCompactGlanceTile(
+        row: LinearLayout,
+        label: String,
+        value: String,
+        action: () -> Unit
+    ): TextView {
+        lateinit var valueView: TextView
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(7), dp(4), dp(7))
+            background = quickGlanceCardBackground("#ECE9E2", 8)
+            elevation = 1.5f
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
+
+            addView(TextView(this@MainActivity).apply {
+                text = label
+                gravity = Gravity.CENTER
+                setTextColor(Color.DKGRAY)
+                textSize = 11f
+            })
+            valueView = TextView(this@MainActivity).apply {
+                text = value
+                gravity = Gravity.CENTER
+                setTextColor(Color.BLACK)
+                textSize = 16f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                maxLines = 1
+                setPadding(0, dp(5), 0, 0)
+            }
+            addView(valueView)
+        }
+        row.addView(tile, LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            1f
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
+        return valueView
     }
 
     private fun refreshWin98News(container: LinearLayout, refreshButton: TextView) {
@@ -11403,11 +11949,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         container.removeAllViews()
         container.addView(TextView(this).apply {
-            text = "Loading headlines and photos..."
+            text = "Loading stories..."
             gravity = Gravity.CENTER
             setTextColor(Color.DKGRAY)
-            textSize = 15f
-            setPadding(dp(10), dp(28), dp(10), dp(28))
+            textSize = 14f
+            setPadding(dp(10), dp(24), dp(10), dp(24))
         })
 
         lifecycleScope.launch {
@@ -11423,12 +11969,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 onFailure = {
                     container.removeAllViews()
                     container.addView(TextView(this@MainActivity).apply {
-                        text = "Headlines are unavailable right now.\n" +
-                            "Use the source buttons below or tap Refresh."
+                        text = "Stories are unavailable right now."
                         gravity = Gravity.CENTER
                         setTextColor(Color.BLACK)
-                        textSize = 15f
-                        setPadding(dp(12), dp(28), dp(12), dp(28))
+                        textSize = 14f
+                        setPadding(dp(12), dp(24), dp(12), dp(24))
                     })
                 }
             )
@@ -11439,62 +11984,64 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         container.removeAllViews()
         if (items.isEmpty()) {
             container.addView(TextView(this).apply {
-                text = "No headlines are available right now."
+                text = "No stories are available right now."
                 gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
-                textSize = 15f
-                setPadding(dp(10), dp(28), dp(10), dp(28))
+                textSize = 14f
+                setPadding(dp(10), dp(24), dp(10), dp(24))
             })
             return
         }
 
-        // Lead story gets a large photo so the page reads like a real glance/feed page.
         val lead = items.first()
         val leadCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(10))
-            background = quickGlanceCardBackground("#F1EEE8", 9)
-            elevation = 2f
+            setPadding(dp(7), dp(7), dp(7), dp(9))
+            background = quickGlanceCardBackground("#F1EEE8", 8)
+            elevation = 1.5f
             isClickable = true
             isFocusable = true
             setOnClickListener { showInternetExplorerDialog(lead.url) }
         }
+
         val leadImage = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            background = quickGlanceCardBackground("#B8B8B8", 8)
+            background = quickGlanceCardBackground("#BDBDBD", 7)
             clipToOutline = true
         }
         leadCard.addView(leadImage, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(176)
+            dp(148)
         ))
         loadQuickGlanceImage(leadImage, lead.imageUrl)
 
         leadCard.addView(TextView(this).apply {
             text = lead.title
             setTextColor(Color.BLACK)
-            textSize = 18f
+            textSize = 16.5f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(dp(4), dp(10), dp(4), 0)
+            setPadding(dp(3), dp(8), dp(3), 0)
+            maxLines = 3
+            ellipsize = android.text.TextUtils.TruncateAt.END
         })
         leadCard.addView(TextView(this).apply {
             text = quickGlanceStoryMeta(lead)
             setTextColor(Color.DKGRAY)
-            textSize = 12f
-            setPadding(dp(4), dp(5), dp(4), 0)
+            textSize = 11.5f
+            setPadding(dp(3), dp(4), dp(3), 0)
         })
         container.addView(leadCard, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(10) })
+        ).apply { bottomMargin = dp(8) })
 
         items.drop(1).forEach { item ->
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                background = quickGlanceCardBackground("#F1EEE8", 9)
-                elevation = 1.5f
+                setPadding(dp(7), dp(7), dp(7), dp(7))
+                background = quickGlanceCardBackground("#F1EEE8", 8)
+                elevation = 1f
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { showInternetExplorerDialog(item.url) }
@@ -11502,11 +12049,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             val image = ImageView(this).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                background = quickGlanceCardBackground("#B8B8B8", 7)
+                background = quickGlanceCardBackground("#BDBDBD", 6)
                 clipToOutline = true
             }
-            card.addView(image, LinearLayout.LayoutParams(dp(108), dp(82)).apply {
-                marginEnd = dp(10)
+            card.addView(image, LinearLayout.LayoutParams(dp(98), dp(72)).apply {
+                marginEnd = dp(9)
             })
             loadQuickGlanceImage(image, item.imageUrl)
 
@@ -11517,16 +12064,18 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             textColumn.addView(TextView(this).apply {
                 text = item.title
                 setTextColor(Color.BLACK)
-                textSize = 15f
+                textSize = 14.5f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                maxLines = 3
+                maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
             textColumn.addView(TextView(this).apply {
                 text = quickGlanceStoryMeta(item)
                 setTextColor(Color.DKGRAY)
-                textSize = 11.5f
-                setPadding(0, dp(5), 0, 0)
+                textSize = 11f
+                setPadding(0, dp(4), 0, 0)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
             })
             card.addView(textColumn, LinearLayout.LayoutParams(
                 0,
@@ -11537,20 +12086,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             container.addView(card, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(9) })
+            ).apply { bottomMargin = dp(7) })
         }
-
-        container.addView(TextView(this).apply {
-            text = "News loads only when Quick Glance is opened or refreshed."
-            setTextColor(Color.DKGRAY)
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(3), dp(8), dp(7))
-        })
     }
 
     private fun quickGlanceStoryMeta(item: Win98NewsItem): String {
-        val age = item.publishedAtMs?.let { published ->
+        val age = item.publishedLabel?.takeIf { it.isNotBlank() } ?: item.publishedAtMs?.let { published ->
             val elapsed = (System.currentTimeMillis() - published).coerceAtLeast(0L)
             when {
                 elapsed < 60_000L -> "now"
@@ -11564,19 +12105,27 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun loadQuickGlanceImage(view: ImageView, url: String?) {
         if (url.isNullOrBlank()) {
-            view.setImageResource(R.drawable.icon)
-            view.scaleType = ImageView.ScaleType.CENTER_INSIDE
-            view.setPadding(dp(18), dp(18), dp(18), dp(18))
+            view.setImageDrawable(android.graphics.drawable.ColorDrawable(Color.parseColor("#BDBDBD")))
             return
         }
 
-        view.setPadding(0, 0, 0, 0)
-        view.scaleType = ImageView.ScaleType.CENTER_CROP
         Glide.with(this)
             .load(url)
             .centerCrop()
-            .error(R.drawable.icon)
+            .placeholder(android.graphics.drawable.ColorDrawable(Color.parseColor("#BDBDBD")))
+            .error(android.graphics.drawable.ColorDrawable(Color.parseColor("#BDBDBD")))
             .into(view)
+    }
+
+    private fun createTinyNewsSource(label: String, url: String): TextView {
+        return TextView(this).apply {
+            text = label
+            gravity = Gravity.CENTER
+            setTextColor(Color.DKGRAY)
+            textSize = 11f
+            setPadding(dp(9), dp(6), dp(9), dp(6))
+            setOnClickListener { showInternetExplorerDialog(url) }
+        }
     }
 
     private fun createWin98SourceButton(label: String, url: String): TextView {
@@ -11602,7 +12151,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(2), dp(8), dp(2), dp(6))
+            setPadding(dp(2), dp(6), dp(2), dp(4))
             background = AppCompatResources.getDrawable(
                 this@MainActivity,
                 R.drawable.window_button_background
@@ -11611,7 +12160,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             isFocusable = true
             contentDescription = label
             setOnClickListener { action() }
-            layoutParams = LinearLayout.LayoutParams(0, dp(88), 1f).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(78), 1f).apply {
                 marginStart = dp(2)
                 marginEnd = dp(2)
             }
@@ -11619,7 +12168,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             addView(ImageView(this@MainActivity).apply {
                 setImageResource(iconRes)
                 scaleType = ImageView.ScaleType.FIT_CENTER
-            }, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+            }, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             })
 
@@ -11627,7 +12176,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 text = label
                 gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
-                textSize = 10.5f
+                textSize = 9.5f
                 maxLines = 2
             }, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -11650,7 +12199,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             GradientDrawable.Orientation.LEFT_RIGHT,
             intArrayOf(Color.parseColor("#000080"), Color.parseColor("#1296D8"))
         ).apply {
-            cornerRadius = dp(9).toFloat()
+            cornerRadius = dp(8).toFloat()
         }
     }
 
@@ -11787,6 +12336,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             win98QuickPage?.visibility == View.VISIBLE -> {
                 Log.d("MainActivity", "Back pressed (legacy): closing Quick Glance")
                 hideWin98QuickPage()
+            }
+            win98SecondPage?.visibility == View.VISIBLE -> {
+                Log.d("MainActivity", "Back pressed (legacy): closing Page 2")
+                hideWin98SecondPage()
             }
             isStartMenuVisible -> {
                 // If start menu is open, close it
