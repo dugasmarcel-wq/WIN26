@@ -2,12 +2,20 @@ package rocks.gorjan.gokixp
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.Dialog
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
@@ -63,29 +71,27 @@ class Win26Updater(private val activity: Activity) {
 
                 activity.runOnUiThread {
                     progress.dismiss()
+                    val installedName = current.versionName ?: "unknown"
                     if (update.versionCode <= currentCode) {
-                        AlertDialog.Builder(activity)
-                            .setTitle("Windows Update")
-                            .setMessage(
+                        showActionDialog(
+                            title = "Windows Update",
+                            message =
                                 "WIN26 is up to date.\n\n" +
-                                    "Installed: ${current.versionName ?: "unknown"} (build $currentCode)\n" +
-                                    "Latest: ${update.versionName} (build ${update.versionCode})"
-                            )
-                            .setPositiveButton("OK", null)
-                            .show()
+                                    "Installed: $installedName (build $currentCode)\n" +
+                                    "Latest: ${update.versionName} (build ${update.versionCode})",
+                            positiveText = "OK"
+                        )
                     } else {
-                        AlertDialog.Builder(activity)
-                            .setTitle("Windows Update")
-                            .setMessage(
+                        showActionDialog(
+                            title = "Windows Update",
+                            message =
                                 "A WIN26 update is available.\n\n" +
-                                    "Installed: ${current.versionName ?: "unknown"} (build $currentCode)\n" +
-                                    "Latest: ${update.versionName} (build ${update.versionCode})"
-                            )
-                            .setNegativeButton("Cancel", null)
-                            .setPositiveButton("Download & Install") { _, _ ->
-                                beginInstall(update)
-                            }
-                            .show()
+                                    "Installed: $installedName (build $currentCode)\n" +
+                                    "Latest: ${update.versionName} (build ${update.versionCode})",
+                            positiveText = "Download & Install",
+                            onPositive = { beginInstall(update) },
+                            negativeText = "Cancel"
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -101,21 +107,21 @@ class Win26Updater(private val activity: Activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !activity.packageManager.canRequestPackageInstalls()
         ) {
-            AlertDialog.Builder(activity)
-                .setTitle("Allow WIN26 updates")
-                .setMessage(
+            showActionDialog(
+                title = "Allow WIN26 updates",
+                message =
                     "Android needs a one-time permission so WIN26 can install its own signed updates. " +
-                        "Turn on “Allow from this source”, return to WIN26, then press Windows Update again."
-                )
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Open Settings") { _, _ ->
+                        "Turn on “Allow from this source”, return to WIN26, then press Windows Update again.",
+                positiveText = "Open Settings",
+                onPositive = {
                     val intent = Intent(
                         Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                         Uri.parse("package:${activity.packageName}")
                     )
                     activity.startActivity(intent)
-                }
-                .show()
+                },
+                negativeText = "Cancel"
+            )
             return
         }
 
@@ -305,10 +311,138 @@ class Win26Updater(private val activity: Activity) {
 
     private fun showError(prefix: String, error: Exception) {
         val detail = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
-        AlertDialog.Builder(activity)
-            .setTitle("Windows Update")
-            .setMessage("$prefix.\n\n$detail")
-            .setPositiveButton("OK", null)
-            .show()
+        showActionDialog(
+            title = "Windows Update",
+            message = "$prefix.\n\n$detail",
+            positiveText = "OK"
+        )
+    }
+
+    /**
+     * Updater-owned action dialog.
+     *
+     * WIN26's launcher theme can suppress Android AlertDialog's standard button bar.
+     * These buttons live inside our own content view, so Download & Install / Cancel
+     * remain visible and tappable regardless of the active Windows theme.
+     */
+    private fun showActionDialog(
+        title: String,
+        message: String,
+        positiveText: String,
+        onPositive: (() -> Unit)? = null,
+        negativeText: String? = null
+    ) {
+        val density = activity.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density + 0.5f).toInt()
+
+        val dialog = Dialog(activity)
+        val panel = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(20), dp(24), dp(18))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(64, 64, 64))
+                cornerRadius = dp(4).toFloat()
+            }
+        }
+
+        val titleView = TextView(activity).apply {
+            text = title
+            setTextColor(Color.WHITE)
+            textSize = 24f
+            setPadding(0, 0, 0, dp(14))
+        }
+        panel.addView(
+            titleView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val messageView = TextView(activity).apply {
+            text = message
+            setTextColor(Color.WHITE)
+            textSize = 17f
+            setLineSpacing(0f, 1.08f)
+            setPadding(0, 0, 0, dp(20))
+        }
+        panel.addView(
+            messageView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val buttons = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+
+        fun makeButton(label: String): Button = Button(activity).apply {
+            text = label
+            isAllCaps = false
+            textSize = 15f
+            setTextColor(Color.BLACK)
+            minHeight = dp(48)
+            minWidth = dp(96)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(224, 224, 224))
+                cornerRadius = dp(3).toFloat()
+                setStroke(dp(1), Color.rgb(96, 96, 96))
+            }
+        }
+
+        negativeText?.let { label ->
+            val negative = makeButton(label)
+            negative.setOnClickListener { dialog.dismiss() }
+            buttons.addView(
+                negative,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(48)
+                ).apply { marginEnd = dp(10) }
+            )
+        }
+
+        val positive = makeButton(positiveText)
+        positive.setOnClickListener {
+            dialog.dismiss()
+            onPositive?.invoke()
+        }
+        buttons.addView(
+            positive,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(48)
+            )
+        )
+
+        panel.addView(
+            buttons,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        dialog.setContentView(panel)
+        dialog.setCancelable(true)
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setDimAmount(0.55f)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout(
+                (activity.resources.displayMetrics.widthPixels * 0.88f).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        dialog.setOnShowListener {
+            dialog.window?.setLayout(
+                (activity.resources.displayMetrics.widthPixels * 0.88f).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        dialog.show()
     }
 }
