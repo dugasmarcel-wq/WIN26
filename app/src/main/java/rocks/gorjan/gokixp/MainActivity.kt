@@ -12078,8 +12078,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
                     prewarmWin98Pages()
                     val targetPage = if (dx > 0f) 0 else 2
-                    val page = if (targetPage == 0) win98QuickPage else win98SecondPage
-                        ?: return false
+                    val page = (
+                        if (targetPage == 0) win98QuickPage else win98SecondPage
+                    ) ?: return false
 
                     win98PagerDragging = true
                     win98PagerDragOriginPage = 1
