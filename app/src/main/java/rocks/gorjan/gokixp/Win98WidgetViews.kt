@@ -59,8 +59,8 @@ object Win98WidgetViews {
         ),
         Win98WidgetSpec(
             "cyber_pet",
-            "Cyber Pet",
-            "Feed and play with a tiny animated virtual pet living inside a Win98 panel."
+            "P1 Classic Pet",
+            "Persistent 1996-style virtual pet: hunger, happiness, discipline, illness, sleep, care mistakes, game and branching growth."
         ),
         Win98WidgetSpec(
             "solitaire_desk",
@@ -595,81 +595,119 @@ object Win98WidgetViews {
         return root
     }
 
-    private fun createCyberPet(context: Context): View {
-        val root = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 7), dp(context, 7), dp(context, 7), dp(context, 8))
-            background = classicInset(context, Color.rgb(228, 224, 214))
-        }
-        val face = CyberPetFace(context)
-        root.addView(face, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(context, 92)
-        ))
-        val status = TextView(context).apply {
-            text = "HUNGER 3/5    FUN 3/5"
-            gravity = Gravity.CENTER
-            setTextColor(Color.BLACK)
-            textSize = 10f
-            typeface = Typeface.MONOSPACE
-        }
-        root.addView(status, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(context, 24)
-        ))
+    private fun createCyberPet(context: Context): View = P1ClassicPetView(context)
 
-        var hunger = 3
-        var funLevel = 3
-        fun update() {
-            status.text = "HUNGER $hunger/5    FUN $funLevel/5"
-            face.mood = (funLevel + hunger) / 2
+    /**
+     * A native first-generation virtual-pet simulation. The timing/care model follows the
+     * documented 1996-97 P1 rules closely, while all pixels below are original WIN26 artwork.
+     * State is timestamp based, so the pet keeps aging while this page or the launcher is closed.
+     */
+    private class P1ClassicPetView(context: Context) : View(context) {
+
+        private enum class Character(
+            val label: String,
+            val minWeight: Int,
+            val hungerMinutes: Int,
+            val happyMinutes: Int,
+            val illnessMinutes: Int,
+            val evolutionMinutes: Int,
+            val wakeHour: Int,
+            val sleepHour: Int,
+            val medicineDoses: Int,
+            val disciplineEvery: Int
+        ) {
+            EGG("EGG", 0, 0, 0, 0, 5, 0, 24, 0, 0),
+            BABY("BABY", 5, 3, 4, 45, 65, 0, 24, 2, 0),
+            CHILD("MARUTCHI", 10, 50, 60, 990, 1380, 9, 20, 2, 6),
+            TEEN_GOOD("TAMATCHI", 20, 75, 85, 1656, 2220, 9, 21, 2, 6),
+            TEEN_BAD("TAMATCHI", 20, 75, 85, 1656, 2220, 9, 21, 2, 6),
+            KUCHI_GOOD("KUCHITAMATCHI", 20, 75, 85, 660, 1380, 9, 21, 2, 6),
+            KUCHI_BAD("KUCHITAMATCHI", 20, 75, 85, 660, 1380, 9, 21, 2, 6),
+            MAMETCHI("MAMETCHI", 30, 81, 91, 3900, 0, 9, 22, 1, 0),
+            GINJI("GINJIROTCHI", 30, 81, 91, 2808, 0, 9, 22, 1, 7),
+            MASK("MASKUTCHI", 30, 55, 65, 2592, 5760, 11, 23, 1, 7),
+            KUCHIPATCHI("KUCHIPATCHI", 20, 60, 70, 1170, 0, 9, 22, 2, 0),
+            NYOROTCHI("NYOROTCHI", 10, 60, 70, 360, 0, 9, 22, 3, 7),
+            TARAKOTCHI("TARAKOTCHI", 20, 45, 50, 660, 0, 10, 22, 2, 7),
+            BILL("BILL", 30, 81, 91, 3900, 0, 9, 22, 1, 0),
+            DEAD("DEAD", 0, 0, 0, 0, 0, 0, 24, 0, 0)
         }
 
-        val buttons = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+        private enum class ScreenMode {
+            MAIN, FEED, LIGHT, STATUS, GAME, MESSAGE, DEAD
         }
-        buttons.addView(button(context, "Feed") {
-            hunger = min(5, hunger + 1)
-            face.bounce()
-            update()
-        }, LinearLayout.LayoutParams(0, dp(context, 30), 1f).apply { marginEnd = dp(context, 3) })
-        buttons.addView(button(context, "Play") {
-            funLevel = min(5, funLevel + 1)
-            face.bounce()
-            update()
-        }, LinearLayout.LayoutParams(0, dp(context, 30), 1f).apply { marginStart = dp(context, 3) })
-        root.addView(buttons)
-        update()
-        return root
-    }
 
-    private class CyberPetFace(context: Context) : View(context) {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val prefs = context.getSharedPreferences(
+            MainActivity.PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
         private val handler = Handler(Looper.getMainLooper())
-        var mood: Int = 3
-        private var bob = 0f
-        private var bobDirection = 1f
-        private var blink = false
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val lcdPaint = Paint().apply { isAntiAlias = false }
+
+        private var character = Character.EGG
+        private var stageStartedAt = 0L
+        private var lastProcessedAt = 0L
+        private var lastHungryAt = 0L
+        private var lastHappyAt = 0L
+        private var nextPoopAt = 0L
+        private var nextIllnessAt = 0L
+
+        private var hungry = 0
+        private var happy = 0
+        private var discipline = 0
+        private var weight = 0
+        private var poopCount = 0
+        private var sick = false
+        private var medicineGiven = 0
+        private var lightsOff = false
+
+        private var careMistakes = 0
+        private var lifetimeCareMistakes = 0
+        private var disciplineCountdown = 0
+        private var misbehaving = false
+
+        private var hungerZeroSince = 0L
+        private var happyZeroSince = 0L
+        private var sleepCallSince = 0L
+        private var hungerMistakeCounted = false
+        private var happyMistakeCounted = false
+        private var sleepMistakeCounted = false
+        private var sickSince = 0L
+
+        private var selectedIcon = 0
+        private var screenMode = ScreenMode.MAIN
+        private var submenuChoice = 0
+        private var statusPage = 0
+        private var gameRound = 0
+        private var gameWins = 0
+        private var gameLastResult = ""
+        private var message = ""
+        private var messageUntil = 0L
+        private var lastAAt = 0L
+        private var animationFrame = false
+
+        private var lastUiTick = 0L
+
         private val ticker = object : Runnable {
             override fun run() {
-                if (isShown) {
-                    bob += bobDirection * resources.displayMetrics.density
-                    if (abs(bob) > dp(context, 3)) bobDirection = -bobDirection
-                    blink = Random.nextInt(8) == 0
-                    invalidate()
+                val now = System.currentTimeMillis()
+                if (now - lastUiTick >= 15_000L) {
+                    processElapsedTime(now)
+                    lastUiTick = now
                 }
-                handler.postDelayed(this, if (isShown) 230L else 600L)
+                animationFrame = !animationFrame
+                invalidate()
+                handler.postDelayed(this, if (isShown) 520L else 5_000L)
             }
         }
 
         init {
-            setBackgroundColor(Color.rgb(30, 45, 35))
-        }
-
-        fun bounce() {
-            bob = -dp(context, 4).toFloat()
-            bobDirection = 1f
-            invalidate()
+            minimumHeight = dp(context, 248)
+            isClickable = true
+            isFocusable = true
+            loadState()
+            processElapsedTime(System.currentTimeMillis())
         }
 
         override fun onAttachedToWindow() {
@@ -679,34 +717,1055 @@ object Win98WidgetViews {
         }
 
         override fun onDetachedFromWindow() {
+            saveState()
             handler.removeCallbacks(ticker)
             super.onDetachedFromWindow()
         }
 
+        private fun loadState() {
+            val now = System.currentTimeMillis()
+            val savedChar = prefs.getString("p1_pet_char", null)
+            if (savedChar == null) {
+                resetPet(now)
+                return
+            }
+
+            character = try {
+                Character.valueOf(savedChar)
+            } catch (_: Exception) {
+                Character.EGG
+            }
+            stageStartedAt = prefs.getLong("p1_pet_stage_started", now)
+            lastProcessedAt = prefs.getLong("p1_pet_last_processed", now)
+            lastHungryAt = prefs.getLong("p1_pet_last_hungry", stageStartedAt)
+            lastHappyAt = prefs.getLong("p1_pet_last_happy", stageStartedAt)
+            nextPoopAt = prefs.getLong("p1_pet_next_poop", stageStartedAt + poopIntervalMs())
+            nextIllnessAt = prefs.getLong(
+                "p1_pet_next_illness",
+                if (character.illnessMinutes > 0) {
+                    stageStartedAt + minutes(character.illnessMinutes)
+                } else Long.MAX_VALUE
+            )
+
+            hungry = prefs.getInt("p1_pet_hungry", if (character == Character.BABY) 0 else 4)
+            happy = prefs.getInt("p1_pet_happy", if (character == Character.BABY) 0 else 4)
+            discipline = prefs.getInt("p1_pet_discipline", 0).coerceIn(0, 4)
+            weight = prefs.getInt("p1_pet_weight", character.minWeight)
+            poopCount = prefs.getInt("p1_pet_poop", 0).coerceIn(0, 4)
+            sick = prefs.getBoolean("p1_pet_sick", false)
+            medicineGiven = prefs.getInt("p1_pet_medicine", 0)
+            lightsOff = prefs.getBoolean("p1_pet_lights_off", false)
+            careMistakes = prefs.getInt("p1_pet_care_mistakes", 0)
+            lifetimeCareMistakes = prefs.getInt("p1_pet_lifetime_mistakes", 0)
+            disciplineCountdown = prefs.getInt("p1_pet_discipline_countdown", 0)
+            misbehaving = prefs.getBoolean("p1_pet_misbehaving", false)
+
+            hungerZeroSince = prefs.getLong("p1_pet_hunger_zero_since", 0L)
+            happyZeroSince = prefs.getLong("p1_pet_happy_zero_since", 0L)
+            sleepCallSince = prefs.getLong("p1_pet_sleep_call_since", 0L)
+            hungerMistakeCounted = prefs.getBoolean("p1_pet_hunger_mistake_counted", false)
+            happyMistakeCounted = prefs.getBoolean("p1_pet_happy_mistake_counted", false)
+            sleepMistakeCounted = prefs.getBoolean("p1_pet_sleep_mistake_counted", false)
+            sickSince = prefs.getLong("p1_pet_sick_since", 0L)
+
+            if (lastProcessedAt > now) lastProcessedAt = now
+        }
+
+        private fun saveState() {
+            prefs.edit()
+                .putString("p1_pet_char", character.name)
+                .putLong("p1_pet_stage_started", stageStartedAt)
+                .putLong("p1_pet_last_processed", lastProcessedAt)
+                .putLong("p1_pet_last_hungry", lastHungryAt)
+                .putLong("p1_pet_last_happy", lastHappyAt)
+                .putLong("p1_pet_next_poop", nextPoopAt)
+                .putLong("p1_pet_next_illness", nextIllnessAt)
+                .putInt("p1_pet_hungry", hungry)
+                .putInt("p1_pet_happy", happy)
+                .putInt("p1_pet_discipline", discipline)
+                .putInt("p1_pet_weight", weight)
+                .putInt("p1_pet_poop", poopCount)
+                .putBoolean("p1_pet_sick", sick)
+                .putInt("p1_pet_medicine", medicineGiven)
+                .putBoolean("p1_pet_lights_off", lightsOff)
+                .putInt("p1_pet_care_mistakes", careMistakes)
+                .putInt("p1_pet_lifetime_mistakes", lifetimeCareMistakes)
+                .putInt("p1_pet_discipline_countdown", disciplineCountdown)
+                .putBoolean("p1_pet_misbehaving", misbehaving)
+                .putLong("p1_pet_hunger_zero_since", hungerZeroSince)
+                .putLong("p1_pet_happy_zero_since", happyZeroSince)
+                .putLong("p1_pet_sleep_call_since", sleepCallSince)
+                .putBoolean("p1_pet_hunger_mistake_counted", hungerMistakeCounted)
+                .putBoolean("p1_pet_happy_mistake_counted", happyMistakeCounted)
+                .putBoolean("p1_pet_sleep_mistake_counted", sleepMistakeCounted)
+                .putLong("p1_pet_sick_since", sickSince)
+                .apply()
+        }
+
+        private fun resetPet(now: Long) {
+            character = Character.EGG
+            stageStartedAt = now
+            lastProcessedAt = now
+            lastHungryAt = now
+            lastHappyAt = now
+            nextPoopAt = Long.MAX_VALUE
+            nextIllnessAt = Long.MAX_VALUE
+            hungry = 0
+            happy = 0
+            discipline = 0
+            weight = 0
+            poopCount = 0
+            sick = false
+            medicineGiven = 0
+            lightsOff = false
+            careMistakes = 0
+            lifetimeCareMistakes = 0
+            disciplineCountdown = 0
+            misbehaving = false
+            clearCareCalls()
+            sickSince = 0L
+            selectedIcon = 0
+            screenMode = ScreenMode.MAIN
+            saveState()
+        }
+
+        private fun clearCareCalls() {
+            hungerZeroSince = 0L
+            happyZeroSince = 0L
+            sleepCallSince = 0L
+            hungerMistakeCounted = false
+            happyMistakeCounted = false
+            sleepMistakeCounted = false
+        }
+
+        private fun minutes(value: Int): Long = value.toLong() * 60_000L
+
+        private fun poopIntervalMs(): Long = when (character) {
+            Character.EGG -> Long.MAX_VALUE
+            Character.BABY -> minutes(30)
+            Character.CHILD -> minutes(90)
+            Character.TEEN_GOOD,
+            Character.TEEN_BAD,
+            Character.KUCHI_GOOD,
+            Character.KUCHI_BAD -> minutes(120)
+            else -> minutes(180)
+        }
+
+        private fun localHour(now: Long): Int {
+            val cal = java.util.Calendar.getInstance()
+            cal.timeInMillis = now
+            return cal.get(java.util.Calendar.HOUR_OF_DAY)
+        }
+
+        private fun isAsleep(now: Long): Boolean {
+            if (character == Character.EGG || character == Character.BABY || character == Character.DEAD) {
+                return false
+            }
+            val hour = localHour(now)
+            val wake = character.wakeHour
+            val sleep = character.sleepHour
+            return if (sleep > wake) {
+                hour >= sleep || hour < wake
+            } else {
+                hour >= sleep && hour < wake
+            }
+        }
+
+        private fun processElapsedTime(now: Long) {
+            if (character == Character.DEAD) {
+                lastProcessedAt = now
+                saveState()
+                return
+            }
+
+            var safety = 0
+            while (character.evolutionMinutes > 0 &&
+                now - stageStartedAt >= minutes(character.evolutionMinutes) &&
+                safety++ < 8
+            ) {
+                evolve(stageStartedAt + minutes(character.evolutionMinutes))
+            }
+
+            if (character == Character.EGG) {
+                lastProcessedAt = now
+                saveState()
+                return
+            }
+
+            if (character.hungerMinutes > 0) {
+                val interval = minutes(character.hungerMinutes)
+                var decrements = ((now - lastHungryAt) / interval).coerceAtLeast(0L).coerceAtMost(1000L)
+                while (decrements-- > 0) {
+                    lastHungryAt += interval
+                    if (hungry > 0) hungry--
+                    disciplineCountdown++
+                    if (hungry == 0 && hungerZeroSince == 0L) {
+                        hungerZeroSince = lastHungryAt
+                        hungerMistakeCounted = false
+                    }
+                    maybeStartMisbehavior()
+                }
+            }
+
+            if (character.happyMinutes > 0) {
+                val interval = minutes(character.happyMinutes)
+                var decrements = ((now - lastHappyAt) / interval).coerceAtLeast(0L).coerceAtMost(1000L)
+                while (decrements-- > 0) {
+                    lastHappyAt += interval
+                    if (happy > 0) happy--
+                    disciplineCountdown++
+                    if (happy == 0 && happyZeroSince == 0L) {
+                        happyZeroSince = lastHappyAt
+                        happyMistakeCounted = false
+                    }
+                    maybeStartMisbehavior()
+                }
+            }
+
+            if (nextPoopAt != Long.MAX_VALUE) {
+                var poopSafety = 0
+                while (now >= nextPoopAt && poopSafety++ < 100) {
+                    poopCount = min(4, poopCount + 1)
+                    nextPoopAt += poopIntervalMs()
+                }
+            }
+
+            if (!sick && nextIllnessAt != Long.MAX_VALUE && now >= nextIllnessAt) {
+                makeSick(nextIllnessAt)
+                nextIllnessAt = Long.MAX_VALUE
+            }
+            if (!sick && poopCount >= 4) {
+                makeSick(now)
+            }
+
+            updateCareCalls(now)
+
+            if (hungry == 0 && hungerZeroSince > 0L && now - hungerZeroSince >= minutes(600)) {
+                die(now)
+            } else if (sick && sickSince > 0L && now - sickSince >= minutes(360)) {
+                die(now)
+            }
+
+            lastProcessedAt = now
+            saveState()
+        }
+
+        private fun maybeStartMisbehavior() {
+            if (
+                character.disciplineEvery > 0 &&
+                discipline < 4 &&
+                !misbehaving &&
+                disciplineCountdown >= character.disciplineEvery &&
+                hungry > 0 &&
+                happy > 0
+            ) {
+                misbehaving = true
+                disciplineCountdown = 0
+            }
+        }
+
+        private fun updateCareCalls(now: Long) {
+            if (hungry > 0) {
+                hungerZeroSince = 0L
+                hungerMistakeCounted = false
+            } else if (hungerZeroSince == 0L) {
+                hungerZeroSince = now
+            }
+
+            if (happy > 0) {
+                happyZeroSince = 0L
+                happyMistakeCounted = false
+            } else if (happyZeroSince == 0L) {
+                happyZeroSince = now
+            }
+
+            val asleep = isAsleep(now)
+            if (asleep && !lightsOff) {
+                if (sleepCallSince == 0L) sleepCallSince = now
+            } else {
+                sleepCallSince = 0L
+                sleepMistakeCounted = false
+                if (!asleep) lightsOff = false
+            }
+
+            if (
+                hungerZeroSince > 0L &&
+                !hungerMistakeCounted &&
+                now - hungerZeroSince >= minutes(15)
+            ) {
+                registerCareMistake()
+                hungerMistakeCounted = true
+            }
+            if (
+                happyZeroSince > 0L &&
+                !happyMistakeCounted &&
+                now - happyZeroSince >= minutes(15)
+            ) {
+                registerCareMistake()
+                happyMistakeCounted = true
+            }
+            if (
+                sleepCallSince > 0L &&
+                !sleepMistakeCounted &&
+                now - sleepCallSince >= minutes(15)
+            ) {
+                registerCareMistake()
+                sleepMistakeCounted = true
+            }
+        }
+
+        private fun registerCareMistake() {
+            careMistakes++
+            lifetimeCareMistakes++
+        }
+
+        private fun makeSick(at: Long) {
+            sick = true
+            medicineGiven = 0
+            sickSince = at
+        }
+
+        private fun die(at: Long) {
+            character = Character.DEAD
+            stageStartedAt = at
+            screenMode = ScreenMode.DEAD
+            sick = false
+            misbehaving = false
+            saveState()
+        }
+
+        private fun evolve(at: Long) {
+            val previous = character
+            character = when (previous) {
+                Character.EGG -> Character.BABY
+                Character.BABY -> Character.CHILD
+                Character.CHILD -> {
+                    val goodDiscipline = discipline >= 3
+                    if (careMistakes <= 1) {
+                        if (goodDiscipline) Character.TEEN_GOOD else Character.TEEN_BAD
+                    } else {
+                        if (goodDiscipline) Character.KUCHI_GOOD else Character.KUCHI_BAD
+                    }
+                }
+                Character.TEEN_GOOD -> when {
+                    careMistakes <= 2 && discipline >= 4 -> Character.MAMETCHI
+                    careMistakes <= 2 && discipline == 3 -> Character.GINJI
+                    careMistakes <= 2 -> Character.MASK
+                    discipline >= 4 -> Character.KUCHIPATCHI
+                    discipline == 3 -> Character.NYOROTCHI
+                    else -> Character.TARAKOTCHI
+                }
+                Character.TEEN_BAD -> when {
+                    careMistakes <= 2 && discipline >= 4 -> Character.GINJI
+                    careMistakes <= 2 -> Character.MASK
+                    discipline >= 4 -> Character.NYOROTCHI
+                    else -> Character.TARAKOTCHI
+                }
+                Character.KUCHI_GOOD -> when {
+                    discipline >= 4 -> Character.KUCHIPATCHI
+                    discipline == 3 -> Character.NYOROTCHI
+                    else -> Character.TARAKOTCHI
+                }
+                Character.KUCHI_BAD -> when {
+                    discipline >= 4 -> Character.NYOROTCHI
+                    else -> Character.TARAKOTCHI
+                }
+                Character.MASK -> {
+                    if (discipline == 0) Character.BILL else Character.MASK
+                }
+                else -> previous
+            }
+
+            if (character == previous && previous == Character.MASK) {
+                // Maskutchi only has the hidden evolution when raised with no discipline.
+                stageStartedAt = at
+                return
+            }
+
+            stageStartedAt = at
+            careMistakes = 0
+            disciplineCountdown = 0
+            misbehaving = false
+            poopCount = 0
+            sick = false
+            sickSince = 0L
+            medicineGiven = 0
+            clearCareCalls()
+
+            when (character) {
+                Character.BABY -> {
+                    hungry = 0
+                    happy = 0
+                    discipline = 0
+                    weight = 5
+                    nextPoopAt = at + minutes(15)
+                }
+                Character.CHILD -> {
+                    hungry = 4
+                    happy = 4
+                    discipline = 0
+                    weight = 10
+                    nextPoopAt = at + poopIntervalMs()
+                }
+                else -> {
+                    hungry = 4
+                    happy = 4
+                    weight = max(weight, character.minWeight)
+                    nextPoopAt = at + poopIntervalMs()
+                }
+            }
+
+            lastHungryAt = at
+            lastHappyAt = at
+            nextIllnessAt = if (character.illnessMinutes > 0) {
+                at + minutes(character.illnessMinutes)
+            } else {
+                Long.MAX_VALUE
+            }
+            showMessage("EVOLVED: ${character.label}", 2600L)
+        }
+
+        private fun ageYears(now: Long): Int {
+            if (character == Character.EGG) return 0
+            val elapsedDays = ((now - prefs.getLong("p1_pet_birth_anchor", stageStartedAt)) /
+                86_400_000L).toInt().coerceAtLeast(0)
+            return if (character == Character.BABY) 0 else max(1, elapsedDays + 1)
+        }
+
+        private fun ensureBirthAnchor() {
+            if (!prefs.contains("p1_pet_birth_anchor")) {
+                prefs.edit().putLong("p1_pet_birth_anchor", stageStartedAt).apply()
+            }
+        }
+
+        private fun feedMeal() {
+            if (character == Character.EGG || character == Character.DEAD) return
+            if (misbehaving) {
+                showMessage("REFUSES FOOD", 1800L)
+                return
+            }
+            if (hungry >= 4) {
+                showMessage("FULL", 1400L)
+                return
+            }
+            hungry++
+            weight = min(99, weight + 1)
+            if (hungry > 0) {
+                hungerZeroSince = 0L
+                hungerMistakeCounted = false
+            }
+            showMessage("MEAL +1 HUNGER", 1400L)
+            saveState()
+        }
+
+        private fun feedSnack() {
+            if (character == Character.EGG || character == Character.DEAD) return
+            happy = min(4, happy + 1)
+            weight = min(99, weight + 2)
+            if (happy > 0) {
+                happyZeroSince = 0L
+                happyMistakeCounted = false
+            }
+            showMessage("SNACK +1 HAPPY", 1400L)
+            saveState()
+        }
+
+        private fun cleanPoop() {
+            poopCount = 0
+            showMessage("CLEAN!", 1200L)
+            saveState()
+        }
+
+        private fun giveMedicine() {
+            if (!sick) {
+                showMessage("NOT SICK", 1200L)
+                return
+            }
+            medicineGiven++
+            if (medicineGiven >= character.medicineDoses) {
+                sick = false
+                sickSince = 0L
+                medicineGiven = 0
+                showMessage("ALL BETTER", 1800L)
+            } else {
+                showMessage("MEDICINE ${medicineGiven}/${character.medicineDoses}", 1500L)
+            }
+            saveState()
+        }
+
+        private fun scold() {
+            if (misbehaving) {
+                discipline = min(4, discipline + 1)
+                misbehaving = false
+                showMessage("DISCIPLINE +25%", 1600L)
+            } else {
+                showMessage("NO EFFECT", 1200L)
+            }
+            saveState()
+        }
+
+        private fun startGame() {
+            if (misbehaving) {
+                showMessage("REFUSES GAME", 1500L)
+                return
+            }
+            screenMode = ScreenMode.GAME
+            gameRound = 0
+            gameWins = 0
+            gameLastResult = "A=LEFT  B=RIGHT"
+        }
+
+        private fun gameGuess(left: Boolean) {
+            if (screenMode != ScreenMode.GAME) return
+            val petLeft = Random.nextBoolean()
+            if (left == petLeft) {
+                gameWins++
+                gameLastResult = "GOOD!  ${gameWins}/${gameRound + 1}"
+            } else {
+                gameLastResult = "MISS!  ${gameWins}/${gameRound + 1}"
+            }
+            gameRound++
+
+            if (gameRound >= 5) {
+                if (gameWins >= 3) {
+                    happy = min(4, happy + 1)
+                    if (happy > 0) {
+                        happyZeroSince = 0L
+                        happyMistakeCounted = false
+                    }
+                }
+                weight = max(character.minWeight, weight - 1)
+                val result = if (gameWins >= 3) "WIN ${gameWins}/5  HAPPY +1" else "LOSE ${gameWins}/5"
+                screenMode = ScreenMode.MESSAGE
+                message = result
+                messageUntil = System.currentTimeMillis() + 2600L
+                saveState()
+            }
+        }
+
+        private fun showMessage(text: String, duration: Long) {
+            screenMode = ScreenMode.MESSAGE
+            message = text
+            messageUntil = System.currentTimeMillis() + duration
+        }
+
+        private fun attentionActive(now: Long): Boolean {
+            return hungry == 0 ||
+                happy == 0 ||
+                (isAsleep(now) && !lightsOff) ||
+                misbehaving
+        }
+
+        private fun handleA(now: Long) {
+            lastAAt = now
+            if (character == Character.DEAD) return
+            when (screenMode) {
+                ScreenMode.MAIN -> selectedIcon = (selectedIcon + 1) % 7
+                ScreenMode.FEED,
+                ScreenMode.LIGHT -> submenuChoice = 1 - submenuChoice
+                ScreenMode.STATUS -> statusPage = (statusPage + 1) % 4
+                ScreenMode.GAME -> gameGuess(true)
+                ScreenMode.MESSAGE -> {
+                    screenMode = ScreenMode.MAIN
+                    selectedIcon = (selectedIcon + 1) % 7
+                }
+                ScreenMode.DEAD -> Unit
+            }
+            invalidate()
+        }
+
+        private fun handleB(now: Long) {
+            if (character == Character.DEAD) {
+                showMessage("AGE ${ageYears(now)}  WT ${weight}", 2200L)
+                return
+            }
+            when (screenMode) {
+                ScreenMode.MAIN -> when (selectedIcon) {
+                    0 -> {
+                        screenMode = ScreenMode.FEED
+                        submenuChoice = 0
+                    }
+                    1 -> {
+                        screenMode = ScreenMode.LIGHT
+                        submenuChoice = if (lightsOff) 1 else 0
+                    }
+                    2 -> startGame()
+                    3 -> giveMedicine()
+                    4 -> cleanPoop()
+                    5 -> {
+                        screenMode = ScreenMode.STATUS
+                        statusPage = 0
+                    }
+                    6 -> scold()
+                }
+                ScreenMode.FEED -> {
+                    if (submenuChoice == 0) feedMeal() else feedSnack()
+                }
+                ScreenMode.LIGHT -> {
+                    lightsOff = submenuChoice == 1
+                    if (lightsOff) {
+                        sleepCallSince = 0L
+                        sleepMistakeCounted = false
+                    }
+                    screenMode = ScreenMode.MAIN
+                    saveState()
+                }
+                ScreenMode.STATUS -> statusPage = (statusPage + 1) % 4
+                ScreenMode.GAME -> gameGuess(false)
+                ScreenMode.MESSAGE -> screenMode = ScreenMode.MAIN
+                ScreenMode.DEAD -> Unit
+            }
+            invalidate()
+        }
+
+        private fun handleC(now: Long) {
+            if (character == Character.DEAD) {
+                if (now - lastAAt <= 900L) {
+                    prefs.edit().remove("p1_pet_birth_anchor").apply()
+                    resetPet(now)
+                }
+                invalidate()
+                return
+            }
+            when (screenMode) {
+                ScreenMode.MAIN -> selectedIcon = 0
+                ScreenMode.GAME -> {
+                    gameRound = 0
+                    gameWins = 0
+                    screenMode = ScreenMode.MAIN
+                }
+                else -> screenMode = ScreenMode.MAIN
+            }
+            invalidate()
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (event.actionMasked != MotionEvent.ACTION_UP) return true
+            val now = System.currentTimeMillis()
+            processElapsedTime(now)
+
+            val buttonY = height - dp(context, 27).toFloat()
+            val radius = dp(context, 22).toFloat()
+            val centers = floatArrayOf(width * 0.28f, width * 0.50f, width * 0.72f)
+            val dxA = event.x - centers[0]
+            val dxB = event.x - centers[1]
+            val dxC = event.x - centers[2]
+            val dy = event.y - buttonY
+
+            when {
+                dxA * dxA + dy * dy <= radius * radius -> handleA(now)
+                dxB * dxB + dy * dy <= radius * radius -> handleB(now)
+                dxC * dxC + dy * dy <= radius * radius -> handleC(now)
+            }
+            performClick()
+            return true
+        }
+
+        override fun performClick(): Boolean {
+            super.performClick()
+            return true
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val cx = width / 2f
-            val cy = height / 2f + bob
-            paint.style = Paint.Style.FILL
-            paint.color = Color.rgb(155, 235, 165)
-            canvas.drawOval(RectF(cx - dp(context, 38), cy - dp(context, 28),
-                cx + dp(context, 38), cy + dp(context, 28)), paint)
-            paint.color = Color.rgb(20, 45, 25)
-            if (!blink) {
-                canvas.drawRect(cx - dp(context, 18), cy - dp(context, 8),
-                    cx - dp(context, 12), cy - dp(context, 2), paint)
-                canvas.drawRect(cx + dp(context, 12), cy - dp(context, 8),
-                    cx + dp(context, 18), cy - dp(context, 2), paint)
+            ensureBirthAnchor()
+
+            val now = System.currentTimeMillis()
+            if (screenMode == ScreenMode.MESSAGE && now >= messageUntil) {
+                screenMode = if (character == Character.DEAD) ScreenMode.DEAD else ScreenMode.MAIN
             }
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.rgb(195, 190, 181)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = dp(context, 2).toFloat()
-            if (mood >= 3) {
-                canvas.drawArc(RectF(cx - dp(context, 16), cy,
-                    cx + dp(context, 16), cy + dp(context, 18)), 10f, 160f, false, paint)
+            paint.color = Color.WHITE
+            canvas.drawRect(dp(context, 2).toFloat(), dp(context, 2).toFloat(),
+                width - dp(context, 2).toFloat(), height - dp(context, 2).toFloat(), paint)
+            paint.color = Color.rgb(80, 80, 80)
+            canvas.drawRect(dp(context, 4).toFloat(), dp(context, 4).toFloat(),
+                width - dp(context, 4).toFloat(), height - dp(context, 4).toFloat(), paint)
+
+            val screenLeft = dp(context, 34).toFloat()
+            val screenTop = dp(context, 31).toFloat()
+            val screenRight = width - dp(context, 34).toFloat()
+            val screenBottom = height - dp(context, 74).toFloat()
+            val lcd = RectF(screenLeft, screenTop, screenRight, screenBottom)
+
+            paint.style = Paint.Style.FILL
+            paint.color = if (lightsOff && isAsleep(now)) {
+                Color.rgb(95, 104, 77)
             } else {
-                canvas.drawArc(RectF(cx - dp(context, 16), cy + dp(context, 9),
-                    cx + dp(context, 16), cy + dp(context, 23)), 190f, 160f, false, paint)
+                Color.rgb(170, 184, 133)
             }
+            canvas.drawRect(lcd, paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(context, 2).toFloat()
+            paint.color = Color.rgb(68, 68, 60)
+            canvas.drawRect(lcd, paint)
+
+            drawMenuIcons(canvas, lcd, now)
+            drawLcd(canvas, lcd, now)
+            drawButtons(canvas)
+        }
+
+        private fun drawMenuIcons(canvas: Canvas, lcd: RectF, now: Long) {
+            val labels = arrayOf("FOOD", "LITE", "GAME", "MED", "WASH", "STAT", "DISC", "CALL")
+            paint.typeface = Typeface.MONOSPACE
+            paint.textSize = dp(context, 7).toFloat()
+            paint.textAlign = Paint.Align.CENTER
+
+            for (i in labels.indices) {
+                val top = i < 4
+                val column = if (top) i else i - 4
+                val x = lcd.left + (column + 0.5f) * (lcd.width() / 4f)
+                val y = if (top) lcd.top - dp(context, 8) else lcd.bottom + dp(context, 13)
+
+                val active = if (i == 7) {
+                    attentionActive(now)
+                } else {
+                    screenMode == ScreenMode.MAIN && selectedIcon == i
+                }
+                paint.style = Paint.Style.FILL
+                paint.color = if (active) Color.rgb(0, 0, 0) else Color.rgb(75, 75, 70)
+                if (active) {
+                    canvas.drawRect(
+                        x - dp(context, 15),
+                        y - dp(context, 8),
+                        x + dp(context, 15),
+                        y + dp(context, 2),
+                        paint
+                    )
+                    paint.color = Color.rgb(220, 220, 210)
+                } else {
+                    paint.color = Color.rgb(25, 25, 25)
+                }
+                canvas.drawText(labels[i], x, y, paint)
+            }
+            paint.textAlign = Paint.Align.LEFT
+        }
+
+        private fun drawLcd(canvas: Canvas, lcd: RectF, now: Long) {
+            if (lightsOff && isAsleep(now)) {
+                drawCenteredLcdText(canvas, lcd, "LIGHTS OFF", "Z  Z  Z")
+                return
+            }
+
+            when (screenMode) {
+                ScreenMode.FEED -> drawCenteredLcdText(
+                    canvas, lcd,
+                    if (submenuChoice == 0) "> MEAL" else "  MEAL",
+                    if (submenuChoice == 1) "> SNACK" else "  SNACK"
+                )
+                ScreenMode.LIGHT -> drawCenteredLcdText(
+                    canvas, lcd,
+                    if (submenuChoice == 0) "> LIGHT ON" else "  LIGHT ON",
+                    if (submenuChoice == 1) "> LIGHT OFF" else "  LIGHT OFF"
+                )
+                ScreenMode.STATUS -> drawStatus(canvas, lcd, now)
+                ScreenMode.GAME -> drawCenteredLcdText(
+                    canvas, lcd,
+                    "ROUND ${min(5, gameRound + 1)}/5",
+                    gameLastResult
+                )
+                ScreenMode.MESSAGE -> drawCenteredLcdText(canvas, lcd, message, "")
+                ScreenMode.DEAD -> drawCenteredLcdText(canvas, lcd, "   *   *   ", "A+C  NEW EGG")
+                ScreenMode.MAIN -> drawMainPet(canvas, lcd, now)
+            }
+        }
+
+        private fun drawStatus(canvas: Canvas, lcd: RectF, now: Long) {
+            when (statusPage) {
+                0 -> drawCenteredLcdText(
+                    canvas, lcd,
+                    "AGE ${ageYears(now)}   WT ${weight}",
+                    character.label
+                )
+                1 -> drawCenteredLcdText(
+                    canvas, lcd,
+                    "DISCIPLINE",
+                    heartsText(discipline)
+                )
+                2 -> drawCenteredLcdText(
+                    canvas, lcd,
+                    "HUNGRY",
+                    heartsText(hungry)
+                )
+                else -> drawCenteredLcdText(
+                    canvas, lcd,
+                    "HAPPY",
+                    heartsText(happy)
+                )
+            }
+        }
+
+        private fun heartsText(value: Int): String {
+            val clamped = value.coerceIn(0, 4)
+            return buildString {
+                repeat(clamped) { append("<3 ") }
+                repeat(4 - clamped) { append("-- ") }
+            }.trim()
+        }
+
+        private fun drawCenteredLcdText(canvas: Canvas, lcd: RectF, line1: String, line2: String) {
+            lcdPaint.color = Color.rgb(24, 31, 18)
+            lcdPaint.textAlign = Paint.Align.CENTER
+            lcdPaint.typeface = Typeface.MONOSPACE
+            lcdPaint.textSize = dp(context, 11).toFloat()
+            canvas.drawText(
+                line1.take(22),
+                lcd.centerX(),
+                lcd.centerY() - dp(context, 5),
+                lcdPaint
+            )
+            if (line2.isNotEmpty()) {
+                canvas.drawText(
+                    line2.take(22),
+                    lcd.centerX(),
+                    lcd.centerY() + dp(context, 13),
+                    lcdPaint
+                )
+            }
+            lcdPaint.textAlign = Paint.Align.LEFT
+        }
+
+        private fun drawMainPet(canvas: Canvas, lcd: RectF, now: Long) {
+            if (character == Character.EGG) {
+                drawEgg(canvas, lcd)
+                val remain = max(
+                    0L,
+                    minutes(5) - (now - stageStartedAt)
+                )
+                drawTinyText(canvas, lcd, "HATCH ${(remain / 60_000L) + 1}m")
+                return
+            }
+
+            if (character == Character.DEAD) {
+                drawCenteredLcdText(canvas, lcd, "   *   *   ", "A+C  NEW EGG")
+                return
+            }
+
+            drawPetSprite(canvas, lcd)
+            drawPoops(canvas, lcd)
+            if (sick) drawSickMark(canvas, lcd)
+            if (isAsleep(now)) drawSleepMark(canvas, lcd)
+            if (misbehaving) drawTinyText(canvas, lcd, "HEY!")
+        }
+
+        private fun drawEgg(canvas: Canvas, lcd: RectF) {
+            val cell = min(lcd.width() / 32f, lcd.height() / 16f)
+            val cx = lcd.centerX()
+            val cy = lcd.centerY()
+            lcdPaint.color = Color.rgb(25, 32, 20)
+            val points = arrayOf(
+                -2 to -3, -1 to -4, 0 to -4, 1 to -4, 2 to -3,
+                -3 to -2, 3 to -2, -3 to -1, 3 to -1,
+                -3 to 0, 3 to 0, -2 to 1, 2 to 1,
+                -2 to 2, -1 to 3, 0 to 3, 1 to 3, 2 to 2
+            )
+            for ((x, y) in points) {
+                canvas.drawRect(
+                    cx + x * cell,
+                    cy + y * cell,
+                    cx + (x + 1) * cell,
+                    cy + (y + 1) * cell,
+                    lcdPaint
+                )
+            }
+        }
+
+        private fun drawPetSprite(canvas: Canvas, lcd: RectF) {
+            val cell = min(lcd.width() / 32f, lcd.height() / 16f)
+            val cx = lcd.centerX() + if (animationFrame) cell else -cell
+            val cy = lcd.centerY()
+            lcdPaint.color = Color.rgb(25, 32, 20)
+
+            val sprite = when (character) {
+                Character.BABY -> arrayOf(
+                    "  ###  ",
+                    " ##### ",
+                    "## # ##",
+                    "#######",
+                    " # # # ",
+                    "  ###  "
+                )
+                Character.CHILD -> arrayOf(
+                    "  ###  ",
+                    " ##### ",
+                    "## # ##",
+                    "#######",
+                    "# ### #",
+                    " ## ## ",
+                    "  # #  "
+                )
+                Character.TEEN_GOOD,
+                Character.TEEN_BAD -> arrayOf(
+                    " #   # ",
+                    " ##### ",
+                    "## # ##",
+                    "#######",
+                    " # # # ",
+                    "##   ##",
+                    " #   # "
+                )
+                Character.KUCHI_GOOD,
+                Character.KUCHI_BAD -> arrayOf(
+                    "  ###  ",
+                    " ##### ",
+                    "## # ##",
+                    "###  ##",
+                    " ######",
+                    "  ###  ",
+                    " #   # "
+                )
+                Character.MAMETCHI -> arrayOf(
+                    " #   # ",
+                    "##   ##",
+                    " ##### ",
+                    "## # ##",
+                    "#######",
+                    " # # # ",
+                    "##   ##"
+                )
+                Character.GINJI -> arrayOf(
+                    "  ###  ",
+                    "##   ##",
+                    "#######",
+                    "## # ##",
+                    "#######",
+                    " ## ## ",
+                    "#     #"
+                )
+                Character.MASK -> arrayOf(
+                    "##   ##",
+                    "#######",
+                    "# ### #",
+                    "## # ##",
+                    "#######",
+                    " # # # ",
+                    "#     #"
+                )
+                Character.KUCHIPATCHI -> arrayOf(
+                    "  ###  ",
+                    " ##### ",
+                    "## # ##",
+                    "###  ##",
+                    "##   ##",
+                    " ####  ",
+                    " #  #  "
+                )
+                Character.NYOROTCHI -> arrayOf(
+                    "   ##  ",
+                    "  #### ",
+                    " ## #  ",
+                    "  ###  ",
+                    "  ##   ",
+                    " ##    ",
+                    "##     "
+                )
+                Character.TARAKOTCHI -> arrayOf(
+                    " ##### ",
+                    "## # ##",
+                    "#######",
+                    "  ###  ",
+                    " ## ## ",
+                    "##   ##",
+                    " #   # "
+                )
+                Character.BILL -> arrayOf(
+                    " ##### ",
+                    "##   ##",
+                    "### ###",
+                    "## # ##",
+                    "#######",
+                    " ## ## ",
+                    "##   ##"
+                )
+                else -> arrayOf("###")
+            }
+
+            val rows = sprite.size
+            val cols = sprite.maxOf { it.length }
+            val startX = cx - cols * cell / 2f
+            val startY = cy - rows * cell / 2f
+            sprite.forEachIndexed { row, line ->
+                line.forEachIndexed { col, c ->
+                    if (c == '#') {
+                        canvas.drawRect(
+                            startX + col * cell,
+                            startY + row * cell,
+                            startX + (col + 1) * cell,
+                            startY + (row + 1) * cell,
+                            lcdPaint
+                        )
+                    }
+                }
+            }
+        }
+
+        private fun drawPoops(canvas: Canvas, lcd: RectF) {
+            if (poopCount <= 0) return
+            val cell = min(lcd.width() / 32f, lcd.height() / 16f)
+            lcdPaint.color = Color.rgb(25, 32, 20)
+            repeat(poopCount) { i ->
+                val x = lcd.right - cell * (4f + (i % 2) * 3f)
+                val y = lcd.bottom - cell * (3f + (i / 2) * 4f)
+                canvas.drawRect(x, y, x + cell * 2f, y + cell, lcdPaint)
+                canvas.drawRect(x + cell * 0.5f, y - cell, x + cell * 1.5f, y, lcdPaint)
+            }
+        }
+
+        private fun drawSickMark(canvas: Canvas, lcd: RectF) {
+            lcdPaint.color = Color.rgb(25, 32, 20)
+            lcdPaint.typeface = Typeface.MONOSPACE
+            lcdPaint.textSize = dp(context, 14).toFloat()
+            canvas.drawText("+", lcd.left + dp(context, 9), lcd.top + dp(context, 20), lcdPaint)
+        }
+
+        private fun drawSleepMark(canvas: Canvas, lcd: RectF) {
+            lcdPaint.color = Color.rgb(25, 32, 20)
+            lcdPaint.typeface = Typeface.MONOSPACE
+            lcdPaint.textSize = dp(context, 11).toFloat()
+            canvas.drawText("Zz", lcd.right - dp(context, 26), lcd.top + dp(context, 18), lcdPaint)
+        }
+
+        private fun drawTinyText(canvas: Canvas, lcd: RectF, text: String) {
+            lcdPaint.color = Color.rgb(25, 32, 20)
+            lcdPaint.typeface = Typeface.MONOSPACE
+            lcdPaint.textSize = dp(context, 8).toFloat()
+            lcdPaint.textAlign = Paint.Align.CENTER
+            canvas.drawText(text, lcd.centerX(), lcd.bottom - dp(context, 7), lcdPaint)
+            lcdPaint.textAlign = Paint.Align.LEFT
+        }
+
+        private fun drawButtons(canvas: Canvas) {
+            val y = height - dp(context, 27).toFloat()
+            val radius = dp(context, 15).toFloat()
+            val centers = floatArrayOf(width * 0.28f, width * 0.50f, width * 0.72f)
+            val labels = arrayOf("A", "B", "C")
+
+            paint.typeface = Typeface.DEFAULT_BOLD
+            paint.textSize = dp(context, 10).toFloat()
+            paint.textAlign = Paint.Align.CENTER
+
+            centers.forEachIndexed { index, x ->
+                paint.style = Paint.Style.FILL
+                paint.color = Color.rgb(128, 128, 128)
+                canvas.drawCircle(x + dp(context, 1), y + dp(context, 2), radius, paint)
+                paint.color = Color.rgb(220, 220, 215)
+                canvas.drawCircle(x, y, radius, paint)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = dp(context, 1).toFloat()
+                paint.color = Color.rgb(70, 70, 70)
+                canvas.drawCircle(x, y, radius, paint)
+                paint.style = Paint.Style.FILL
+                paint.color = Color.BLACK
+                canvas.drawText(labels[index], x, y + dp(context, 4), paint)
+            }
+            paint.textAlign = Paint.Align.LEFT
         }
     }
 
