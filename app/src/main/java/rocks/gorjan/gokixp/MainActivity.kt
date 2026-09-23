@@ -169,6 +169,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98PageIndicator: LinearLayout? = null
     private val win98PageIndicatorDots = mutableListOf<View>()
     private var win98CurrentPage = 1 // 0 = Quick Glance, 1 = desktop, 2 = Page 2
+    private var win98PagerDownX = 0f
+    private var win98PagerDownY = 0f
+    private var win98PagerDragging = false
+    private var win98PagerDragOriginPage = 1
+    private var win98PagerDragTargetPage = 1
+    private var win98PagerVelocityTracker: android.view.VelocityTracker? = null
     private var win98NewsLoading = false
     private var win98QuickHeaderTime: TextView? = null
     private var win98QuickCalendarValue: TextView? = null
@@ -1283,6 +1289,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val existing = win98PageIndicator
         if (existing != null && existing.parent === mainBackground) {
             updateWin98PageIndicator(win98CurrentPage)
+            mainBackground.post { prewarmWin98Pages() }
             return
         }
 
@@ -1292,21 +1299,21 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val indicator = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(7), dp(4), dp(7), dp(4))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(220, 211, 206, 199))
-                setStroke(dp(1), Color.rgb(96, 96, 96))
-                cornerRadius = dp(10).toFloat()
-            }
+            setPadding(0, dp(2), 0, dp(2))
+            background = null
             elevation = 24f
             contentDescription = "Home screen pages"
         }
 
-        fun dot(pageIndex: Int, description: String): View {
-            return View(this).apply {
+        listOf(
+            "Quick Glance" to 0,
+            "Desktop" to 1,
+            "Page 2" to 2
+        ).forEach { (label, pageIndex) ->
+            val tapTarget = android.widget.FrameLayout(this).apply {
                 isClickable = true
                 isFocusable = true
-                contentDescription = description
+                contentDescription = label
                 setOnClickListener {
                     when (pageIndex) {
                         0 -> showWin98QuickPage()
@@ -1315,49 +1322,76 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     }
                 }
             }
-        }
-
-        listOf(
-            "Quick Glance" to 0,
-            "Desktop" to 1,
-            "Page 2" to 2
-        ).forEachIndexed { index, (label, pageIndex) ->
-            val item = dot(pageIndex, label)
-            indicator.addView(
-                item,
-                LinearLayout.LayoutParams(dp(18), dp(7)).apply {
-                    if (index > 0) marginStart = dp(5)
-                }
+            val dot = View(this)
+            tapTarget.addView(
+                dot,
+                android.widget.FrameLayout.LayoutParams(dp(6), dp(6), Gravity.CENTER)
             )
-            win98PageIndicatorDots.add(item)
+            indicator.addView(
+                tapTarget,
+                LinearLayout.LayoutParams(dp(22), dp(18))
+            )
+            win98PageIndicatorDots.add(dot)
         }
 
-        indicator.layoutParams = RelativeLayout.LayoutParams(dp(82), dp(24)).apply {
+        indicator.layoutParams = RelativeLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            dp(18)
+        ).apply {
             addRule(RelativeLayout.CENTER_HORIZONTAL)
             addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
-            bottomMargin = dp(76)
+            bottomMargin = dp(79)
         }
 
         mainBackground.addView(indicator)
         win98PageIndicator = indicator
         updateWin98PageIndicator(win98CurrentPage)
+
+        // Build both neighboring pages after the first frame. Keeping them measured and
+        // resident removes the first-swipe hitch without doing any background network work.
+        mainBackground.post { prewarmWin98Pages() }
     }
 
     private fun updateWin98PageIndicator(page: Int) {
         win98CurrentPage = page.coerceIn(0, 2)
         win98PageIndicatorDots.forEachIndexed { index, view ->
             view.background = GradientDrawable().apply {
-                if (index == win98CurrentPage) {
-                    setColor(Color.rgb(0, 0, 128))
-                    setStroke(dp(1), Color.WHITE)
-                } else {
-                    setColor(Color.rgb(128, 128, 128))
-                    setStroke(dp(1), Color.rgb(64, 64, 64))
-                }
-                cornerRadius = dp(4).toFloat()
+                shape = GradientDrawable.OVAL
+                setColor(
+                    if (index == win98CurrentPage) {
+                        Color.rgb(0, 0, 128)
+                    } else {
+                        Color.rgb(96, 96, 96)
+                    }
+                )
             }
-            view.alpha = if (index == win98CurrentPage) 1f else 0.72f
+            val selected = index == win98CurrentPage
+            view.alpha = if (selected) 1f else 0.62f
+            view.scaleX = if (selected) 1.18f else 1f
+            view.scaleY = if (selected) 1.18f else 1f
         }
+    }
+
+    private fun prewarmWin98Pages() {
+        if (!themeManager.isClassicTheme()) return
+        if (win98QuickPage == null) buildWin98QuickPage()
+        if (win98SecondPage == null) buildWin98SecondPage()
+    }
+
+    private fun prepareWin98QuickPageSnapshot() {
+        win98QuickHeaderTime?.text = SimpleDateFormat(
+            "EEE, MMM d  ·  h:mm a",
+            Locale.getDefault()
+        ).format(Date())
+        win98QuickCalendarValue?.text =
+            SimpleDateFormat("MMM d", Locale.getDefault()).format(Date())
+        win98QuickBatteryValue?.text = "${getBatteryPercent()}%"
+    }
+
+    private fun refreshWin98QuickPageNews() {
+        val stories = win98QuickStoryContainer ?: return
+        val refresh = win98QuickRefreshButton ?: return
+        refreshWin98News(stories, refresh)
     }
 
     private fun showWin98DesktopPage() {
@@ -1368,6 +1402,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             win98SecondPage?.visibility == View.VISIBLE -> hideWin98SecondPage()
             else -> {
                 desktopContainer.visibility = View.VISIBLE
+                desktopContainer.translationX = 0f
                 restoreWin98MusicWidgetIfDesktopVisible()
                 updateWin98PageIndicator(1)
             }
@@ -4335,24 +4370,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         Log.d("MainActivity", "✅ Swipe up detected, opening start menu with search focus")
                         showStartMenuWithSearch()
                         return true
-                    } else if (
-                        isSwipeRight &&
-                        isMinimumDistanceX &&
-                        isMinimumVelocityX &&
-                        themeManager.isClassicTheme()
-                    ) {
-                        Log.d("MainActivity", "Swipe right detected: opening WINSUNG 98 Quick Glance")
-                        showWin98QuickPage()
-                        return true
-                    } else if (
-                        isSwipeLeft &&
-                        isMinimumDistanceX &&
-                        isMinimumVelocityX &&
-                        themeManager.isClassicTheme()
-                    ) {
-                        Log.d("MainActivity", "Swipe left detected: opening WINSUNG 98 Page 2")
-                        showWin98SecondPage()
-                        return true
                     }
                 }
                 return false
@@ -4394,7 +4411,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
             }
             
-            gestureDetector.onTouchEvent(event)
+            val pagerConsumed = handleWin98DesktopPagerTouch(event)
+            if (!pagerConsumed) {
+                gestureDetector.onTouchEvent(event)
+            }
             true // Consume the event
         }
         
@@ -11638,28 +11658,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun showWin98QuickPage() {
         if (!themeManager.isClassicTheme()) return
         hideStartMenu()
-        win98MusicWidget?.visibility = View.GONE
+        prewarmWin98Pages()
         if (win98SecondPage?.visibility == View.VISIBLE) {
             hideWin98SecondPage(immediate = true)
         }
 
         val page = win98QuickPage ?: buildWin98QuickPage()
-        win98QuickHeaderTime?.text = SimpleDateFormat(
-            "EEE, MMM d  ·  h:mm a",
-            Locale.getDefault()
-        ).format(Date())
-        win98QuickCalendarValue?.text =
-            SimpleDateFormat("MMM d", Locale.getDefault()).format(Date())
-        win98QuickBatteryValue?.text = "${getBatteryPercent()}%"
-
+        prepareWin98QuickPageSnapshot()
+        refreshWin98QuickPageNews()
         updateWin98PageIndicator(0)
-        animateWin98PageIn(page, fromLeft = true) {
-            val stories = win98QuickStoryContainer
-            val refresh = win98QuickRefreshButton
-            if (stories != null && refresh != null) {
-                refreshWin98News(stories, refresh)
-            }
-        }
+        animateWin98PageIn(page, fromLeft = true)
     }
 
     private fun buildWin98QuickPage(): View {
@@ -11669,7 +11677,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             setBackgroundColor(Color.parseColor("#D6D2CB"))
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            visibility = View.GONE
+            visibility = View.INVISIBLE
             elevation = 12f
             layoutParams = RelativeLayout.LayoutParams(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
@@ -11845,35 +11853,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        val pageGesture = GestureDetectorCompat(
-            this,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(e: MotionEvent): Boolean = true
-
-                override fun onFling(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float
-                ): Boolean {
-                    if (e1 == null) return false
-                    val deltaX = e2.x - e1.x
-                    val deltaY = e2.y - e1.y
-                    if (
-                        deltaX < -dp(70) &&
-                        abs(deltaX) > abs(deltaY) &&
-                        abs(velocityX) > 250
-                    ) {
-                        hideWin98QuickPage()
-                        return true
-                    }
-                    return false
-                }
-            }
-        )
         scroll.setOnTouchListener { _, event ->
-            pageGesture.onTouchEvent(event)
-            false
+            handleWin98SidePagerTouch(0, scroll, event)
         }
 
         mainBackground.addView(scroll)
@@ -11884,14 +11865,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun showWin98SecondPage() {
         if (!themeManager.isClassicTheme()) return
         hideStartMenu()
-        win98MusicWidget?.visibility = View.GONE
+        prewarmWin98Pages()
         if (win98QuickPage?.visibility == View.VISIBLE) {
             hideWin98QuickPage(immediate = true)
         }
 
         val page = win98SecondPage ?: buildWin98SecondPage()
-        populateWin98SecondPageSlots()
-        desktopContainer.visibility = View.INVISIBLE
         updateWin98PageIndicator(2)
         animateWin98PageIn(page, fromLeft = false)
     }
@@ -11902,7 +11881,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(14), dp(18), dp(18))
             setBackgroundColor(Color.TRANSPARENT)
-            visibility = View.GONE
+            visibility = View.INVISIBLE
+            isClickable = true
             elevation = 11f
             layoutParams = RelativeLayout.LayoutParams(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
@@ -11948,35 +11928,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        val pageGesture = GestureDetectorCompat(
-            this,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(e: MotionEvent): Boolean = true
-
-                override fun onFling(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float
-                ): Boolean {
-                    if (e1 == null) return false
-                    val deltaX = e2.x - e1.x
-                    val deltaY = e2.y - e1.y
-                    if (
-                        deltaX > dp(70) &&
-                        abs(deltaX) > abs(deltaY) &&
-                        abs(velocityX) > 250
-                    ) {
-                        hideWin98SecondPage()
-                        return true
-                    }
-                    return false
-                }
-            }
-        )
         page.setOnTouchListener { _, event ->
-            pageGesture.onTouchEvent(event)
-            true
+            handleWin98SidePagerTouch(2, page, event)
         }
 
         mainBackground.addView(page)
@@ -12068,31 +12021,439 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
+    private fun win98PagerWidth(): Float {
+        val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
+        return (if (mainBackground.width > 0) {
+            mainBackground.width
+        } else {
+            resources.displayMetrics.widthPixels
+        }).toFloat()
+    }
+
+    private fun beginWin98PagerTouch(event: MotionEvent, originPage: Int) {
+        win98PagerVelocityTracker?.recycle()
+        win98PagerVelocityTracker = android.view.VelocityTracker.obtain().also {
+            it.addMovement(event)
+        }
+        win98PagerDownX = event.x
+        win98PagerDownY = event.y
+        win98PagerDragging = false
+        win98PagerDragOriginPage = originPage
+        win98PagerDragTargetPage = originPage
+    }
+
+    private fun resetWin98PagerTouch() {
+        win98PagerVelocityTracker?.recycle()
+        win98PagerVelocityTracker = null
+        win98PagerDragging = false
+        win98PagerDragOriginPage = win98CurrentPage
+        win98PagerDragTargetPage = win98CurrentPage
+    }
+
+    private fun cancelLegacyGestureDetector(event: MotionEvent) {
+        val cancelEvent = MotionEvent.obtain(event)
+        cancelEvent.action = MotionEvent.ACTION_CANCEL
+        gestureDetector.onTouchEvent(cancelEvent)
+        cancelEvent.recycle()
+    }
+
+    private fun handleWin98DesktopPagerTouch(event: MotionEvent): Boolean {
+        if (!themeManager.isClassicTheme() || win98CurrentPage != 1) return false
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                beginWin98PagerTouch(event, 1)
+                return false
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                win98PagerVelocityTracker?.addMovement(event)
+                val dx = event.x - win98PagerDownX
+                val dy = event.y - win98PagerDownY
+
+                if (!win98PagerDragging) {
+                    if (abs(dx) < dp(10) || abs(dx) <= abs(dy) * 1.12f) {
+                        return false
+                    }
+
+                    prewarmWin98Pages()
+                    val targetPage = if (dx > 0f) 0 else 2
+                    val page = if (targetPage == 0) win98QuickPage else win98SecondPage
+                        ?: return false
+
+                    win98PagerDragging = true
+                    win98PagerDragOriginPage = 1
+                    win98PagerDragTargetPage = targetPage
+                    cancelLegacyGestureDetector(event)
+
+                    page.animate().cancel()
+                    desktopContainer.animate().cancel()
+                    win98MusicWidget?.animate()?.cancel()
+
+                    if (targetPage == 0) prepareWin98QuickPageSnapshot()
+
+                    val width = win98PagerWidth()
+                    page.translationX = if (targetPage == 0) -width else width
+                    page.alpha = 1f
+                    page.visibility = View.VISIBLE
+
+                    desktopContainer.visibility = View.VISIBLE
+                    desktopContainer.translationX = 0f
+                    win98MusicWidget?.apply {
+                        visibility = View.VISIBLE
+                        translationX = 0f
+                    }
+                }
+
+                if (win98PagerDragging && win98PagerDragOriginPage == 1) {
+                    val width = win98PagerWidth()
+                    val dragX = if (win98PagerDragTargetPage == 0) {
+                        dx.coerceIn(0f, width)
+                    } else {
+                        dx.coerceIn(-width, 0f)
+                    }
+                    val page = if (win98PagerDragTargetPage == 0) {
+                        win98QuickPage
+                    } else {
+                        win98SecondPage
+                    } ?: return true
+
+                    page.translationX =
+                        (if (win98PagerDragTargetPage == 0) -width else width) + dragX
+                    desktopContainer.translationX = dragX
+                    win98MusicWidget?.translationX = dragX
+                    return true
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                win98PagerVelocityTracker?.addMovement(event)
+                if (win98PagerDragging && win98PagerDragOriginPage == 1) {
+                    win98PagerVelocityTracker?.computeCurrentVelocity(1000)
+                    val velocityX = win98PagerVelocityTracker?.xVelocity ?: 0f
+                    val width = win98PagerWidth()
+                    val rawDx = event.x - win98PagerDownX
+                    val dragX = if (win98PagerDragTargetPage == 0) {
+                        rawDx.coerceIn(0f, width)
+                    } else {
+                        rawDx.coerceIn(-width, 0f)
+                    }
+                    val progress = abs(dragX) / width.coerceAtLeast(1f)
+                    val directionalFling = if (win98PagerDragTargetPage == 0) {
+                        velocityX > 650f
+                    } else {
+                        velocityX < -650f
+                    }
+                    val commit = event.actionMasked == MotionEvent.ACTION_UP &&
+                        (progress >= 0.24f || directionalFling)
+                    val targetPage = win98PagerDragTargetPage
+                    val page = if (targetPage == 0) win98QuickPage else win98SecondPage
+
+                    if (page != null) {
+                        settleWin98DesktopPagerDrag(targetPage, page, commit)
+                    }
+                    resetWin98PagerTouch()
+                    return true
+                }
+                resetWin98PagerTouch()
+            }
+        }
+        return false
+    }
+
+    private fun settleWin98DesktopPagerDrag(
+        targetPage: Int,
+        page: View,
+        commit: Boolean
+    ) {
+        val width = win98PagerWidth()
+        val interpolator = android.view.animation.PathInterpolator(0.18f, 0f, 0f, 1f)
+        page.animate().cancel()
+        desktopContainer.animate().cancel()
+        win98MusicWidget?.animate()?.cancel()
+
+        if (commit) {
+            if (targetPage == 0) {
+                prepareWin98QuickPageSnapshot()
+                refreshWin98QuickPageNews()
+            }
+            updateWin98PageIndicator(targetPage)
+            val desktopEnd = if (targetPage == 0) width else -width
+
+            page.animate()
+                .translationX(0f)
+                .setDuration(150L)
+                .setInterpolator(interpolator)
+                .withEndAction {
+                    desktopContainer.visibility = View.INVISIBLE
+                    desktopContainer.translationX = 0f
+                    win98MusicWidget?.apply {
+                        visibility = View.GONE
+                        translationX = 0f
+                    }
+                    page.translationX = 0f
+                }
+                .start()
+
+            desktopContainer.animate()
+                .translationX(desktopEnd)
+                .setDuration(150L)
+                .setInterpolator(interpolator)
+                .start()
+            win98MusicWidget?.animate()
+                ?.translationX(desktopEnd)
+                ?.setDuration(150L)
+                ?.setInterpolator(interpolator)
+                ?.start()
+        } else {
+            val pageEnd = if (targetPage == 0) -width else width
+            updateWin98PageIndicator(1)
+
+            page.animate()
+                .translationX(pageEnd)
+                .setDuration(135L)
+                .setInterpolator(interpolator)
+                .withEndAction {
+                    page.visibility = View.INVISIBLE
+                    page.translationX = 0f
+                }
+                .start()
+            desktopContainer.animate()
+                .translationX(0f)
+                .setDuration(135L)
+                .setInterpolator(interpolator)
+                .start()
+            win98MusicWidget?.animate()
+                ?.translationX(0f)
+                ?.setDuration(135L)
+                ?.setInterpolator(interpolator)
+                ?.start()
+        }
+    }
+
+    private fun handleWin98SidePagerTouch(
+        pageIndex: Int,
+        page: View,
+        event: MotionEvent
+    ): Boolean {
+        if (
+            !themeManager.isClassicTheme() ||
+            win98CurrentPage != pageIndex ||
+            page.visibility != View.VISIBLE
+        ) {
+            return false
+        }
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                beginWin98PagerTouch(event, pageIndex)
+                return false
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                win98PagerVelocityTracker?.addMovement(event)
+                val dx = event.x - win98PagerDownX
+                val dy = event.y - win98PagerDownY
+                val directionIsTowardDesktop =
+                    (pageIndex == 0 && dx < 0f) || (pageIndex == 2 && dx > 0f)
+
+                if (!win98PagerDragging) {
+                    if (
+                        !directionIsTowardDesktop ||
+                        abs(dx) < dp(10) ||
+                        abs(dx) <= abs(dy) * 1.12f
+                    ) {
+                        return false
+                    }
+
+                    win98PagerDragging = true
+                    win98PagerDragOriginPage = pageIndex
+                    win98PagerDragTargetPage = 1
+
+                    page.animate().cancel()
+                    desktopContainer.animate().cancel()
+                    win98MusicWidget?.animate()?.cancel()
+
+                    val width = win98PagerWidth()
+                    val desktopStart = if (pageIndex == 0) width else -width
+                    desktopContainer.visibility = View.VISIBLE
+                    desktopContainer.translationX = desktopStart
+                    win98MusicWidget?.apply {
+                        visibility = View.VISIBLE
+                        translationX = desktopStart
+                    }
+                }
+
+                if (win98PagerDragging && win98PagerDragOriginPage == pageIndex) {
+                    val width = win98PagerWidth()
+                    val dragX = if (pageIndex == 0) {
+                        dx.coerceIn(-width, 0f)
+                    } else {
+                        dx.coerceIn(0f, width)
+                    }
+                    val desktopStart = if (pageIndex == 0) width else -width
+
+                    page.translationX = dragX
+                    desktopContainer.translationX = desktopStart + dragX
+                    win98MusicWidget?.translationX = desktopStart + dragX
+                    return true
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                win98PagerVelocityTracker?.addMovement(event)
+                if (win98PagerDragging && win98PagerDragOriginPage == pageIndex) {
+                    win98PagerVelocityTracker?.computeCurrentVelocity(1000)
+                    val velocityX = win98PagerVelocityTracker?.xVelocity ?: 0f
+                    val width = win98PagerWidth()
+                    val rawDx = event.x - win98PagerDownX
+                    val dragX = if (pageIndex == 0) {
+                        rawDx.coerceIn(-width, 0f)
+                    } else {
+                        rawDx.coerceIn(0f, width)
+                    }
+                    val progress = abs(dragX) / width.coerceAtLeast(1f)
+                    val directionalFling = if (pageIndex == 0) {
+                        velocityX < -650f
+                    } else {
+                        velocityX > 650f
+                    }
+                    val commit = event.actionMasked == MotionEvent.ACTION_UP &&
+                        (progress >= 0.24f || directionalFling)
+
+                    settleWin98SidePagerDrag(pageIndex, page, commit)
+                    resetWin98PagerTouch()
+                    return true
+                }
+                resetWin98PagerTouch()
+            }
+        }
+        return false
+    }
+
+    private fun settleWin98SidePagerDrag(
+        pageIndex: Int,
+        page: View,
+        commit: Boolean
+    ) {
+        val width = win98PagerWidth()
+        val interpolator = android.view.animation.PathInterpolator(0.18f, 0f, 0f, 1f)
+        val desktopStart = if (pageIndex == 0) width else -width
+        page.animate().cancel()
+        desktopContainer.animate().cancel()
+        win98MusicWidget?.animate()?.cancel()
+
+        if (commit) {
+            val pageEnd = if (pageIndex == 0) -width else width
+            updateWin98PageIndicator(1)
+
+            page.animate()
+                .translationX(pageEnd)
+                .setDuration(150L)
+                .setInterpolator(interpolator)
+                .withEndAction {
+                    page.visibility = View.INVISIBLE
+                    page.translationX = 0f
+                    desktopContainer.visibility = View.VISIBLE
+                    desktopContainer.translationX = 0f
+                    win98MusicWidget?.apply {
+                        visibility = View.VISIBLE
+                        translationX = 0f
+                    }
+                }
+                .start()
+            desktopContainer.animate()
+                .translationX(0f)
+                .setDuration(150L)
+                .setInterpolator(interpolator)
+                .start()
+            win98MusicWidget?.animate()
+                ?.translationX(0f)
+                ?.setDuration(150L)
+                ?.setInterpolator(interpolator)
+                ?.start()
+        } else {
+            updateWin98PageIndicator(pageIndex)
+
+            page.animate()
+                .translationX(0f)
+                .setDuration(135L)
+                .setInterpolator(interpolator)
+                .withEndAction {
+                    desktopContainer.visibility = View.INVISIBLE
+                    desktopContainer.translationX = 0f
+                    win98MusicWidget?.apply {
+                        visibility = View.GONE
+                        translationX = 0f
+                    }
+                }
+                .start()
+            desktopContainer.animate()
+                .translationX(desktopStart)
+                .setDuration(135L)
+                .setInterpolator(interpolator)
+                .start()
+            win98MusicWidget?.animate()
+                ?.translationX(desktopStart)
+                ?.setDuration(135L)
+                ?.setInterpolator(interpolator)
+                ?.start()
+        }
+    }
+
     private fun animateWin98PageIn(
         page: View,
         fromLeft: Boolean,
         onFinished: (() -> Unit)? = null
     ) {
         page.animate().cancel()
-        val width = if (page.width > 0) {
-            page.width.toFloat()
-        } else {
-            resources.displayMetrics.widthPixels.toFloat()
-        }
+        desktopContainer.animate().cancel()
+        win98MusicWidget?.animate()?.cancel()
+
+        val width = win98PagerWidth()
+        val centerEnd = if (fromLeft) width else -width
+        val interpolator = android.view.animation.PathInterpolator(0.18f, 0f, 0f, 1f)
+
         page.translationX = if (fromLeft) -width else width
-        page.alpha = 0.96f
+        page.alpha = 1f
         page.visibility = View.VISIBLE
         page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
+        desktopContainer.visibility = View.VISIBLE
+        desktopContainer.translationX = 0f
+        desktopContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        win98MusicWidget?.apply {
+            visibility = View.VISIBLE
+            translationX = 0f
+        }
+
         page.animate()
             .translationX(0f)
-            .alpha(1f)
-            .setDuration(245L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.18f, 0f, 0f, 1f))
+            .setDuration(175L)
+            .setInterpolator(interpolator)
             .withEndAction {
                 page.setLayerType(View.LAYER_TYPE_NONE, null)
+                desktopContainer.setLayerType(View.LAYER_TYPE_NONE, null)
+                desktopContainer.visibility = View.INVISIBLE
+                desktopContainer.translationX = 0f
+                win98MusicWidget?.apply {
+                    visibility = View.GONE
+                    translationX = 0f
+                }
                 onFinished?.invoke()
             }
             .start()
+
+        desktopContainer.animate()
+            .translationX(centerEnd)
+            .setDuration(175L)
+            .setInterpolator(interpolator)
+            .start()
+        win98MusicWidget?.animate()
+            ?.translationX(centerEnd)
+            ?.setDuration(175L)
+            ?.setInterpolator(interpolator)
+            ?.start()
     }
 
     private fun hideWin98QuickPage(immediate: Boolean = false) {
@@ -12103,15 +12464,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
         if (immediate) {
             page.animate().cancel()
-            page.visibility = View.GONE
+            page.visibility = View.INVISIBLE
             page.translationX = 0f
+            desktopContainer.visibility = View.VISIBLE
+            desktopContainer.translationX = 0f
             updateWin98PageIndicator(1)
             restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
         animateWin98PageOut(page, toLeft = true) {
             updateWin98PageIndicator(1)
-            restoreWin98MusicWidgetIfDesktopVisible()
         }
     }
 
@@ -12119,22 +12481,22 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val page = win98SecondPage ?: return
         if (page.visibility != View.VISIBLE) {
             desktopContainer.visibility = View.VISIBLE
+            desktopContainer.translationX = 0f
             restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
         if (immediate) {
             page.animate().cancel()
-            page.visibility = View.GONE
+            page.visibility = View.INVISIBLE
             page.translationX = 0f
             desktopContainer.visibility = View.VISIBLE
+            desktopContainer.translationX = 0f
             updateWin98PageIndicator(1)
             restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
         animateWin98PageOut(page, toLeft = false) {
-            desktopContainer.visibility = View.VISIBLE
             updateWin98PageIndicator(1)
-            restoreWin98MusicWidgetIfDesktopVisible()
         }
     }
 
@@ -12142,7 +12504,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val quickVisible = win98QuickPage?.visibility == View.VISIBLE
         val secondVisible = win98SecondPage?.visibility == View.VISIBLE
         if (!quickVisible && !secondVisible && themeManager.isClassicTheme()) {
-            win98MusicWidget?.visibility = View.VISIBLE
+            win98MusicWidget?.apply {
+                visibility = View.VISIBLE
+                translationX = 0f
+            }
         }
     }
 
@@ -12152,25 +12517,53 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         onFinished: (() -> Unit)? = null
     ) {
         page.animate().cancel()
-        val width = if (page.width > 0) {
-            page.width.toFloat()
-        } else {
-            resources.displayMetrics.widthPixels.toFloat()
-        }
+        desktopContainer.animate().cancel()
+        win98MusicWidget?.animate()?.cancel()
+
+        val width = win98PagerWidth()
+        val centerStart = if (toLeft) width else -width
+        val pageEnd = if (toLeft) -width else width
+        val interpolator = android.view.animation.PathInterpolator(0.18f, 0f, 0f, 1f)
+
         page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        desktopContainer.visibility = View.VISIBLE
+        desktopContainer.translationX = centerStart
+        desktopContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        win98MusicWidget?.apply {
+            visibility = View.VISIBLE
+            translationX = centerStart
+        }
+
         page.animate()
-            .translationX(if (toLeft) -width else width)
-            .alpha(0.97f)
-            .setDuration(220L)
-            .setInterpolator(android.view.animation.PathInterpolator(0.22f, 0f, 0f, 1f))
+            .translationX(pageEnd)
+            .setDuration(170L)
+            .setInterpolator(interpolator)
             .withEndAction {
-                page.visibility = View.GONE
+                page.visibility = View.INVISIBLE
                 page.translationX = 0f
                 page.alpha = 1f
                 page.setLayerType(View.LAYER_TYPE_NONE, null)
+                desktopContainer.visibility = View.VISIBLE
+                desktopContainer.translationX = 0f
+                desktopContainer.setLayerType(View.LAYER_TYPE_NONE, null)
+                win98MusicWidget?.apply {
+                    visibility = View.VISIBLE
+                    translationX = 0f
+                }
                 onFinished?.invoke()
             }
             .start()
+
+        desktopContainer.animate()
+            .translationX(0f)
+            .setDuration(170L)
+            .setInterpolator(interpolator)
+            .start()
+        win98MusicWidget?.animate()
+            ?.translationX(0f)
+            ?.setDuration(170L)
+            ?.setInterpolator(interpolator)
+            ?.start()
     }
 
     private fun addCompactGlanceTile(
