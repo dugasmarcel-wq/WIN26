@@ -12030,6 +12030,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }).toFloat()
     }
 
+    private fun snapWin98PagerPixel(value: Float): Float = kotlin.math.round(value)
+
     private fun beginWin98PagerTouch(event: MotionEvent, originPage: Int) {
         win98PagerVelocityTracker?.recycle()
         win98PagerVelocityTracker = android.view.VelocityTracker.obtain().also {
@@ -12094,7 +12096,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     if (targetPage == 0) prepareWin98QuickPageSnapshot()
 
                     val width = win98PagerWidth()
-                    page.translationX = if (targetPage == 0) -width else width
+                    page.translationX =
+                        snapWin98PagerPixel(if (targetPage == 0) -width else width)
                     page.alpha = 1f
                     page.visibility = View.VISIBLE
 
@@ -12102,7 +12105,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     desktopContainer.translationX = 0f
                     win98MusicWidget?.apply {
                         visibility = View.VISIBLE
-                        translationX = 0f
+                        setPagerOffsetX(0f)
                     }
                 }
 
@@ -12119,10 +12122,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         win98SecondPage
                     } ?: return true
 
-                    page.translationX =
-                        (if (win98PagerDragTargetPage == 0) -width else width) + dragX
-                    desktopContainer.translationX = dragX
-                    win98MusicWidget?.translationX = dragX
+                    val snappedDragX = snapWin98PagerPixel(dragX)
+                    page.translationX = snapWin98PagerPixel(
+                        (if (win98PagerDragTargetPage == 0) -width else width) + snappedDragX
+                    )
+                    desktopContainer.translationX = snappedDragX
+                    win98MusicWidget?.setPagerOffsetX(snappedDragX)
                     return true
                 }
             }
@@ -12190,7 +12195,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     desktopContainer.translationX = 0f
                     win98MusicWidget?.apply {
                         visibility = View.GONE
-                        translationX = 0f
+                        setPagerOffsetX(0f)
                     }
                     page.translationX = 0f
                 }
@@ -12201,11 +12206,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 .setDuration(150L)
                 .setInterpolator(interpolator)
                 .start()
-            win98MusicWidget?.animate()
-                ?.translationX(desktopEnd)
-                ?.setDuration(150L)
-                ?.setInterpolator(interpolator)
-                ?.start()
+            win98MusicWidget?.animatePagerOffsetX(desktopEnd, 150L, interpolator)
         } else {
             val pageEnd = if (targetPage == 0) -width else width
             updateWin98PageIndicator(1)
@@ -12224,11 +12225,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 .setDuration(135L)
                 .setInterpolator(interpolator)
                 .start()
-            win98MusicWidget?.animate()
-                ?.translationX(0f)
-                ?.setDuration(135L)
-                ?.setInterpolator(interpolator)
-                ?.start()
+            win98MusicWidget?.animatePagerOffsetX(0f, 135L, interpolator)
         }
     }
 
@@ -12281,7 +12278,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     desktopContainer.translationX = desktopStart
                     win98MusicWidget?.apply {
                         visibility = View.VISIBLE
-                        translationX = desktopStart
+                        setPagerOffsetX(desktopStart)
                     }
                 }
 
@@ -12294,9 +12291,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     }
                     val desktopStart = if (pageIndex == 0) width else -width
 
-                    page.translationX = dragX
-                    desktopContainer.translationX = desktopStart + dragX
-                    win98MusicWidget?.translationX = desktopStart + dragX
+                    val snappedDragX = snapWin98PagerPixel(dragX)
+                    page.translationX = snappedDragX
+                    desktopContainer.translationX =
+                        snapWin98PagerPixel(desktopStart + snappedDragX)
+                    win98MusicWidget?.setPagerOffsetX(
+                        snapWin98PagerPixel(desktopStart + snappedDragX)
+                    )
                     return true
                 }
             }
@@ -12359,7 +12360,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     desktopContainer.translationX = 0f
                     win98MusicWidget?.apply {
                         visibility = View.VISIBLE
-                        translationX = 0f
+                        setPagerOffsetX(0f)
                     }
                 }
                 .start()
@@ -12368,11 +12369,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 .setDuration(150L)
                 .setInterpolator(interpolator)
                 .start()
-            win98MusicWidget?.animate()
-                ?.translationX(0f)
-                ?.setDuration(150L)
-                ?.setInterpolator(interpolator)
-                ?.start()
+            win98MusicWidget?.animatePagerOffsetX(0f, 150L, interpolator)
         } else {
             updateWin98PageIndicator(pageIndex)
 
@@ -12385,7 +12382,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     desktopContainer.translationX = 0f
                     win98MusicWidget?.apply {
                         visibility = View.GONE
-                        translationX = 0f
+                        setPagerOffsetX(0f)
                     }
                 }
                 .start()
@@ -12394,11 +12391,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 .setDuration(135L)
                 .setInterpolator(interpolator)
                 .start()
-            win98MusicWidget?.animate()
-                ?.translationX(desktopStart)
-                ?.setDuration(135L)
-                ?.setInterpolator(interpolator)
-                ?.start()
+            win98MusicWidget?.animatePagerOffsetX(desktopStart, 135L, interpolator)
         }
     }
 
@@ -12418,14 +12411,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         page.translationX = if (fromLeft) -width else width
         page.alpha = 1f
         page.visibility = View.VISIBLE
-        page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-
         desktopContainer.visibility = View.VISIBLE
         desktopContainer.translationX = 0f
-        desktopContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         win98MusicWidget?.apply {
             visibility = View.VISIBLE
-            translationX = 0f
+            setPagerOffsetX(0f)
         }
 
         page.animate()
@@ -12433,13 +12423,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             .setDuration(175L)
             .setInterpolator(interpolator)
             .withEndAction {
-                page.setLayerType(View.LAYER_TYPE_NONE, null)
-                desktopContainer.setLayerType(View.LAYER_TYPE_NONE, null)
                 desktopContainer.visibility = View.INVISIBLE
                 desktopContainer.translationX = 0f
                 win98MusicWidget?.apply {
                     visibility = View.GONE
-                    translationX = 0f
+                    setPagerOffsetX(0f)
                 }
                 onFinished?.invoke()
             }
@@ -12450,11 +12438,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             .setDuration(175L)
             .setInterpolator(interpolator)
             .start()
-        win98MusicWidget?.animate()
-            ?.translationX(centerEnd)
-            ?.setDuration(175L)
-            ?.setInterpolator(interpolator)
-            ?.start()
+        win98MusicWidget?.animatePagerOffsetX(centerEnd, 175L, interpolator)
     }
 
     private fun hideWin98QuickPage(immediate: Boolean = false) {
@@ -12507,7 +12491,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (!quickVisible && !secondVisible && themeManager.isClassicTheme()) {
             win98MusicWidget?.apply {
                 visibility = View.VISIBLE
-                translationX = 0f
+                setPagerOffsetX(0f)
             }
         }
     }
@@ -12526,13 +12510,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val pageEnd = if (toLeft) -width else width
         val interpolator = android.view.animation.PathInterpolator(0.18f, 0f, 0f, 1f)
 
-        page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         desktopContainer.visibility = View.VISIBLE
         desktopContainer.translationX = centerStart
-        desktopContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         win98MusicWidget?.apply {
             visibility = View.VISIBLE
-            translationX = centerStart
+            setPagerOffsetX(centerStart)
         }
 
         page.animate()
@@ -12543,13 +12525,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 page.visibility = View.INVISIBLE
                 page.translationX = 0f
                 page.alpha = 1f
-                page.setLayerType(View.LAYER_TYPE_NONE, null)
                 desktopContainer.visibility = View.VISIBLE
                 desktopContainer.translationX = 0f
-                desktopContainer.setLayerType(View.LAYER_TYPE_NONE, null)
                 win98MusicWidget?.apply {
                     visibility = View.VISIBLE
-                    translationX = 0f
+                    setPagerOffsetX(0f)
                 }
                 onFinished?.invoke()
             }
@@ -12560,11 +12540,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             .setDuration(170L)
             .setInterpolator(interpolator)
             .start()
-        win98MusicWidget?.animate()
-            ?.translationX(0f)
-            ?.setDuration(170L)
-            ?.setInterpolator(interpolator)
-            ?.start()
+        win98MusicWidget?.animatePagerOffsetX(0f, 170L, interpolator)
     }
 
     private fun addCompactGlanceTile(

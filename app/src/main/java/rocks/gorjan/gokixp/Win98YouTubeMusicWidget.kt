@@ -1,5 +1,9 @@
 package rocks.gorjan.gokixp
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.TimeInterpolator
+import android.animation.ValueAnimator
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Canvas
@@ -64,6 +68,15 @@ class Win98YouTubeMusicWidget(
     private var controller: MediaController? = null
     private var trackingSeek = false
     private var attached = false
+
+    // The widget's saved desktop position must never be reused as the pager animation offset.
+    // View.x is implemented using translationX, so animating translationX directly destroys the
+    // apparent saved position. Keep the two concepts separate and always compose them here.
+    private var desktopX = 0f
+    private var desktopY = 0f
+    private var pagerOffsetX = 0f
+    private var positionRestored = false
+    private var pagerOffsetAnimator: ValueAnimator? = null
 
     private val albumArt: ImageView
     private val titleText: TextView
@@ -413,6 +426,8 @@ class Win98YouTubeMusicWidget(
 
     override fun onDetachedFromWindow() {
         attached = false
+        pagerOffsetAnimator?.cancel()
+        pagerOffsetAnimator = null
         mainHandler.removeCallbacks(ticker)
         disconnectController()
         super.onDetachedFromWindow()
@@ -742,12 +757,58 @@ class Win98YouTubeMusicWidget(
         setStroke(dp(1), Color.rgb(76, 88, 96))
     }
 
+    fun setPagerOffsetX(offset: Float) {
+        pagerOffsetAnimator?.cancel()
+        pagerOffsetAnimator = null
+        pagerOffsetX = kotlin.math.round(offset)
+        applyDesktopPosition()
+    }
+
+    fun animatePagerOffsetX(
+        targetOffset: Float,
+        durationMs: Long,
+        interpolator: TimeInterpolator
+    ) {
+        pagerOffsetAnimator?.cancel()
+        val snappedTarget = kotlin.math.round(targetOffset)
+        if (!positionRestored || pagerOffsetX == snappedTarget) {
+            pagerOffsetX = snappedTarget
+            applyDesktopPosition()
+            return
+        }
+
+        pagerOffsetAnimator = ValueAnimator.ofFloat(pagerOffsetX, snappedTarget).apply {
+            duration = durationMs
+            this.interpolator = interpolator
+            addUpdateListener {
+                pagerOffsetX = kotlin.math.round(it.animatedValue as Float)
+                applyDesktopPosition()
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (pagerOffsetAnimator === animation) {
+                        pagerOffsetX = snappedTarget
+                        applyDesktopPosition()
+                        pagerOffsetAnimator = null
+                    }
+                }
+            })
+            start()
+        }
+    }
+
+    private fun applyDesktopPosition() {
+        if (!positionRestored) return
+        x = desktopX + pagerOffsetX
+        y = desktopY
+    }
+
     private fun enableLongPressDragging(handle: View) {
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
         var downRawX = 0f
         var downRawY = 0f
-        var startX = 0f
-        var startY = 0f
+        var startDesktopX = 0f
+        var startDesktopY = 0f
         var moveArmed = false
         var gestureCancelled = false
 
@@ -765,8 +826,13 @@ class Win98YouTubeMusicWidget(
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = event.rawX
                     downRawY = event.rawY
-                    startX = x
-                    startY = y
+                    if (!positionRestored) {
+                        desktopX = x - pagerOffsetX
+                        desktopY = y
+                        positionRestored = true
+                    }
+                    startDesktopX = desktopX
+                    startDesktopY = desktopY
                     moveArmed = false
                     gestureCancelled = false
                     mainHandler.removeCallbacks(armMove)
@@ -787,8 +853,10 @@ class Win98YouTubeMusicWidget(
                         val parentView = parent as? ViewGroup
                         val maxX = max(0f, (parentView?.width ?: 0) - width.toFloat())
                         val maxY = max(0f, (parentView?.height ?: 0) - height.toFloat())
-                        x = (startX + dx).coerceIn(0f, maxX)
-                        y = (startY + dy).coerceIn(dp(34).toFloat(), maxY)
+                        desktopX = (startDesktopX + dx).coerceIn(0f, maxX)
+                        desktopY = (startDesktopY + dy).coerceIn(dp(34).toFloat(), maxY)
+                        pagerOffsetX = 0f
+                        applyDesktopPosition()
                     }
                     true
                 }
@@ -820,22 +888,25 @@ class Win98YouTubeMusicWidget(
         val savedX = prefs.getFloat(PREF_X, defaultX)
         val savedY = prefs.getFloat(PREF_Y, defaultY)
 
-        x = savedX.coerceIn(0f, max(0f, parentView.width - width.toFloat()))
-        y = savedY.coerceIn(
+        desktopX = savedX.coerceIn(0f, max(0f, parentView.width - width.toFloat()))
+        desktopY = savedY.coerceIn(
             dp(34).toFloat(),
             max(dp(34).toFloat(), parentView.height - height.toFloat())
         )
+        pagerOffsetX = 0f
+        positionRestored = true
+        applyDesktopPosition()
     }
 
     private fun savePosition() {
         context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putFloat(PREF_X, x)
-            .putFloat(PREF_Y, y)
+            .putFloat(PREF_X, desktopX)
+            .putFloat(PREF_Y, desktopY)
             .apply()
     }
 
-    private fun dp(value: Int): Int =
+    private fun dp(value: Int): Int =    private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private class SpectrumView(context: Context) : View(context) {
