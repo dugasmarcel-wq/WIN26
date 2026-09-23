@@ -8,15 +8,18 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.webkit.WebView
 import androidx.appcompat.content.res.AppCompatResources
 import kotlin.math.abs
 import kotlin.math.max
@@ -30,9 +33,9 @@ data class Win98WidgetSpec(
 )
 
 /**
- * Small, local WINSUNG/Win98-style widgets. These deliberately do not use WebView or network
- * access: the "old Internet" pieces are self-contained toys, and the animated pieces only run
- * while their page is actually visible.
+ * Small, local WINSUNG/Win98-style widgets. Games are self-contained and never fetch network
+ * content. Pinball reuses WIN26's already-bundled local WebView game; the other full games reuse
+ * the same native controllers as their desktop-window versions.
  */
 object Win98WidgetViews {
 
@@ -54,8 +57,13 @@ object Win98WidgetViews {
         ),
         Win98WidgetSpec(
             "mines",
-            "Mini Minesweeper",
-            "Playable 6x6 Minesweeper directly on the home page. Long-press to flag."
+            "Minesweeper",
+            "The full 9x9 Windows-style Minesweeper, playable directly on a home page."
+        ),
+        Win98WidgetSpec(
+            "pinball",
+            "Space Cadet Pinball",
+            "The same bundled offline Pinball game as the desktop app, playable inside the page."
         ),
         Win98WidgetSpec(
             "cyber_pet",
@@ -64,8 +72,8 @@ object Win98WidgetViews {
         ),
         Win98WidgetSpec(
             "solitaire_desk",
-            "Solitaire Desk",
-            "Deal quick card hands in the widget or jump into the full Classic Solitaire."
+            "Solitaire",
+            "The full Klondike game and card logic, scaled into an interactive home-page cabinet."
         ),
         Win98WidgetSpec(
             "doodle",
@@ -79,9 +87,10 @@ object Win98WidgetViews {
             "desktop_pet" -> DesktopPetView(activity)
             "pipes" -> PipesView(activity)
             "internet_zone" -> createInternetZone(activity)
-            "mines" -> createMiniMines(activity)
+            "mines" -> createEmbeddedMinesweeper(activity)
+            "pinball" -> createEmbeddedPinball(activity)
             "cyber_pet" -> createCyberPet(activity)
-            "solitaire_desk" -> createSolitaireDesk(activity)
+            "solitaire_desk" -> createEmbeddedSolitaire(activity)
             "doodle" -> createDoodlePad(activity)
             else -> TextView(activity).apply {
                 text = "Widget unavailable"
@@ -449,6 +458,210 @@ object Win98WidgetViews {
                 )
             }
         }
+    }
+
+    private class ScaledGameHost(
+        context: Context,
+        private val logicalWidthPx: Int,
+        private val logicalHeightPx: Int
+    ) : FrameLayout(context) {
+
+        var onCleanup: (() -> Unit)? = null
+        private var cleaned = false
+
+        init {
+            clipChildren = true
+            clipToPadding = true
+            setBackgroundColor(Color.BLACK)
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val mode = MeasureSpec.getMode(widthMeasureSpec)
+            val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
+            val measuredWidth = if (mode == MeasureSpec.UNSPECIFIED || availableWidth <= 0) {
+                logicalWidthPx
+            } else {
+                availableWidth
+            }
+            val scale = min(1f, measuredWidth.toFloat() / logicalWidthPx.toFloat())
+            val measuredHeight = max(1, (logicalHeightPx * scale).toInt())
+
+            if (childCount > 0) {
+                getChildAt(0).measure(
+                    MeasureSpec.makeMeasureSpec(logicalWidthPx, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(logicalHeightPx, MeasureSpec.EXACTLY)
+                )
+            }
+            setMeasuredDimension(measuredWidth, measuredHeight)
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            if (childCount == 0) return
+            val child = getChildAt(0)
+            val scale = min(1f, width.toFloat() / logicalWidthPx.toFloat())
+            child.pivotX = 0f
+            child.pivotY = 0f
+            child.scaleX = scale
+            child.scaleY = scale
+            child.layout(0, 0, logicalWidthPx, logicalHeightPx)
+        }
+
+        override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            return super.dispatchTouchEvent(event)
+        }
+
+        override fun onDetachedFromWindow() {
+            if (!cleaned) {
+                cleaned = true
+                onCleanup?.invoke()
+            }
+            parent?.requestDisallowInterceptTouchEvent(false)
+            super.onDetachedFromWindow()
+        }
+    }
+
+    private fun gameCabinet(
+        activity: MainActivity,
+        packageName: String,
+        logicalWidthDp: Int,
+        logicalHeightDp: Int,
+        content: View,
+        cleanup: () -> Unit
+    ): View {
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(32, 32, 32))
+        }
+
+        val toolbar = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(activity, 5), dp(activity, 4), dp(activity, 5), dp(activity, 4))
+            background = classicInset(activity)
+        }
+        toolbar.addView(TextView(activity).apply {
+            text = "PLAY HERE"
+            setTextColor(Color.BLACK)
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(0, dp(activity, 27), 1f).apply {
+            gravity = Gravity.CENTER_VERTICAL
+        })
+        toolbar.addView(button(activity, "Open Full") {
+            activity.launchSystemApp(packageName)
+        }, LinearLayout.LayoutParams(dp(activity, 82), dp(activity, 27)))
+        root.addView(toolbar, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(activity, 35)
+        ))
+
+        val host = ScaledGameHost(
+            activity,
+            dp(activity, logicalWidthDp),
+            dp(activity, logicalHeightDp)
+        ).apply {
+            onCleanup = cleanup
+            addView(
+                content,
+                FrameLayout.LayoutParams(
+                    dp(activity, logicalWidthDp),
+                    dp(activity, logicalHeightDp)
+                )
+            )
+        }
+        root.addView(host, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+        return root
+    }
+
+    private fun createEmbeddedMinesweeper(activity: MainActivity): View {
+        val content = activity.layoutInflater.inflate(R.layout.program_minesweeper, null)
+        val game = rocks.gorjan.gokixp.apps.minesweeper.MinesweeperGame(activity) {
+            val audio = activity.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            audio?.playSoundEffect(android.media.AudioManager.FX_KEY_CLICK)
+        }
+        game.setupGame(content)
+        return gameCabinet(
+            activity = activity,
+            packageName = "system.minesweeper",
+            logicalWidthDp = 320,
+            logicalHeightDp = 400,
+            content = content,
+            cleanup = { game.cleanup() }
+        )
+    }
+
+    private fun createEmbeddedSolitaire(activity: MainActivity): View {
+        val content = activity.layoutInflater.inflate(R.layout.program_solitare, null)
+        val game = rocks.gorjan.gokixp.apps.solitare.SolitareGame(activity)
+        game.setupGame(content)
+        return gameCabinet(
+            activity = activity,
+            packageName = "system.solitare",
+            logicalWidthDp = 400,
+            logicalHeightDp = 430,
+            content = content,
+            cleanup = { game.cleanup() }
+        )
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createEmbeddedPinball(activity: MainActivity): View {
+        val webView = object : WebView(activity) {
+            private var destroyed = false
+
+            override fun onVisibilityChanged(changedView: View, visibility: Int) {
+                super.onVisibilityChanged(changedView, visibility)
+                if (destroyed) return
+                if (isShown) onResume() else onPause()
+            }
+
+            override fun onWindowVisibilityChanged(visibility: Int) {
+                super.onWindowVisibilityChanged(visibility)
+                if (destroyed) return
+                if (visibility == View.VISIBLE && isShown) onResume() else onPause()
+            }
+
+            fun cleanupGame() {
+                if (destroyed) return
+                destroyed = true
+                stopLoading()
+                onPause()
+                loadUrl("about:blank")
+                clearHistory()
+                clearFormData()
+                destroy()
+            }
+        }.apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = true
+            settings.blockNetworkLoads = true
+            settings.allowContentAccess = false
+            settings.allowFileAccess = true
+            setBackgroundColor(Color.BLACK)
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            loadUrl("file:///android_asset/pinball/index.htm")
+        }
+
+        return gameCabinet(
+            activity = activity,
+            packageName = "system.pinball",
+            logicalWidthDp = 420,
+            logicalHeightDp = 390,
+            content = webView,
+            cleanup = { webView.cleanupGame() }
+        )
     }
 
     private fun createMiniMines(context: Context): View {
