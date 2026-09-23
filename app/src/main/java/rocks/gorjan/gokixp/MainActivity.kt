@@ -166,6 +166,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98QuickPage: View? = null
     private var win98SecondPage: View? = null
     private var win98MusicWidget: Win98YouTubeMusicWidget? = null
+    private var win98PageIndicator: LinearLayout? = null
+    private val win98PageIndicatorDots = mutableListOf<View>()
+    private var win98CurrentPage = 1 // 0 = Quick Glance, 1 = desktop, 2 = Page 2
     private var win98NewsLoading = false
     private var win98QuickHeaderTime: TextView? = null
     private var win98QuickCalendarValue: TextView? = null
@@ -535,6 +538,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_SOUND_MUTED = "sound_muted"
         private const val KEY_PLAY_EMAIL_SOUND = "play_email_sound"
         private const val KEY_SHOW_NOTIFICATION_DOTS = "show_notification_dots"
+        private const val KEY_NOTIFICATION_BADGE_MODE = "notification_badge_mode"
         private const val KEY_CLOCK_24_HOUR = "clock_24_hour"
         private const val KEY_KNOWN_APPS = "known_apps"
         private const val KEY_CUSTOM_ICONS_XP = "custom_icons_xp"
@@ -1201,6 +1205,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun setupWin98QuickLaunchTaskbar() {
         setupWin98MusicWidget()
+        setupWin98PageIndicator()
         if (!themeManager.isClassicTheme()) return
         val taskbarEmptySpace = findViewById<LinearLayout>(R.id.taskbar_empty_space) ?: return
         val quickLaunchContainer =
@@ -1262,6 +1267,189 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             widget.layoutParams = RelativeLayout.LayoutParams(widgetWidth, widgetHeight)
             widget.elevation = 7f
             mainBackground.addView(widget)
+        }
+    }
+
+    private fun setupWin98PageIndicator() {
+        val mainBackground = findViewById<RelativeLayout>(R.id.main_background) ?: return
+
+        if (!themeManager.isClassicTheme()) {
+            win98PageIndicator?.let { (it.parent as? ViewGroup)?.removeView(it) }
+            win98PageIndicator = null
+            win98PageIndicatorDots.clear()
+            return
+        }
+
+        val existing = win98PageIndicator
+        if (existing != null && existing.parent === mainBackground) {
+            updateWin98PageIndicator(win98CurrentPage)
+            return
+        }
+
+        existing?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        win98PageIndicatorDots.clear()
+
+        val indicator = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(7), dp(4), dp(7), dp(4))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(220, 211, 206, 199))
+                setStroke(dp(1), Color.rgb(96, 96, 96))
+                cornerRadius = dp(10).toFloat()
+            }
+            elevation = 24f
+            contentDescription = "Home screen pages"
+        }
+
+        fun dot(pageIndex: Int, description: String): View {
+            return View(this).apply {
+                isClickable = true
+                isFocusable = true
+                contentDescription = description
+                setOnClickListener {
+                    when (pageIndex) {
+                        0 -> showWin98QuickPage()
+                        1 -> showWin98DesktopPage()
+                        2 -> showWin98SecondPage()
+                    }
+                }
+            }
+        }
+
+        listOf(
+            "Quick Glance" to 0,
+            "Desktop" to 1,
+            "Page 2" to 2
+        ).forEachIndexed { index, (label, pageIndex) ->
+            val item = dot(pageIndex, label)
+            indicator.addView(
+                item,
+                LinearLayout.LayoutParams(dp(18), dp(7)).apply {
+                    if (index > 0) marginStart = dp(5)
+                }
+            )
+            win98PageIndicatorDots.add(item)
+        }
+
+        indicator.layoutParams = RelativeLayout.LayoutParams(dp(82), dp(24)).apply {
+            addRule(RelativeLayout.CENTER_HORIZONTAL)
+            addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+            bottomMargin = dp(76)
+        }
+
+        mainBackground.addView(indicator)
+        win98PageIndicator = indicator
+        updateWin98PageIndicator(win98CurrentPage)
+    }
+
+    private fun updateWin98PageIndicator(page: Int) {
+        win98CurrentPage = page.coerceIn(0, 2)
+        win98PageIndicatorDots.forEachIndexed { index, view ->
+            view.background = GradientDrawable().apply {
+                if (index == win98CurrentPage) {
+                    setColor(Color.rgb(0, 0, 128))
+                    setStroke(dp(1), Color.WHITE)
+                } else {
+                    setColor(Color.rgb(128, 128, 128))
+                    setStroke(dp(1), Color.rgb(64, 64, 64))
+                }
+                cornerRadius = dp(4).toFloat()
+            }
+            view.alpha = if (index == win98CurrentPage) 1f else 0.72f
+        }
+    }
+
+    private fun showWin98DesktopPage() {
+        if (!themeManager.isClassicTheme()) return
+
+        when {
+            win98QuickPage?.visibility == View.VISIBLE -> hideWin98QuickPage()
+            win98SecondPage?.visibility == View.VISIBLE -> hideWin98SecondPage()
+            else -> {
+                desktopContainer.visibility = View.VISIBLE
+                restoreWin98MusicWidgetIfDesktopVisible()
+                updateWin98PageIndicator(1)
+            }
+        }
+    }
+
+    private fun showDesktopSetupDialog() {
+        if (!themeManager.isClassicTheme()) {
+            createAndShowWallpaperDialog("settings")
+            return
+        }
+
+        val items = arrayOf(
+            "Start Menu rows",
+            "Quick Launch buttons",
+            "Page 2 apps",
+            "Notification badges",
+            "Appearance & wallpaper"
+        )
+
+        Win98Dialogs.showList(
+            context = this,
+            title = "Edit Desktop",
+            items = items,
+            negativeText = "Cancel"
+        ) { which ->
+            when (which) {
+                0 -> showStartRowsEditor()
+                1 -> showQuickLaunchEditor()
+                2 -> showSecondPageEditor()
+                3 -> showNotificationBadgeModeDialog()
+                4 -> createAndShowWallpaperDialog("appearance")
+            }
+        }
+    }
+
+    private fun showSecondPageEditor() {
+        val labels = (0 until secondPageDefaults().size).map { index ->
+            "Slot ${index + 1}: ${configuredAppLabel(getSecondPageSlot(index))}"
+        }.toTypedArray()
+
+        Win98Dialogs.showList(
+            context = this,
+            title = "Page 2 Apps",
+            items = labels,
+            negativeText = "Cancel"
+        ) { which ->
+            showSecondPageSlotPicker(which)
+        }
+    }
+
+    private fun notificationBadgeMode(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_SHOW_NOTIFICATION_DOTS, true)) return "off"
+        return prefs.getString(KEY_NOTIFICATION_BADGE_MODE, "auto") ?: "auto"
+    }
+
+    private fun showNotificationBadgeModeDialog() {
+        val current = notificationBadgeMode()
+        val labels = arrayOf(
+            if (current == "auto") "Numbers when available  [Current]" else "Numbers when available",
+            if (current == "dots") "Dots only  [Current]" else "Dots only",
+            if (current == "off") "Off  [Current]" else "Off"
+        )
+
+        Win98Dialogs.showList(
+            context = this,
+            title = "Notification Badges",
+            items = labels,
+            negativeText = "Cancel"
+        ) { which ->
+            val mode = when (which) {
+                1 -> "dots"
+                2 -> "off"
+                else -> "auto"
+            }
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putString(KEY_NOTIFICATION_BADGE_MODE, mode)
+                .putBoolean(KEY_SHOW_NOTIFICATION_DOTS, mode != "off")
+                .apply()
+            updateNotificationDots()
         }
     }
 
@@ -4494,7 +4682,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 onChangeWallpaper = { createAndShowWallpaperDialog() },
                 onOpenInternetExplorer = { showInternetExplorerDialog() },
                 onNewFolder = { createNewFolder(x, y) }
-            )
+            ).toMutableList().apply {
+                add(size - 1, ContextMenuItem("", isEnabled = false))
+                add(size - 1, ContextMenuItem("Edit Desktop...", action = {
+                    showDesktopSetupDialog()
+                }))
+            }
             
             // Show the menu
             contextMenu.showMenu(menuItems, x, y)
@@ -11459,6 +11652,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             SimpleDateFormat("MMM d", Locale.getDefault()).format(Date())
         win98QuickBatteryValue?.text = "${getBatteryPercent()}%"
 
+        updateWin98PageIndicator(0)
         animateWin98PageIn(page, fromLeft = true) {
             val stories = win98QuickStoryContainer
             val refresh = win98QuickRefreshButton
@@ -11698,6 +11892,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val page = win98SecondPage ?: buildWin98SecondPage()
         populateWin98SecondPageSlots()
         desktopContainer.visibility = View.INVISIBLE
+        updateWin98PageIndicator(2)
         animateWin98PageIn(page, fromLeft = false)
     }
 
@@ -11910,10 +12105,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             page.animate().cancel()
             page.visibility = View.GONE
             page.translationX = 0f
+            updateWin98PageIndicator(1)
             restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
         animateWin98PageOut(page, toLeft = true) {
+            updateWin98PageIndicator(1)
             restoreWin98MusicWidgetIfDesktopVisible()
         }
     }
@@ -11930,11 +12127,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             page.visibility = View.GONE
             page.translationX = 0f
             desktopContainer.visibility = View.VISIBLE
+            updateWin98PageIndicator(1)
             restoreWin98MusicWidgetIfDesktopVisible()
             return
         }
         animateWin98PageOut(page, toLeft = false) {
             desktopContainer.visibility = View.VISIBLE
+            updateWin98PageIndicator(1)
             restoreWin98MusicWidgetIfDesktopVisible()
         }
     }
@@ -13067,9 +13266,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     fun updateNotificationDots() {
         handler.post {
             try {
-                // Check if notification dots are enabled in settings
-                val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                val showNotificationDots = prefs.getBoolean(KEY_SHOW_NOTIFICATION_DOTS, true)
+                val badgeMode = notificationBadgeMode()
+                val showNotificationDots = badgeMode != "off"
 
                 desktopIconViews.forEach { iconView ->
                     val packageName = iconView.getDesktopIcon()?.packageName
@@ -13092,17 +13290,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     badgeView.visibility = if (hasNotification) View.VISIBLE else View.GONE
                     val params = badgeView.layoutParams as? android.widget.FrameLayout.LayoutParams
 
-                    if (count > 0) {
-                        // Android's Notification.number is an app-supplied badge count.
-                        // Use it when present instead of inventing a count from notification rows.
+                    if (badgeMode == "auto" && count > 0) {
+                        // Use the application's own explicit badge number when Android exposes one.
                         badgeView.text = if (count > 99) "99+" else count.toString()
                         badgeView.setMinWidth(dp(18))
                         badgeView.setPadding(dp(3), 0, dp(3), 0)
                         params?.width = ViewGroup.LayoutParams.WRAP_CONTENT
                         params?.height = dp(18)
                     } else {
-                        // Many apps do not expose a numeric unread count. In that case show
-                        // an honest dot instead of a fake 1, 2, 3 based on active notifications.
+                        // Dot mode, or an app that does not publish a real unread number.
                         badgeView.text = ""
                         badgeView.setMinWidth(0)
                         badgeView.setPadding(0, 0, 0, 0)
