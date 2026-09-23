@@ -604,219 +604,812 @@ object Win98FarmColonyWidget {
         }
     }
 
-    private class MapView(context: Context, private val game: Game) : View(context) {
-        private val p = Paint().apply { isAntiAlias = false }
+    private class MapView(
+        context: Context,
+        private val game: Game,
+        private val compact: Boolean = true,
+        private val onSelection: ((String) -> Unit)? = null
+    ) : View(context) {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val pixel = Paint().apply { isAntiAlias = false }
+        private val handler = Handler(Looper.getMainLooper())
+        private var frame = 0
+        private var mode = 0
 
-        init { setBackgroundColor(Color.rgb(70, 118, 70)) }
+        private val ticker = object : Runnable {
+            override fun run() {
+                if (isShown) {
+                    frame = (frame + 1) % 240
+                    invalidate()
+                }
+                handler.postDelayed(this, if (isShown) {
+                    if (compact) 900L else 420L
+                } else 4000L)
+            }
+        }
+
+        init {
+            setBackgroundColor(Color.rgb(42, 82, 48))
+            isClickable = true
+        }
+
+        fun setMode(value: Int) {
+            mode = value.coerceIn(0, 3)
+            invalidate()
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            handler.removeCallbacks(ticker)
+            handler.post(ticker)
+        }
+
+        override fun onDetachedFromWindow() {
+            handler.removeCallbacks(ticker)
+            super.onDetachedFromWindow()
+        }
+
+        override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    return true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    val zone = zoneAt(
+                        event.x / width.coerceAtLeast(1),
+                        event.y / height.coerceAtLeast(1)
+                    )
+                    onSelection?.invoke(zone)
+                    invalidate()
+                    performClick()
+                    return true
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
+            }
+            return true
+        }
+
+        override fun performClick(): Boolean {
+            super.performClick()
+            return true
+        }
+
+        private fun zoneAt(nx: Float, ny: Float): String = when {
+            nx > .78f -> "River District — fishing water and the eastern trade route."
+            nx < .30f && ny < .48f ->
+                "Farm District — \${game.unlockedPlots} plots, \${game.farmers} farmer(s)."
+            nx < .24f && ny > .56f ->
+                "West Woods — \${game.lumber * (2 + game.sawmill)} wood/day."
+            nx > .61f && ny < .38f ->
+                "Stone Ridge — quarry Lv\${game.quarry}, \${game.miners} miner(s), ore \${game.ore}."
+            nx > .52f && ny > .60f ->
+                "Market Ward — market Lv\${game.market}, coins \${game.coins}."
+            nx > .28f && nx < .62f && ny > .43f ->
+                "Village Core — pop \${game.population}/\${game.housing}, happiness \${game.happiness}%."
+            else ->
+                "Homestead — \${game.seasonName}, \${game.weather()}, Colony Lv\${game.level}."
+        }
 
         override fun onDraw(c: Canvas) {
             super.onDraw(c)
             val w = width.toFloat()
             val h = height.toFloat()
-            c.drawColor(when (game.season) {
-                0 -> Color.rgb(93, 151, 74)
-                1 -> Color.rgb(76, 145, 63)
-                2 -> Color.rgb(142, 117, 59)
-                else -> Color.rgb(150, 163, 152)
-            })
+            if (w <= 0f || h <= 0f) return
 
-            p.color = Color.rgb(61, 111, 155)
-            c.drawRect(w * .76f, 0f, w, h, p)
-            p.color = Color.rgb(77, 132, 176)
-            for (y in 6 until height step 15) c.drawRect(w * .78f, y.toFloat(), w * .95f, y + 2f, p)
+            drawGround(c, w, h)
+            drawRiver(c, w, h)
+            drawRoads(c, w, h)
+            drawForest(c, w, h)
+            drawFields(c, w, h)
+            drawSettlement(c, w, h)
+            drawWorkers(c, w, h)
+            drawMapMode(c, w, h)
+            drawWeather(c, w, h)
+            drawHud(c, w, h)
+        }
 
-            for (i in 0 until game.unlockedPlots) {
-                val col = i % 4
-                val row = i / 4
-                val l = 8f + col * (w * .145f)
-                val t = 10f + row * (h * .32f)
-                val r = l + w * .12f
-                val b = t + h * .24f
-                p.color = Color.rgb(105, 76, 48)
-                c.drawRect(l, t, r, b, p)
-                val plot = game.plots[i]
-                val crop = cropMap[plot.crop]
-                if (crop != null) {
-                    val pct = min(1f, plot.age.toFloat() / crop.days.toFloat())
-                    p.color = if (pct >= 1f) Color.rgb(226, 205, 81) else Color.rgb(75, 151, 62)
-                    val plants = 1 + (pct * 4f).toInt()
-                    repeat(plants) { n ->
-                        val x = l + 4 + (n % 3) * ((r - l - 8) / 3f)
-                        val y = b - 5 - (n / 3) * 8
-                        c.drawRect(x, y, x + 4, y + 5, p)
+        private fun drawGround(c: Canvas, w: Float, h: Float) {
+            val base = when (game.season) {
+                0 -> Color.rgb(94, 143, 75)
+                1 -> Color.rgb(83, 133, 64)
+                2 -> Color.rgb(139, 116, 66)
+                else -> Color.rgb(159, 166, 154)
+            }
+            c.drawColor(base)
+
+            val cols = 16
+            val rows = if (compact) 8 else 11
+            val tw = w / cols
+            val th = h / rows
+            for (y in 0 until rows) {
+                for (x in 0 until cols) {
+                    val checker = (x + y + game.day) and 3
+                    pixel.color = when (game.season) {
+                        0 -> if (checker == 0) Color.rgb(103, 153, 82) else Color.rgb(94, 143, 75)
+                        1 -> if (checker == 0) Color.rgb(90, 143, 67) else Color.rgb(83, 133, 64)
+                        2 -> if (checker == 0) Color.rgb(149, 124, 70) else Color.rgb(139, 116, 66)
+                        else -> if (checker == 0) Color.rgb(171, 178, 167) else Color.rgb(159, 166, 154)
                     }
+                    c.drawRect(x * tw, y * th, (x + 1) * tw + 1f, (y + 1) * th + 1f, pixel)
                 }
             }
 
-            building(c, w * .08f, h * .72f, "H", Color.rgb(206, 191, 154))
-            if (game.barn > 0) building(c, w * .31f, h * .70f, "B", Color.rgb(154, 74, 56))
-            if (game.workshop > 0) building(c, w * .53f, h * .72f, "W", Color.rgb(116, 116, 116))
-
-            p.color = Color.rgb(35, 35, 35)
-            repeat(min(8, game.population)) { i ->
-                val x = 16f + ((game.day * 17 + i * 31) % max(20, (width * .68f).toInt())).toFloat()
-                val y = h * .57f + ((i * 13 + game.day * 5) % max(8, (h * .12f).toInt())).toFloat()
-                c.drawRect(x, y, x + 3, y + 5, p)
+            if (!compact) {
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = 1f
+                p.color = Color.argb(55, 35, 55, 30)
+                for (x in 1 until cols) c.drawLine(x * tw, 0f, x * tw, h, p)
+                for (y in 1 until rows) c.drawLine(0f, y * th, w, y * th, p)
+                p.style = Paint.Style.FILL
             }
-
-            p.color = Color.argb(210, 245, 245, 220)
-            c.drawRect(4f, h - 18f, w - 4f, h - 4f, p)
-            p.color = Color.BLACK
-            p.typeface = Typeface.MONOSPACE
-            p.textSize = 9f * resources.displayMetrics.density
-            c.drawText(game.lastEvent.take(42), 8f, h - 8f, p)
         }
 
-        private fun building(c: Canvas, x: Float, y: Float, label: String, color: Int) {
-            p.color = color
-            c.drawRect(x, y, x + 34, y + 24, p)
-            p.color = Color.rgb(85, 53, 39)
+        private fun drawRiver(c: Canvas, w: Float, h: Float) {
+            val path = Path()
+            path.moveTo(w * .79f, -4f)
+            path.cubicTo(w * .73f, h * .22f, w * .86f, h * .47f, w * .79f, h * .69f)
+            path.cubicTo(w * .75f, h * .82f, w * .82f, h * .92f, w * .78f, h + 4f)
+            path.lineTo(w + 4f, h + 4f)
+            path.lineTo(w + 4f, -4f)
+            path.close()
+            p.color = Color.rgb(57, 106, 150)
+            c.drawPath(path, p)
+
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = if (compact) 1.5f else 2.5f
+            p.color = Color.argb(125, 143, 192, 222)
+            val offset = (frame % 12).toFloat()
+            var y = -12f + offset
+            while (y < h) {
+                c.drawLine(w * .82f, y, w * .97f, y + 4f, p)
+                y += if (compact) 15f else 20f
+            }
+            p.style = Paint.Style.FILL
+
+            if (!compact) {
+                drawLabel(c, "EAST RIVER", w * .855f, h * .18f, Color.WHITE)
+                p.color = Color.rgb(117, 87, 53)
+                c.drawRect(w * .74f, h * .52f, w * .86f, h * .55f, p)
+                c.drawRect(w * .77f, h * .49f, w * .79f, h * .58f, p)
+                c.drawRect(w * .82f, h * .49f, w * .84f, h * .58f, p)
+            }
+        }
+
+        private fun drawRoads(c: Canvas, w: Float, h: Float) {
+            p.style = Paint.Style.STROKE
+            p.strokeCap = Paint.Cap.ROUND
+            p.strokeWidth = if (compact) 7f else 12f
+            p.color = if (game.season == 3) Color.rgb(173, 160, 133) else Color.rgb(157, 132, 91)
+            c.drawLine(w * .12f, h * .66f, w * .68f, h * .61f, p)
+            c.drawLine(w * .45f, h * .34f, w * .45f, h * .76f, p)
+            if (game.market > 0) c.drawLine(w * .60f, h * .61f, w * .79f, h * .54f, p)
+            if (game.quarry > 0) c.drawLine(w * .48f, h * .48f, w * .69f, h * .24f, p)
+            p.strokeCap = Paint.Cap.BUTT
+            p.style = Paint.Style.FILL
+        }
+
+        private fun drawForest(c: Canvas, w: Float, h: Float) {
+            val trees = if (compact) 8 else 18
+            for (i in 0 until trees) {
+                val x = w * (.03f + ((i * 37) % 23) / 100f)
+                val y = h * (.50f + ((i * 19) % 36) / 100f)
+                val size = if (compact) 5f else 8f
+                p.color = Color.rgb(73, 48, 29)
+                c.drawRect(x - 1.5f, y + size * .45f, x + 1.5f, y + size * 1.15f, p)
+                p.color = when (game.season) {
+                    2 -> if (i % 2 == 0) Color.rgb(159, 91, 45) else Color.rgb(177, 123, 48)
+                    3 -> Color.rgb(70, 91, 70)
+                    else -> if (i % 2 == 0) Color.rgb(38, 94, 46) else Color.rgb(48, 112, 50)
+                }
+                c.drawCircle(x, y, size, p)
+            }
+            if (!compact) drawLabel(c, "WEST WOODS", w * .13f, h * .91f, Color.WHITE)
+        }
+
+        private fun drawFields(c: Canvas, w: Float, h: Float) {
+            val left = w * .035f
+            val top = h * .06f
+            val zoneW = w * .49f
+            val zoneH = h * .38f
+            val gap = if (compact) 3f else 5f
+            val cellW = (zoneW - gap * 3) / 4f
+            val cellH = (zoneH - gap) / 2f
+            for (i in 0 until game.unlockedPlots) {
+                val col = i % 4
+                val row = i / 4
+                val l = left + col * (cellW + gap)
+                val t = top + row * (cellH + gap)
+                val r = l + cellW
+                val b = t + cellH
+                p.color = Color.rgb(105, 75, 45)
+                c.drawRect(l, t, r, b, p)
+                p.color = Color.rgb(78, 55, 34)
+                for (line in 1..3) {
+                    val yy = t + line * (cellH / 4f)
+                    c.drawRect(l + 2f, yy, r - 2f, yy + 1f, p)
+                }
+
+                val plot = game.plots[i]
+                val crop = cropMap[plot.crop]
+                if (crop != null) {
+                    val progress = min(1f, plot.age.toFloat() / crop.days.toFloat())
+                    val rows = 2 + (progress * 3f).toInt()
+                    p.color = when {
+                        progress >= 1f -> Color.rgb(225, 200, 72)
+                        crop.id == "tomato" -> Color.rgb(57, 143, 63)
+                        crop.id == "pumpkin" -> Color.rgb(104, 151, 48)
+                        else -> Color.rgb(71, 154, 61)
+                    }
+                    repeat(rows) { n ->
+                        val px = l + 5f + (n % 3) * max(4f, (cellW - 10f) / 3f)
+                        val py = b - 5f - (n / 3) * max(5f, cellH / 3f)
+                        c.drawRect(
+                            px, py,
+                            px + if (compact) 2f else 4f,
+                            py + if (compact) 3f else 6f,
+                            p
+                        )
+                    }
+                    if (!compact && progress >= 1f) {
+                        drawLabel(c, "READY", (l + r) / 2f, b - 3f, Color.rgb(55, 35, 0))
+                    }
+                }
+            }
+            if (!compact) drawLabel(c, "FARM DISTRICT", left + zoneW * .5f, top + zoneH + 15f, Color.WHITE)
+        }
+
+        private fun drawSettlement(c: Canvas, w: Float, h: Float) {
+            drawBuilding(c, w * .34f, h * .57f, w * .10f, h * .13f, "HOME", Color.rgb(212, 197, 157))
+            val extraHomes = min(4, game.cottages)
+            repeat(extraHomes) { i ->
+                drawBuilding(
+                    c,
+                    w * (.45f + (i % 2) * .105f),
+                    h * (.66f + (i / 2) * .13f),
+                    w * .085f,
+                    h * .105f,
+                    "",
+                    Color.rgb(202, 187, 149)
+                )
+            }
+
+            if (game.barn > 0) drawBuilding(c, w * .19f, h * .48f, w * .12f, h * .15f, "BARN " + game.barn, Color.rgb(161, 72, 55))
+            if (game.workshop > 0) drawBuilding(c, w * .47f, h * .48f, w * .11f, h * .14f, "SHOP " + game.workshop, Color.rgb(121, 125, 128))
+            if (game.market > 0) drawBuilding(c, w * .62f, h * .59f, w * .11f, h * .13f, "MKT " + game.market, Color.rgb(190, 151, 72))
+            if (game.granary > 0) drawTower(c, w * .57f, h * .38f, "G" + game.granary, Color.rgb(189, 169, 112))
+            if (game.sawmill > 0) drawBuilding(c, w * .08f, h * .58f, w * .10f, h * .12f, "SAW " + game.sawmill, Color.rgb(139, 101, 62))
+            if (game.quarry > 0) drawQuarry(c, w * .63f, h * .14f, w * .13f, h * .18f)
+            if (game.greenhouse) drawGreenhouse(c, w * .55f, h * .11f, w * .10f, h * .13f)
+
+            if (game.barn > 0) {
+                repeat(min(8, game.chickens + game.cows + game.sheep)) { i ->
+                    p.color = when {
+                        i < game.cows -> Color.rgb(238, 233, 210)
+                        i < game.cows + game.sheep -> Color.rgb(230, 230, 220)
+                        else -> Color.rgb(215, 177, 65)
+                    }
+                    val ax = w * .21f + (i % 4) * (if (compact) 4f else 7f)
+                    val ay = h * .65f + (i / 4) * (if (compact) 4f else 7f)
+                    c.drawRect(
+                        ax, ay,
+                        ax + if (compact) 2f else 4f,
+                        ay + if (compact) 2f else 4f,
+                        p
+                    )
+                }
+            }
+            if (!compact) drawLabel(c, "VILLAGE CORE", w * .47f, h * .90f, Color.WHITE)
+        }
+
+        private fun drawBuilding(
+            c: Canvas,
+            x: Float,
+            y: Float,
+            bw: Float,
+            bh: Float,
+            label: String,
+            body: Int
+        ) {
+            p.color = Color.argb(70, 0, 0, 0)
+            c.drawRect(x + 3f, y + 4f, x + bw + 4f, y + bh + 5f, p)
+            p.color = body
+            c.drawRect(x, y, x + bw, y + bh, p)
+            p.color = Color.rgb(86, 49, 37)
             val roof = Path()
-            roof.moveTo(x - 3, y); roof.lineTo(x + 17, y - 12); roof.lineTo(x + 37, y); roof.close()
+            roof.moveTo(x - 3f, y)
+            roof.lineTo(x + bw * .5f, y - bh * .33f)
+            roof.lineTo(x + bw + 3f, y)
+            roof.close()
             c.drawPath(roof, p)
-            p.color = Color.BLACK
+            p.color = Color.rgb(63, 42, 31)
+            c.drawRect(x + bw * .42f, y + bh * .55f, x + bw * .61f, y + bh, p)
+            if (label.isNotEmpty() && !compact) {
+                drawLabel(c, label, x + bw * .5f, y + bh + 11f, Color.WHITE)
+            }
+        }
+
+        private fun drawTower(c: Canvas, x: Float, y: Float, label: String, color: Int) {
+            p.color = color
+            c.drawRect(x, y, x + 22f, y + 35f, p)
+            p.color = Color.rgb(100, 66, 43)
+            c.drawRect(x - 3f, y - 5f, x + 25f, y + 2f, p)
+            if (!compact) drawLabel(c, label, x + 11f, y + 23f, Color.BLACK)
+        }
+
+        private fun drawQuarry(c: Canvas, x: Float, y: Float, qw: Float, qh: Float) {
+            val rings = if (compact) 3 else 5
+            repeat(rings) { i ->
+                val inset = i * (if (compact) 3f else 5f)
+                p.color = if (i % 2 == 0) Color.rgb(120, 120, 114) else Color.rgb(88, 90, 88)
+                c.drawOval(
+                    android.graphics.RectF(
+                        x + inset, y + inset,
+                        x + qw - inset, y + qh - inset
+                    ),
+                    p
+                )
+            }
+            if (!compact) drawLabel(c, "STONE RIDGE", x + qw * .5f, y + qh + 12f, Color.WHITE)
+        }
+
+        private fun drawGreenhouse(c: Canvas, x: Float, y: Float, gw: Float, gh: Float) {
+            p.color = Color.argb(150, 178, 225, 210)
+            c.drawRect(x, y, x + gw, y + gh, p)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 2f
+            p.color = Color.rgb(220, 245, 238)
+            c.drawRect(x, y, x + gw, y + gh, p)
+            c.drawLine(x, y, x + gw * .5f, y - gh * .25f, p)
+            c.drawLine(x + gw, y, x + gw * .5f, y - gh * .25f, p)
+            p.style = Paint.Style.FILL
+        }
+
+        private fun drawWorkers(c: Canvas, w: Float, h: Float) {
+            val count = min(if (compact) 6 else 14, game.population)
+            repeat(count) { i ->
+                val phase = (frame + i * 17) % 100
+                val route = i % 4
+                val t = phase / 100f
+                val x: Float
+                val y: Float
+                when (route) {
+                    0 -> { x = w * (.33f + .30f * t); y = h * (.60f - .05f * t) }
+                    1 -> { x = w * (.44f - .28f * t); y = h * (.57f + .14f * t) }
+                    2 -> { x = w * (.43f + .26f * t); y = h * (.55f - .29f * t) }
+                    else -> { x = w * (.36f + .19f * t); y = h * (.69f + .08f * t) }
+                }
+                p.color = Color.rgb(42, 37, 33)
+                val size = if (compact) 2.2f else 4.2f
+                c.drawCircle(x, y - size, size * .45f, p)
+                p.color = when (i % 4) {
+                    0 -> Color.rgb(70, 87, 150)
+                    1 -> Color.rgb(126, 74, 53)
+                    2 -> Color.rgb(66, 110, 64)
+                    else -> Color.rgb(130, 91, 130)
+                }
+                c.drawRect(x - size * .45f, y - size * .4f, x + size * .45f, y + size, p)
+            }
+        }
+
+        private fun drawMapMode(c: Canvas, w: Float, h: Float) {
+            if (compact || mode == 0) return
+            when (mode) {
+                1 -> {
+                    p.color = Color.argb(54, 44, 210, 68)
+                    c.drawRect(0f, 0f, w * .55f, h * .48f, p)
+                    p.color = Color.argb(48, 225, 183, 52)
+                    c.drawRect(w * .54f, h * .42f, w * .77f, h * .82f, p)
+                }
+                2 -> {
+                    p.color = Color.argb(58, 255, 207, 59)
+                    val strength = min(1f, (game.coins + game.wood + game.stone).toFloat() / 250f)
+                    c.drawCircle(w * .56f, h * .61f, w * (.12f + .13f * strength), p)
+                    p.color = Color.argb(55, 129, 129, 129)
+                    c.drawCircle(w * .69f, h * .23f, w * .10f, p)
+                }
+                3 -> {
+                    p.color = Color.argb(64, 59, 112, 230)
+                    val radius = w * (.10f + min(.18f, game.population * .012f))
+                    c.drawCircle(w * .46f, h * .64f, radius, p)
+                    p.style = Paint.Style.STROKE
+                    p.strokeWidth = 3f
+                    p.color = Color.argb(140, 255, 255, 255)
+                    c.drawCircle(w * .46f, h * .64f, radius, p)
+                    p.style = Paint.Style.FILL
+                }
+            }
+        }
+
+        private fun drawWeather(c: Canvas, w: Float, h: Float) {
+            when (game.weather()) {
+                "Rain" -> {
+                    p.style = Paint.Style.STROKE
+                    p.strokeWidth = if (compact) 1f else 2f
+                    p.color = Color.argb(115, 197, 222, 241)
+                    repeat(if (compact) 14 else 34) { i ->
+                        val x = ((i * 47 + frame * 9) % max(1, width)).toFloat()
+                        val y = ((i * 31 + frame * 13) % max(1, height)).toFloat()
+                        c.drawLine(x, y, x - 5f, y + 11f, p)
+                    }
+                    p.style = Paint.Style.FILL
+                }
+                "Snow" -> {
+                    p.color = Color.argb(180, 245, 245, 245)
+                    repeat(if (compact) 13 else 30) { i ->
+                        val x = ((i * 53 + frame * 4) % max(1, width)).toFloat()
+                        val y = ((i * 29 + frame * 7) % max(1, height)).toFloat()
+                        c.drawCircle(x, y, if (compact) 1.5f else 2.4f, p)
+                    }
+                }
+                "Heat" -> {
+                    p.color = Color.argb(34, 255, 204, 67)
+                    c.drawRect(0f, 0f, w, h, p)
+                }
+            }
+        }
+
+        private fun drawHud(c: Canvas, w: Float, h: Float) {
+            if (compact) {
+                p.color = Color.argb(205, 244, 242, 214)
+                c.drawRect(4f, h - 19f, w - 4f, h - 4f, p)
+                p.color = Color.rgb(25, 25, 25)
+                p.typeface = Typeface.MONOSPACE
+                p.textSize = 8.5f * resources.displayMetrics.density
+                c.drawText(game.lastEvent.take(40), 8f, h - 8f, p)
+                return
+            }
+
+            p.color = Color.argb(195, 21, 27, 34)
+            c.drawRect(0f, 0f, w, 28f, p)
+            drawLabel(
+                c,
+                when (mode) {
+                    1 -> "MAP MODE: AGRICULTURE"
+                    2 -> "MAP MODE: ECONOMY"
+                    3 -> "MAP MODE: POPULATION"
+                    else -> "MAP MODE: TERRAIN"
+                },
+                w * .5f,
+                19f,
+                Color.WHITE
+            )
+        }
+
+        private fun drawLabel(c: Canvas, text: String, x: Float, y: Float, color: Int) {
+            p.color = color
             p.typeface = Typeface.DEFAULT_BOLD
-            p.textSize = 10f * resources.displayMetrics.density
-            c.drawText(label, x + 12, y + 17, p)
+            p.textAlign = Paint.Align.CENTER
+            p.textSize = (if (compact) 7.5f else 9f) * resources.displayMetrics.density
+            p.setShadowLayer(2f, 1f, 1f, Color.argb(180, 0, 0, 0))
+            c.drawText(text, x, y, p)
+            p.clearShadowLayer()
+            p.textAlign = Paint.Align.LEFT
         }
     }
 
     private fun showExpanded(activity: MainActivity, game: Game, changed: () -> Unit) {
         game.catchUp()
-        val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            background = inset(activity, Color.rgb(192, 192, 192))
+        }
+
         val header = TextView(activity).apply {
             setTextColor(Color.BLACK)
             textSize = 10.5f
             typeface = Typeface.MONOSPACE
-            setPadding(dp(activity, 5), dp(activity, 4), dp(activity, 5), dp(activity, 6))
+            setPadding(dp(activity, 6), dp(activity, 5), dp(activity, 6), dp(activity, 5))
             background = inset(activity, Color.WHITE)
         }
-        root.addView(header, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        root.addView(
+            header,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
-        val tabs = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(activity, 5), 0, dp(activity, 5)) }
-        val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val selection = TextView(activity).apply {
+            text = "Village Core — tap anywhere on the map to inspect a district."
+            setTextColor(Color.BLACK)
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            setPadding(dp(activity, 6), dp(activity, 4), dp(activity, 6), dp(activity, 4))
+            background = inset(activity, Color.rgb(236, 233, 222))
+            maxLines = 2
+        }
+
+        lateinit var render: () -> Unit
+        var tab = 0
+
+        val body = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
         val scroll = ScrollView(activity).apply {
             isFillViewport = false
-            addView(body, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                body,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
-        var tab = 0
-        lateinit var render: () -> Unit
 
-        fun toast(s: String) = android.widget.Toast.makeText(activity, s, android.widget.Toast.LENGTH_SHORT).show()
-        fun section(s: String) = TextView(activity).apply {
-            text = s; setTextColor(Color.WHITE); setBackgroundColor(Color.rgb(0, 0, 128))
-            typeface = Typeface.DEFAULT_BOLD; textSize = 12f; setPadding(dp(activity, 6), dp(activity, 4), dp(activity, 6), dp(activity, 4))
+        val map = MapView(activity, game, compact = false) { zone ->
+            selection.text = zone
         }
-        fun line(s: String) = TextView(activity).apply {
-            text = s; setTextColor(Color.BLACK); textSize = 11f; setPadding(dp(activity, 5), dp(activity, 4), dp(activity, 5), dp(activity, 4))
+        root.addView(
+            map,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, 286)
+            )
+        )
+        root.addView(
+            selection,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, 42)
+            )
+        )
+
+        val mapModes = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(activity, 3), 0, dp(activity, 3))
         }
-        fun action(title: String, detail: String, label: String, work: () -> String): View {
-            val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 4)) }
-            row.addView(TextView(activity).apply {
-                text = title + "\n" + detail; setTextColor(Color.BLACK); textSize = 10.5f
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(button(activity, label) { toast(work()); render(); changed() }, LinearLayout.LayoutParams(dp(activity, 78), dp(activity, 30)))
+        arrayOf("Terrain", "Farm", "Economy", "People").forEachIndexed { i, label ->
+            mapModes.addView(
+                button(activity, label) { map.setMode(i) },
+                LinearLayout.LayoutParams(0, dp(activity, 27), 1f).apply {
+                    if (i > 0) marginStart = dp(activity, 2)
+                }
+            )
+        }
+        root.addView(
+            mapModes,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, 33)
+            )
+        )
+
+        val tabs = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(activity, 2), 0, dp(activity, 4))
+        }
+
+        fun toast(value: String) =
+            android.widget.Toast.makeText(activity, value, android.widget.Toast.LENGTH_SHORT).show()
+
+        fun section(value: String) = TextView(activity).apply {
+            text = value
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(0, 0, 128))
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = 11.5f
+            setPadding(dp(activity, 6), dp(activity, 4), dp(activity, 6), dp(activity, 4))
+        }
+
+        fun line(value: String) = TextView(activity).apply {
+            text = value
+            setTextColor(Color.BLACK)
+            textSize = 10.5f
+            setPadding(dp(activity, 5), dp(activity, 4), dp(activity, 5), dp(activity, 4))
+        }
+
+        fun action(
+            title: String,
+            detail: String,
+            label: String,
+            work: () -> String
+        ): View {
+            val row = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(activity, 4), dp(activity, 3), dp(activity, 4), dp(activity, 3))
+            }
+            row.addView(
+                TextView(activity).apply {
+                    text = title + "\n" + detail
+                    setTextColor(Color.BLACK)
+                    textSize = 10f
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+            row.addView(
+                button(activity, label) {
+                    toast(work())
+                    render()
+                    map.invalidate()
+                    changed()
+                },
+                LinearLayout.LayoutParams(dp(activity, 76), dp(activity, 29))
+            )
             return row
         }
+
         fun jobRow(title: String, id: String, count: () -> Int): View {
-            val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(activity, 4), dp(activity, 3), dp(activity, 4), dp(activity, 3)) }
-            row.addView(TextView(activity).apply { text = title + ": " + count(); setTextColor(Color.BLACK); textSize = 11f }, LinearLayout.LayoutParams(0, dp(activity, 30), 1f))
-            row.addView(button(activity, "-") { toast(game.job(id, -1)); render(); changed() }, LinearLayout.LayoutParams(dp(activity, 42), dp(activity, 28)).apply { marginEnd = dp(activity, 3) })
-            row.addView(button(activity, "+") { toast(game.job(id, 1)); render(); changed() }, LinearLayout.LayoutParams(dp(activity, 42), dp(activity, 28)))
+            val row = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(activity, 4), dp(activity, 3), dp(activity, 4), dp(activity, 3))
+            }
+            row.addView(
+                TextView(activity).apply {
+                    text = title + ": " + count()
+                    setTextColor(Color.BLACK)
+                    textSize = 10.5f
+                },
+                LinearLayout.LayoutParams(0, dp(activity, 29), 1f)
+            )
+            row.addView(
+                button(activity, "-") {
+                    toast(game.job(id, -1))
+                    render()
+                    changed()
+                },
+                LinearLayout.LayoutParams(dp(activity, 40), dp(activity, 27)).apply {
+                    marginEnd = dp(activity, 3)
+                }
+            )
+            row.addView(
+                button(activity, "+") {
+                    toast(game.job(id, 1))
+                    render()
+                    changed()
+                },
+                LinearLayout.LayoutParams(dp(activity, 40), dp(activity, 27))
+            )
             return row
         }
 
         fun overview() {
-            body.addView(section("COLONY STATUS"))
+            body.addView(section("COLONY COMMAND"))
             body.addView(line(game.goal()))
-            body.addView(line("Next game day in about " + game.nextDayMinutes() + " min. Up to " + OFFLINE_DAY_CAP + " offline days catch up when WIN26 opens."))
+            body.addView(line("Next day ~" + game.nextDayMinutes() + " min | Offline catch-up: " + OFFLINE_DAY_CAP + " days"))
             body.addView(line("Latest: " + game.lastEvent))
-            body.addView(section("QUICK ACTIONS"))
-            body.addView(action("Forage", "4-minute manual cooldown", "Go") { game.forage() })
-            body.addView(action("Harvest", "Collect every mature field", "Harvest") { game.harvest() })
-            body.addView(action("Market", "Sell 10 food; Market raises the price", "Sell") { game.sellFood() })
-            if (game.preservation) body.addView(action("Preserve Food", "15 food becomes higher-value trade goods", "Make") { game.preserveFood() })
-            body.addView(section("DAILY PRODUCTION"))
-            body.addView(line("Farmers cover " + game.farmers * 3 + " plots/day. Lumber +" + game.lumber * (2 + game.sawmill) + ". Stone +" + game.miners * (1 + game.quarry) + "."))
-            body.addView(line("Scientists +" + game.scientists * (1 + max(0, game.workshop - 1)) + " tech/day. Ranchers care for " + game.ranchers * 4 + " animals."))
+            body.addView(section("QUICK ORDERS"))
+            body.addView(action("Harvest all", "Collect every mature field", "Harvest") { game.harvest() })
+            body.addView(action("Send foragers", "4-minute manual expedition cooldown", "Forage") { game.forage() })
+            body.addView(action("Sell food", "10 food -> " + (6 + game.market * 2) + " coins", "Sell") { game.sellFood() })
+            if (game.preservation) {
+                body.addView(action("Preserve surplus", "15 food -> valuable trade goods", "Make") { game.preserveFood() })
+            }
+            body.addView(section("PRODUCTION"))
+            body.addView(line("Farmers cover " + game.farmers * 3 + " plots/day" + if (game.irrigation) " (Irrigated: all plots)" else ""))
+            body.addView(line("Wood +" + game.lumber * (2 + game.sawmill) + "/day | Stone +" + game.miners * (1 + game.quarry) + "/day | Tech +" + game.scientists * (1 + max(0, game.workshop - 1)) + "/day"))
         }
 
         fun farm() {
-            body.addView(section("FIELDS  " + game.unlockedPlots + "/" + game.plots.size + " UNLOCKED"))
+            body.addView(section("FARMLAND  " + game.unlockedPlots + "/" + game.plots.size + " PLOTS"))
             for (i in game.plots.indices) body.addView(line(game.plotText(i)))
-            body.addView(action("Harvest Ready", "Collect all mature fields", "Harvest") { game.harvest() })
-            body.addView(section("SEED CATALOG"))
+            body.addView(action("Harvest ready fields", "Clears mature plots and adds food/coin", "Harvest") { game.harvest() })
+            body.addView(section("SEED CATALOG — " + game.seasonName.uppercase()))
             game.availableCrops().forEach { crop ->
-                val ss = crop.seasons.joinToString("/") { arrayOf("Sp", "Su", "Fa", "Wi")[it] }
-                body.addView(action(crop.name, crop.cost.toString() + "c | " + crop.days + "d | +" + crop.food + " food +" + crop.coins + "c | " + ss, "Plant") { game.plant(crop.id) })
+                val seasons = crop.seasons.joinToString("/") {
+                    arrayOf("Sp", "Su", "Fa", "Wi")[it]
+                }
+                body.addView(
+                    action(
+                        crop.name,
+                        crop.cost.toString() + "c | " + crop.days + "d | +" + crop.food + " food | " + seasons,
+                        "Plant"
+                    ) { game.plant(crop.id) }
+                )
             }
             body.addView(section("RANCH  " + (game.chickens + game.cows + game.sheep) + "/" + game.animalCap))
-            body.addView(line("Chicken " + game.chickens + " | Cow " + game.cows + " | Sheep " + game.sheep + ". One rancher handles four animals."))
+            body.addView(line("Chicken " + game.chickens + " | Cow " + game.cows + " | Sheep " + game.sheep + " | Ranchers " + game.ranchers))
             body.addView(action("Chicken", "18c | +1 food/day", "Buy") { game.buyAnimal("chicken") })
             body.addView(action("Sheep", "34c | Barn Lv2 | wool income", "Buy") { game.buyAnimal("sheep") })
             body.addView(action("Cow", "42c | Barn Lv2 | +2 food/day", "Buy") { game.buyAnimal("cow") })
         }
 
+        fun build() {
+            body.addView(section("SETTLEMENT CONSTRUCTION"))
+            body.addView(line("Buildings appear directly on the map as the colony develops."))
+            body.addView(action("Cottage", "Housing +2; adds another house to Village Core", "Build") { game.build("house") })
+            body.addView(action("Barn Lv" + game.barn, "Animal capacity +4/level; opens ranching", "Build") { game.build("barn") })
+            body.addView(action("Sawmill Lv" + game.sawmill, "Improves West Woods lumber output", "Build") { game.build("sawmill") })
+            body.addView(action("Quarry Lv" + game.quarry, "Develops Stone Ridge; stone + ore", "Build") { game.build("quarry") })
+            body.addView(action("Workshop Lv" + game.workshop, "Unlocks researchers and advanced farming", "Build") { game.build("workshop") })
+            body.addView(action("Granary Lv" + game.granary, "Raises storage and passive food surplus", "Build") { game.build("granary") })
+            body.addView(action("Market Lv" + game.market, "Builds Market Ward and improves trade", "Build") { game.build("market") })
+        }
+
         fun people() {
-            body.addView(section("WORK ROSTER"))
-            body.addView(line("Settlers " + game.population + " | Assigned " + game.assigned + " | Free " + game.free))
+            body.addView(section("POPULATION & LABOR"))
+            body.addView(line("Settlers " + game.population + "/" + game.housing + " | Assigned " + game.assigned + " | Free " + game.free + " | Happiness " + game.happiness + "%"))
             body.addView(jobRow("Farmers", "farmer") { game.farmers })
             body.addView(jobRow("Lumberjacks", "lumber") { game.lumber })
             body.addView(jobRow("Miners", "miner") { game.miners })
             body.addView(jobRow("Researchers", "science") { game.scientists })
             body.addView(jobRow("Ranchers", "rancher") { game.ranchers })
-            body.addView(section("SETTLEMENT"))
-            body.addView(line("Happiness " + game.happiness + "% | Housing " + game.population + "/" + game.housing + " | Hunger warning " + game.starvation + "/4"))
-            body.addView(line("Spare housing, food and morale attract settlers over time. Persistent shortages drive them away."))
-        }
-
-        fun build() {
-            body.addView(section("CONSTRUCTION"))
-            body.addView(action("Cottage", "Housing +2; cost rises as the colony grows", "Build") { game.build("house") })
-            body.addView(action("Barn Lv" + game.barn, "Animal capacity +4/level", "Build") { game.build("barn") })
-            body.addView(action("Sawmill Lv" + game.sawmill, "More wood per lumberjack", "Build") { game.build("sawmill") })
-            body.addView(action("Quarry Lv" + game.quarry, "Stone and ore progression", "Build") { game.build("quarry") })
-            body.addView(action("Workshop Lv" + game.workshop, "Research efficiency and unlocks", "Build") { game.build("workshop") })
-            body.addView(action("Granary Lv" + game.granary, "More food storage and passive surplus", "Build") { game.build("granary") })
-            body.addView(action("Market Lv" + game.market, "Better food sales and trader payouts", "Build") { game.build("market") })
+            body.addView(section("MIGRATION"))
+            body.addView(line("Spare housing, stored food and good morale attract new settlers. Repeated shortages can make colonists leave."))
+            body.addView(line("Food warning: " + game.starvation + "/4 | Housing spare: " + max(0, game.housing - game.population)))
         }
 
         fun tech() {
-            body.addView(section("RESEARCH  " + game.tech + " POINTS"))
-            body.addView(action("Irrigation", "25 tech | Workshop Lv1 | all fields grow", if (game.irrigation) "Done" else "Research") { game.research("irrigation") })
+            body.addView(section("RESEARCH — " + game.tech + " POINTS"))
+            body.addView(action("Irrigation", "25 tech | Workshop Lv1 | every field grows daily", if (game.irrigation) "Done" else "Research") { game.research("irrigation") })
             body.addView(action("Crop Rotation", "40 tech | Workshop Lv1 | harvest bonus", if (game.rotation) "Done" else "Research") { game.research("rotation") })
-            body.addView(action("Deep Mining", "60 tech | Quarry Lv1 | more ore", if (game.deepMining) "Done" else "Research") { game.research("deep") })
-            body.addView(action("Food Preservation", "55 tech | Granary Lv1 | trade surplus", if (game.preservation) "Done" else "Research") { game.research("preserve") })
-            body.addView(action("Animal Care", "70 tech | Barn Lv2 | ranch morale bonus", if (game.animalCare) "Done" else "Research") { game.research("animals") })
+            body.addView(action("Deep Mining", "60 tech | Quarry Lv1 | improved ore output", if (game.deepMining) "Done" else "Research") { game.research("deep") })
+            body.addView(action("Food Preservation", "55 tech | Granary Lv1 | profitable surplus", if (game.preservation) "Done" else "Research") { game.research("preserve") })
+            body.addView(action("Animal Care", "70 tech | Barn Lv2 | livestock morale bonus", if (game.animalCare) "Done" else "Research") { game.research("animals") })
             body.addView(action("Greenhouse", "90 tech | Workshop Lv2 | any crop, any season", if (game.greenhouse) "Done" else "Research") { game.research("greenhouse") })
-            body.addView(section("EVENT LOG"))
-            if (game.log.isEmpty()) body.addView(line("No events recorded yet."))
+            body.addView(section("COLONY CHRONICLE"))
+            if (game.log.isEmpty()) body.addView(line("No major events recorded yet."))
             game.log.forEach { body.addView(line(it)) }
         }
 
         render = {
             game.catchUp()
-            header.text = "Y" + game.year + " " + game.seasonName + " " + game.seasonDay + " / " + game.weather() + "\n" +
-                "Pop " + game.population + "/" + game.housing + "  Happy " + game.happiness + "%  Lv " + game.level + "  Rep " + game.reputation + "\n" +
-                "$" + game.coins + "  Food " + game.food + "  Wood " + game.wood + "  Stone " + game.stone + "  Ore " + game.ore + "  Tech " + game.tech
+            header.text =
+                "Y" + game.year + " " + game.seasonName + " " + game.seasonDay + "  " + game.weather() +
+                    "   COLONY LV " + game.level + "\n" +
+                    "POP " + game.population + "/" + game.housing + "  HAPPY " + game.happiness + "%  REP " + game.reputation +
+                    "   $" + game.coins + "\n" +
+                    "FOOD " + game.food + "  WOOD " + game.wood + "  STONE " + game.stone +
+                    "  ORE " + game.ore + "  TECH " + game.tech
             body.removeAllViews()
-            when (tab) { 0 -> overview(); 1 -> farm(); 2 -> people(); 3 -> build(); else -> tech() }
+            when (tab) {
+                0 -> overview()
+                1 -> farm()
+                2 -> build()
+                3 -> people()
+                else -> tech()
+            }
+            map.invalidate()
         }
 
-        arrayOf("Status", "Farm", "People", "Build", "Tech").forEachIndexed { i, label ->
-            tabs.addView(button(activity, label) { tab = i; render() }, LinearLayout.LayoutParams(0, dp(activity, 29), 1f).apply { if (i > 0) marginStart = dp(activity, 2) })
+        arrayOf("Command", "Farm", "Build", "People", "Tech").forEachIndexed { i, label ->
+            tabs.addView(
+                button(activity, label) {
+                    tab = i
+                    render()
+                },
+                LinearLayout.LayoutParams(0, dp(activity, 29), 1f).apply {
+                    if (i > 0) marginStart = dp(activity, 2)
+                }
+            )
         }
-        root.addView(tabs, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 39)))
-        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 430)))
+        root.addView(
+            tabs,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, 35)
+            )
+        )
+        root.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, 205)
+            )
+        )
 
         render()
         Win98Dialogs.showCustom(
             context = activity,
-            title = "Homestead Colony Manager",
+            title = "Homestead Colony — Strategic Map",
             content = root,
             positiveText = "Close",
             negativeText = null,
-            onPositive = { game.save(); changed() }
+            onPositive = {
+                game.save()
+                changed()
+            }
         )
     }
 
