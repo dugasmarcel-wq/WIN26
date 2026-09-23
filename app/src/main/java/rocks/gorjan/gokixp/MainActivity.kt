@@ -1360,7 +1360,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 elevation = 8f
                 addView(
                     shelf,
-                    android.widget.ScrollView.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     )
@@ -1541,7 +1541,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             isFillViewport = false
             addView(
                 root,
-                android.widget.ScrollView.LayoutParams(
+                android.widget.FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
@@ -12326,7 +12326,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             visibility = View.GONE
             addView(
                 secondWidgets,
-                android.widget.ScrollView.LayoutParams(
+                android.widget.FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
