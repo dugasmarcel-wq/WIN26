@@ -1380,6 +1380,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             win98DesktopWidgetShelfScroll = scroll
         }
 
+        val widgetPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        if (!widgetPrefs.getBoolean("win98_farm_colony_seeded", false)) {
+            val page2Widgets = win98WidgetIdsForPage(2).toMutableSet()
+            page2Widgets.add("farm_colony")
+            widgetPrefs.edit()
+                .putStringSet(win98WidgetPageKey(2), page2Widgets)
+                .putBoolean("win98_farm_colony_seeded", true)
+                .apply()
+        }
+
         renderWin98WidgetPage(0)
         renderWin98WidgetPage(1)
         renderWin98WidgetPage(2)

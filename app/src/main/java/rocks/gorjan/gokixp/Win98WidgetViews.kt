@@ -71,6 +71,11 @@ object Win98WidgetViews {
             "Persistent 1996-style virtual pet: hunger, happiness, discipline, illness, sleep, care mistakes, game and branching growth."
         ),
         Win98WidgetSpec(
+            "farm_colony",
+            "Homestead Colony",
+            "Persistent farm-and-colony sim with crops, workers, animals, buildings, research, seasons, weather and offline progress."
+        ),
+        Win98WidgetSpec(
             "solitaire_desk",
             "Solitaire",
             "The full Klondike game and card logic, scaled into an interactive home-page cabinet."
@@ -90,6 +95,7 @@ object Win98WidgetViews {
             "mines" -> createEmbeddedMinesweeper(activity)
             "pinball" -> createEmbeddedPinball(activity)
             "cyber_pet" -> createCyberPet(activity)
+            "farm_colony" -> Win98FarmColonyWidget.create(activity)
             "solitaire_desk" -> createEmbeddedSolitaire(activity)
             "doodle" -> createDoodlePad(activity)
             else -> TextView(activity).apply {
