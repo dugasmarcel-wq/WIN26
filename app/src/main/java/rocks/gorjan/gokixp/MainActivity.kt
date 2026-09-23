@@ -172,9 +172,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98PagerDownX = 0f
     private var win98PagerDownY = 0f
     private var win98PagerDragging = false
+    private var win98PagerGestureAxis = 0 // 0 undecided, 1 horizontal pager, 2 vertical/non-pager
     private var win98PagerDragOriginPage = 1
     private var win98PagerDragTargetPage = 1
-    private var win98PagerVelocityTracker: android.view.VelocityTracker? = null
+    private var win98PagerLastRawX = 0f
+    private var win98PagerLastMotionTime = 0L
+    private var win98PagerVelocityX = 0f
     private var win98NewsLoading = false
     private var win98QuickHeaderTime: TextView? = null
     private var win98QuickCalendarValue: TextView? = null
@@ -12033,23 +12036,44 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun snapWin98PagerPixel(value: Float): Float = kotlin.math.round(value)
 
     private fun beginWin98PagerTouch(event: MotionEvent, originPage: Int) {
-        win98PagerVelocityTracker?.recycle()
-        win98PagerVelocityTracker = android.view.VelocityTracker.obtain().also {
-            it.addMovement(event)
-        }
-        win98PagerDownX = event.x
-        win98PagerDownY = event.y
+        // Use screen coordinates. Side pages themselves move during a drag; local event.x/y
+        // therefore move underneath a stationary finger and create a feedback loop/jitter.
+        win98PagerDownX = event.rawX
+        win98PagerDownY = event.rawY
         win98PagerDragging = false
+        win98PagerGestureAxis = 0
         win98PagerDragOriginPage = originPage
         win98PagerDragTargetPage = originPage
+        win98PagerLastRawX = event.rawX
+        win98PagerLastMotionTime = event.eventTime
+        win98PagerVelocityX = 0f
+    }
+
+    private fun updateWin98PagerVelocity(event: MotionEvent) {
+        val dt = event.eventTime - win98PagerLastMotionTime
+        if (dt in 1..80) {
+            val instantVelocity = (event.rawX - win98PagerLastRawX) * 1000f / dt.toFloat()
+            win98PagerVelocityX =
+                (win98PagerVelocityX * 0.62f) + (instantVelocity * 0.38f)
+        } else if (dt > 120) {
+            win98PagerVelocityX = 0f
+        }
+        win98PagerLastRawX = event.rawX
+        win98PagerLastMotionTime = event.eventTime
+    }
+
+    private fun currentWin98PagerVelocityX(event: MotionEvent): Float {
+        val idleMs = event.eventTime - win98PagerLastMotionTime
+        return if (idleMs > 120L) 0f else win98PagerVelocityX
     }
 
     private fun resetWin98PagerTouch() {
-        win98PagerVelocityTracker?.recycle()
-        win98PagerVelocityTracker = null
         win98PagerDragging = false
+        win98PagerGestureAxis = 0
         win98PagerDragOriginPage = win98CurrentPage
         win98PagerDragTargetPage = win98CurrentPage
+        win98PagerVelocityX = 0f
+        win98PagerLastMotionTime = 0L
     }
 
     private fun cancelLegacyGestureDetector(event: MotionEvent) {
@@ -12069,15 +12093,32 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
 
             MotionEvent.ACTION_MOVE -> {
-                win98PagerVelocityTracker?.addMovement(event)
-                val dx = event.x - win98PagerDownX
-                val dy = event.y - win98PagerDownY
+                updateWin98PagerVelocity(event)
+                val dx = event.rawX - win98PagerDownX
+                val dy = event.rawY - win98PagerDownY
+
+                if (win98PagerGestureAxis == 2) {
+                    // Once the user has clearly started a vertical gesture, never let later
+                    // sideways finger noise steal it from swipe-up search / swipe-down shade.
+                    return false
+                }
 
                 if (!win98PagerDragging) {
-                    if (abs(dx) < dp(10) || abs(dx) <= abs(dy) * 1.12f) {
+                    val slop = dp(8).toFloat()
+                    if (abs(dx) < slop && abs(dy) < slop) {
                         return false
                     }
 
+                    if (abs(dy) > abs(dx) * 1.05f) {
+                        win98PagerGestureAxis = 2
+                        return false
+                    }
+
+                    if (abs(dx) <= abs(dy) * 1.20f) {
+                        return false
+                    }
+
+                    win98PagerGestureAxis = 1
                     prewarmWin98Pages()
                     val targetPage = if (dx > 0f) 0 else 2
                     val page = (
@@ -12133,12 +12174,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                win98PagerVelocityTracker?.addMovement(event)
                 if (win98PagerDragging && win98PagerDragOriginPage == 1) {
-                    win98PagerVelocityTracker?.computeCurrentVelocity(1000)
-                    val velocityX = win98PagerVelocityTracker?.xVelocity ?: 0f
+                    val velocityX = currentWin98PagerVelocityX(event)
                     val width = win98PagerWidth()
-                    val rawDx = event.x - win98PagerDownX
+                    val rawDx = event.rawX - win98PagerDownX
                     val dragX = if (win98PagerDragTargetPage == 0) {
                         rawDx.coerceIn(0f, width)
                     } else {
@@ -12249,21 +12288,38 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
 
             MotionEvent.ACTION_MOVE -> {
-                win98PagerVelocityTracker?.addMovement(event)
-                val dx = event.x - win98PagerDownX
-                val dy = event.y - win98PagerDownY
+                updateWin98PagerVelocity(event)
+                val dx = event.rawX - win98PagerDownX
+                val dy = event.rawY - win98PagerDownY
+
+                if (win98PagerGestureAxis == 2) {
+                    return false
+                }
+
                 val directionIsTowardDesktop =
                     (pageIndex == 0 && dx < 0f) || (pageIndex == 2 && dx > 0f)
 
                 if (!win98PagerDragging) {
-                    if (
-                        !directionIsTowardDesktop ||
-                        abs(dx) < dp(10) ||
-                        abs(dx) <= abs(dy) * 1.12f
-                    ) {
+                    val slop = dp(8).toFloat()
+                    if (abs(dx) < slop && abs(dy) < slop) {
                         return false
                     }
 
+                    if (abs(dy) > abs(dx) * 1.05f) {
+                        win98PagerGestureAxis = 2
+                        return false
+                    }
+
+                    if (abs(dx) <= abs(dy) * 1.20f) {
+                        return false
+                    }
+
+                    if (!directionIsTowardDesktop) {
+                        win98PagerGestureAxis = 2
+                        return false
+                    }
+
+                    win98PagerGestureAxis = 1
                     win98PagerDragging = true
                     win98PagerDragOriginPage = pageIndex
                     win98PagerDragTargetPage = 1
@@ -12303,12 +12359,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                win98PagerVelocityTracker?.addMovement(event)
                 if (win98PagerDragging && win98PagerDragOriginPage == pageIndex) {
-                    win98PagerVelocityTracker?.computeCurrentVelocity(1000)
-                    val velocityX = win98PagerVelocityTracker?.xVelocity ?: 0f
+                    val velocityX = currentWin98PagerVelocityX(event)
                     val width = win98PagerWidth()
-                    val rawDx = event.x - win98PagerDownX
+                    val rawDx = event.rawX - win98PagerDownX
                     val dragX = if (pageIndex == 0) {
                         rawDx.coerceIn(-width, 0f)
                     } else {
