@@ -906,7 +906,7 @@ class Win98YouTubeMusicWidget(
             .apply()
     }
 
-    private fun dp(value: Int): Int =    private fun dp(value: Int): Int =
+    private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private class SpectrumView(context: Context) : View(context) {
