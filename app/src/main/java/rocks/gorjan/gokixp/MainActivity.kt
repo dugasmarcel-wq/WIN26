@@ -185,6 +185,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98QuickStoryContainer: LinearLayout? = null
     private var win98QuickRefreshButton: TextView? = null
     private var win98SecondPageSlots: LinearLayout? = null
+    private var win98WidgetLibraryIcon: DesktopIconView? = null
+    private var win98DesktopWidgetShelf: LinearLayout? = null
+    private var win98DesktopWidgetShelfScroll: android.widget.ScrollView? = null
+    private var win98QuickWidgetContainer: LinearLayout? = null
+    private var win98SecondWidgetContainer: LinearLayout? = null
+    private var win98SecondWidgetScroll: android.widget.ScrollView? = null
     var isStartMenuVisible = false
 
     // Back gesture tracking
@@ -1215,6 +1221,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun setupWin98QuickLaunchTaskbar() {
         setupWin98MusicWidget()
         setupWin98PageIndicator()
+        setupWin98WidgetLibrary()
         if (!themeManager.isClassicTheme()) return
         val taskbarEmptySpace = findViewById<LinearLayout>(R.id.taskbar_empty_space) ?: return
         val quickLaunchContainer =
@@ -1276,6 +1283,372 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             widget.layoutParams = RelativeLayout.LayoutParams(widgetWidth, widgetHeight)
             widget.elevation = 7f
             mainBackground.addView(widget)
+        }
+    }
+
+    private fun setupWin98WidgetLibrary() {
+        if (!themeManager.isClassicTheme()) {
+            win98WidgetLibraryIcon?.let { (it.parent as? ViewGroup)?.removeView(it) }
+            win98WidgetLibraryIcon = null
+            win98DesktopWidgetShelfScroll?.let { (it.parent as? ViewGroup)?.removeView(it) }
+            win98DesktopWidgetShelfScroll = null
+            win98DesktopWidgetShelf = null
+            win98QuickWidgetContainer?.visibility = View.GONE
+            win98SecondWidgetScroll?.visibility = View.GONE
+            return
+        }
+
+        if (win98WidgetLibraryIcon?.parent !== desktopContainer) {
+            win98WidgetLibraryIcon?.let { (it.parent as? ViewGroup)?.removeView(it) }
+
+            val folderDrawable = AppCompatResources.getDrawable(this, R.drawable.folder_98)
+                ?: return
+            val libraryIcon = DesktopIconView(this).apply {
+                setDesktopIcon(
+                    DesktopIcon(
+                        name = "WINSUNG\nWidgets",
+                        packageName = "winsung.widgets.library",
+                        icon = folderDrawable,
+                        x = 0f,
+                        y = 0f,
+                        id = "winsung_widgets_library",
+                        type = IconType.FOLDER
+                    )
+                )
+                setThemeFont(true)
+                setOnClickListener { showWin98WidgetLibrary() }
+                setCustomLongClickHandler { _, _ -> showWin98WidgetLibrary() }
+                elevation = 6f
+            }
+
+            desktopContainer.addView(
+                libraryIcon,
+                RelativeLayout.LayoutParams(
+                    RelativeLayout.LayoutParams.WRAP_CONTENT,
+                    RelativeLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            win98WidgetLibraryIcon = libraryIcon
+
+            // Wait until saved desktop icons have been restored, then put the library in the
+            // first free grid cell. It is Classic-only and deliberately not written into the
+            // shared XP/Vista desktop-icon model.
+            desktopContainer.post {
+                val free = findFirstAvailableGridSlot()
+                if (free != null) {
+                    val (x, y) = getGridCoordinates(free.first, free.second)
+                    libraryIcon.x = x
+                    libraryIcon.y = y
+                } else {
+                    libraryIcon.x = dp(12).toFloat()
+                    libraryIcon.y = dp(250).toFloat()
+                }
+            }
+        }
+
+        if (win98DesktopWidgetShelfScroll?.parent !== desktopContainer) {
+            win98DesktopWidgetShelfScroll?.let { (it.parent as? ViewGroup)?.removeView(it) }
+
+            val shelf = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(4), dp(4), dp(4), dp(8))
+            }
+            val scroll = android.widget.ScrollView(this).apply {
+                isFillViewport = false
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                visibility = View.GONE
+                elevation = 8f
+                addView(
+                    shelf,
+                    android.widget.ScrollView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+            val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
+            val shelfWidth = minOf(maxWidth, dp(300))
+            desktopContainer.addView(
+                scroll,
+                RelativeLayout.LayoutParams(shelfWidth, dp(330)).apply {
+                    addRule(RelativeLayout.ALIGN_PARENT_END)
+                    topMargin = dp(10)
+                    marginEnd = dp(10)
+                }
+            )
+            win98DesktopWidgetShelf = shelf
+            win98DesktopWidgetShelfScroll = scroll
+        }
+
+        renderWin98WidgetPage(0)
+        renderWin98WidgetPage(1)
+        renderWin98WidgetPage(2)
+    }
+
+    private fun win98WidgetPageKey(pageIndex: Int): String =
+        "win98_widget_page_${pageIndex}"
+
+    private fun win98WidgetIdsForPage(pageIndex: Int): Set<String> {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getStringSet(win98WidgetPageKey(pageIndex), emptySet())
+            ?.toSet()
+            ?: emptySet()
+    }
+
+    private fun setWin98WidgetOnPage(widgetId: String, pageIndex: Int, enabled: Boolean) {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val ids = win98WidgetIdsForPage(pageIndex).toMutableSet()
+        if (enabled) ids.add(widgetId) else ids.remove(widgetId)
+        prefs.edit().putStringSet(win98WidgetPageKey(pageIndex), ids).apply()
+        renderWin98WidgetPage(pageIndex)
+    }
+
+    private fun widgetPageName(pageIndex: Int): String = when (pageIndex) {
+        0 -> "Quick Glance"
+        1 -> "Desktop"
+        2 -> "Page 2"
+        else -> "Page"
+    }
+
+    private fun showWin98WidgetPlacement(spec: Win98WidgetSpec) {
+        val pages = listOf(1, 0, 2)
+        val items = pages.map { page ->
+            val enabled = spec.id in win98WidgetIdsForPage(page)
+            "${widgetPageName(page)}    [${if (enabled) "On" else "Off"}]"
+        }.toTypedArray()
+
+        Win98Dialogs.showList(
+            context = this,
+            title = spec.title,
+            items = items,
+            negativeText = "Done"
+        ) { which ->
+            val page = pages[which]
+            val enabled = spec.id in win98WidgetIdsForPage(page)
+            setWin98WidgetOnPage(spec.id, page, !enabled)
+            Handler(Looper.getMainLooper()).post {
+                showWin98WidgetPlacement(spec)
+            }
+        }
+    }
+
+    private fun showWin98WidgetLibrary() {
+        if (!themeManager.isClassicTheme()) return
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(7), dp(7), dp(7), dp(7))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(211, 206, 199))
+                setStroke(dp(1), Color.rgb(128, 128, 128))
+            }
+        }
+
+        root.addView(TextView(this).apply {
+            text = "C:\\Desktop\\WINSUNG Widgets"
+            setTextColor(Color.BLACK)
+            textSize = 12f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(dp(7), dp(5), dp(7), dp(5))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                setStroke(dp(1), Color.rgb(128, 128, 128))
+            }
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(7) })
+
+        root.addView(TextView(this).apply {
+            text = "Local animated and interactive WINSUNG widgets. Tap one to choose which home pages it lives on."
+            setTextColor(Color.BLACK)
+            textSize = 12f
+            setPadding(dp(3), 0, dp(3), dp(7))
+        })
+
+        Win98WidgetViews.specs.forEachIndexed { index, spec ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(7), dp(6), dp(7))
+                background = GradientDrawable().apply {
+                    setColor(
+                        if (index % 2 == 0) Color.rgb(224, 220, 214)
+                        else Color.rgb(211, 206, 199)
+                    )
+                    setStroke(dp(1), Color.rgb(160, 160, 160))
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { showWin98WidgetPlacement(spec) }
+            }
+
+            val textColumn = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            textColumn.addView(TextView(this).apply {
+                text = spec.title
+                setTextColor(Color.BLACK)
+                textSize = 14f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            })
+            textColumn.addView(TextView(this).apply {
+                text = spec.description
+                setTextColor(Color.rgb(55, 55, 55))
+                textSize = 11f
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            val activePages = (0..2).filter { spec.id in win98WidgetIdsForPage(it) }
+            textColumn.addView(TextView(this).apply {
+                text = if (activePages.isEmpty()) {
+                    "Not on a page"
+                } else {
+                    "On: " + activePages.joinToString { widgetPageName(it) }
+                }
+                setTextColor(Color.rgb(0, 0, 128))
+                textSize = 10f
+                setPadding(0, dp(3), 0, 0)
+            })
+            row.addView(
+                textColumn,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+
+            row.addView(TextView(this).apply {
+                text = "Place..."
+                gravity = Gravity.CENTER
+                setTextColor(Color.BLACK)
+                textSize = 11f
+                background = AppCompatResources.getDrawable(
+                    this@MainActivity,
+                    R.drawable.window_button_background
+                )
+                setOnClickListener { showWin98WidgetPlacement(spec) }
+            }, LinearLayout.LayoutParams(dp(62), dp(30)).apply {
+                marginStart = dp(7)
+            })
+
+            root.addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                if (index > 0) topMargin = dp(3)
+            })
+        }
+
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = false
+            addView(
+                root,
+                android.widget.ScrollView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(430)
+            )
+        }
+
+        Win98Dialogs.showCustom(
+            context = this,
+            title = "WINSUNG Widgets",
+            content = scroll,
+            positiveText = "Close",
+            negativeText = null
+        )
+    }
+
+    private fun createWin98WidgetCard(spec: Win98WidgetSpec, pageIndex: Int): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(211, 206, 199))
+                setStroke(dp(2), Color.rgb(95, 95, 95))
+            }
+            elevation = 2f
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), dp(3), dp(3), dp(3))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(0, 0, 128), Color.rgb(0, 96, 192))
+            )
+        }
+        header.addView(TextView(this).apply {
+            text = spec.title
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+        header.addView(TextView(this).apply {
+            text = "X"
+            gravity = Gravity.CENTER
+            setTextColor(Color.BLACK)
+            textSize = 10f
+            background = AppCompatResources.getDrawable(
+                this@MainActivity,
+                R.drawable.window_button_background
+            )
+            setOnClickListener {
+                setWin98WidgetOnPage(spec.id, pageIndex, false)
+            }
+        }, LinearLayout.LayoutParams(dp(24), dp(21)))
+
+        card.addView(header, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(27)
+        ))
+        card.addView(
+            Win98WidgetViews.create(this, spec.id),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        return card
+    }
+
+    private fun renderWin98WidgetPage(pageIndex: Int) {
+        if (!themeManager.isClassicTheme()) return
+
+        val container = when (pageIndex) {
+            0 -> win98QuickWidgetContainer
+            1 -> win98DesktopWidgetShelf
+            2 -> win98SecondWidgetContainer
+            else -> null
+        } ?: return
+
+        val enabled = win98WidgetIdsForPage(pageIndex)
+        container.removeAllViews()
+
+        Win98WidgetViews.specs.filter { it.id in enabled }.forEachIndexed { index, spec ->
+            container.addView(
+                createWin98WidgetCard(spec, pageIndex),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    if (index > 0) topMargin = dp(8)
+                }
+            )
+        }
+
+        val visible = enabled.isNotEmpty()
+        container.visibility = if (visible) View.VISIBLE else View.GONE
+        when (pageIndex) {
+            1 -> win98DesktopWidgetShelfScroll?.visibility =
+                if (visible) View.VISIBLE else View.GONE
+            2 -> win98SecondWidgetScroll?.visibility =
+                if (visible) View.VISIBLE else View.GONE
         }
     }
 
@@ -11856,6 +12229,18 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
+        val quickWidgets = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(9), 0, 0)
+        }
+        win98QuickWidgetContainer = quickWidgets
+        content.addView(quickWidgets, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+        renderWin98WidgetPage(0)
+
         scroll.setOnTouchListener { _, event ->
             handleWin98SidePagerTouch(0, scroll, event)
         }
@@ -11930,6 +12315,33 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
+
+        val secondWidgets = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(8))
+        }
+        val secondWidgetScroll = android.widget.ScrollView(this).apply {
+            isFillViewport = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            visibility = View.GONE
+            addView(
+                secondWidgets,
+                android.widget.ScrollView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        win98SecondWidgetContainer = secondWidgets
+        win98SecondWidgetScroll = secondWidgetScroll
+        page.addView(secondWidgetScroll, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        ).apply {
+            topMargin = dp(10)
+        })
+        renderWin98WidgetPage(2)
 
         page.setOnTouchListener { _, event ->
             handleWin98SidePagerTouch(2, page, event)
