@@ -165,10 +165,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private val quickLaunchBadgeViews = mutableMapOf<String, TextView>()
     private var win98QuickPage: View? = null
     private var win98SecondPage: View? = null
+    private var win98AolPageOne: View? = null
+    private var win98AolPageTwo: View? = null
     private var win98MusicWidget: Win98YouTubeMusicWidget? = null
     private var win98PageIndicator: LinearLayout? = null
     private val win98PageIndicatorDots = mutableListOf<View>()
-    private var win98CurrentPage = 1 // 0 = Quick Glance, 1 = desktop, 2 = Page 2
+    private var win98CurrentPage = 1 // 0 = Quick Glance, 1 = desktop, 2 = Page 2, 3/4 = AOL
     private var win98PagerDownX = 0f
     private var win98PagerDownY = 0f
     private var win98PagerDragging = false
@@ -185,6 +187,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98QuickStoryContainer: LinearLayout? = null
     private var win98QuickRefreshButton: TextView? = null
     private var win98SecondPageSlots: LinearLayout? = null
+    private var win98AolPageOneSlots: LinearLayout? = null
+    private var win98AolPageTwoSlots: LinearLayout? = null
     private var win98WidgetLibraryIcon: DesktopIconView? = null
     private var win98DesktopWidgetShelf: LinearLayout? = null
     private var win98DesktopWidgetShelfScroll: android.widget.ScrollView? = null
@@ -610,6 +614,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_QUICK_LAUNCH_PREFIX = "quick_launch_slot_"
         private const val KEY_START_ROW_PREFIX = "classic_start_row_"
         private const val KEY_SECOND_PAGE_SLOT_PREFIX = "classic_second_page_slot_"
+        private const val KEY_AOL_PAGE_SLOT_PREFIX = "classic_aol_page_slot_"
         private const val START_ROW_PHONE_ACTION = "__device_phone__"
         private const val CONFIGURED_SLOT_EMPTY = "__empty__"
         private const val CONFIGURED_SLOT_HIDDEN = "__hidden__"
@@ -617,6 +622,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val QUICK_LAUNCH_YTMUSIC = "com.google.android.apps.youtube.music"
         private const val QUICK_LAUNCH_WHATSAPP = "com.whatsapp"
         private const val QUICK_LAUNCH_SIGNAL = "org.thoughtcrime.securesms"
+        private const val QUICK_LAUNCH_YOUTUBE = "com.google.android.youtube"
+        private const val QUICK_LAUNCH_CHATGPT = "com.openai.chatgpt"
+        private const val QUICK_LAUNCH_REDDIT = "com.reddit.frontpage"
+        private const val QUICK_LAUNCH_DISCORD = "com.discord"
+        private const val QUICK_LAUNCH_MAPS = "com.google.android.apps.maps"
+        private const val QUICK_LAUNCH_CAMERA = "com.google.android.GoogleCamera"
 
         // Screensaver types
         private const val SCREENSAVER_NONE = 0
@@ -1691,21 +1702,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             contentDescription = "Home screen pages"
         }
 
-        listOf(
-            "Quick Glance" to 0,
-            "Desktop" to 1,
-            "Page 2" to 2
-        ).forEach { (label, pageIndex) ->
+        win98PageLabels().forEach { (label, pageIndex) ->
             val tapTarget = android.widget.FrameLayout(this).apply {
                 isClickable = true
                 isFocusable = true
                 contentDescription = label
                 setOnClickListener {
-                    when (pageIndex) {
-                        0 -> showWin98QuickPage()
-                        1 -> showWin98DesktopPage()
-                        2 -> showWin98SecondPage()
-                    }
+                    showWin98Page(pageIndex)
                 }
             }
             val dot = View(this)
@@ -1738,8 +1741,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         mainBackground.post { prewarmWin98Pages() }
     }
 
+    private fun win98PageLabels(): List<Pair<String, Int>> = listOf(
+        "Quick Glance" to 0,
+        "Desktop" to 1,
+        "Page 2" to 2,
+        "AOL Page 1" to 3,
+        "AOL Page 2" to 4
+    )
+
     private fun updateWin98PageIndicator(page: Int) {
-        win98CurrentPage = page.coerceIn(0, 2)
+        win98CurrentPage = page.coerceIn(0, 4)
         win98PageIndicatorDots.forEachIndexed { index, view ->
             view.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
@@ -1762,6 +1773,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (!themeManager.isClassicTheme()) return
         if (win98QuickPage == null) buildWin98QuickPage()
         if (win98SecondPage == null) buildWin98SecondPage()
+        if (win98AolPageOne == null) buildWin98AolPage(3)
+        if (win98AolPageTwo == null) buildWin98AolPage(4)
     }
 
     private fun prepareWin98QuickPageSnapshot() {
@@ -1786,12 +1799,24 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         when {
             win98QuickPage?.visibility == View.VISIBLE -> hideWin98QuickPage()
             win98SecondPage?.visibility == View.VISIBLE -> hideWin98SecondPage()
+            win98AolPageOne?.visibility == View.VISIBLE -> hideWin98AolPage(3)
+            win98AolPageTwo?.visibility == View.VISIBLE -> hideWin98AolPage(4)
             else -> {
                 desktopContainer.visibility = View.VISIBLE
                 desktopContainer.translationX = 0f
                 restoreWin98MusicWidgetIfDesktopVisible()
                 updateWin98PageIndicator(1)
             }
+        }
+    }
+
+    private fun showWin98Page(pageIndex: Int) {
+        when (pageIndex) {
+            0 -> showWin98QuickPage()
+            1 -> showWin98DesktopPage()
+            2 -> showWin98SecondPage()
+            3 -> showWin98AolPage(3)
+            4 -> showWin98AolPage(4)
         }
     }
 
@@ -1805,6 +1830,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             "Start Menu rows",
             "Quick Launch buttons",
             "Page 2 apps",
+            "AOL page apps",
             "Notification badges",
             "Appearance & wallpaper"
         )
@@ -1819,8 +1845,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 0 -> showStartRowsEditor()
                 1 -> showQuickLaunchEditor()
                 2 -> showSecondPageEditor()
-                3 -> showNotificationBadgeModeDialog()
-                4 -> createAndShowWallpaperDialog("appearance")
+                3 -> showAolPagesEditor()
+                4 -> showNotificationBadgeModeDialog()
+                5 -> createAndShowWallpaperDialog("appearance")
             }
         }
     }
@@ -2015,6 +2042,23 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         "system.internet_explorer"
     )
 
+    private fun aolPageDefaults(pageIndex: Int): List<String> = when (pageIndex) {
+        3 -> listOf(
+            QUICK_LAUNCH_WHATSAPP,
+            QUICK_LAUNCH_SIGNAL,
+            QUICK_LAUNCH_FIREFOX,
+            QUICK_LAUNCH_YTMUSIC,
+            QUICK_LAUNCH_YOUTUBE
+        )
+        else -> listOf(
+            QUICK_LAUNCH_CHATGPT,
+            QUICK_LAUNCH_REDDIT,
+            QUICK_LAUNCH_DISCORD,
+            QUICK_LAUNCH_MAPS,
+            QUICK_LAUNCH_CAMERA
+        )
+    }
+
     private fun getClassicStartRow(index: Int): String {
         val defaults = classicStartRowDefaults()
         return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -2027,6 +2071,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
             .getString("${KEY_SECOND_PAGE_SLOT_PREFIX}$index", defaults[index])
             ?: defaults[index]
+    }
+
+    private fun getAolPageSlot(pageIndex: Int, slotIndex: Int): String {
+        val defaults = aolPageDefaults(pageIndex)
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getString("${KEY_AOL_PAGE_SLOT_PREFIX}${pageIndex}_$slotIndex", defaults[slotIndex])
+            ?: defaults[slotIndex]
     }
 
     private fun configuredAppLabel(packageName: String): String {
@@ -2207,6 +2258,57 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         .putString("${KEY_SECOND_PAGE_SLOT_PREFIX}$index", value)
                         .apply()
                     populateWin98SecondPageSlots()
+                }
+            }
+        }.start()
+    }
+
+    private fun showAolPagesEditor() {
+        val labels = mutableListOf<String>()
+        for (pageIndex in 3..4) {
+            for (slotIndex in 0 until aolPageDefaults(pageIndex).size) {
+                labels.add(
+                    "AOL ${pageIndex - 2} Slot ${slotIndex + 1}: " +
+                        configuredAppLabel(getAolPageSlot(pageIndex, slotIndex))
+                )
+            }
+        }
+
+        Win98Dialogs.showList(
+            context = this,
+            title = "AOL Page Apps",
+            items = labels.toTypedArray(),
+            negativeText = "Cancel"
+        ) { which ->
+            val pageIndex = if (which < 5) 3 else 4
+            val slotIndex = which % 5
+            showAolPageSlotPicker(pageIndex, slotIndex)
+        }
+    }
+
+    private fun showAolPageSlotPicker(pageIndex: Int, slotIndex: Int) {
+        Thread {
+            val apps = loadAppsInBackground()
+            runOnUiThread {
+                val labels = mutableListOf("Empty slot", "Phone")
+                labels.addAll(apps.map { it.name })
+
+                Win98Dialogs.showList(
+                    context = this,
+                    title = "Set AOL ${pageIndex - 2} slot ${slotIndex + 1}",
+                    items = labels.toTypedArray(),
+                    negativeText = "Cancel"
+                ) { which ->
+                    val value = when (which) {
+                        0 -> CONFIGURED_SLOT_EMPTY
+                        1 -> START_ROW_PHONE_ACTION
+                        else -> apps[which - 2].packageName
+                    }
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString("${KEY_AOL_PAGE_SLOT_PREFIX}${pageIndex}_$slotIndex", value)
+                        .apply()
+                    populateWin98AolPageSlots(pageIndex)
                 }
             }
         }.start()
@@ -4611,6 +4713,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     win98SecondPage?.visibility == View.VISIBLE -> {
                         Log.d("MainActivity", "Back pressed (modern): closing Page 2")
                         hideWin98SecondPage()
+                    }
+                    win98AolPageOne?.visibility == View.VISIBLE -> {
+                        Log.d("MainActivity", "Back pressed (modern): closing AOL Page 1")
+                        hideWin98AolPage(3)
+                    }
+                    win98AolPageTwo?.visibility == View.VISIBLE -> {
+                        Log.d("MainActivity", "Back pressed (modern): closing AOL Page 2")
+                        hideWin98AolPage(4)
                     }
                     isStartMenuVisible -> {
                         // If start menu is open, close it
@@ -12048,6 +12158,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (win98SecondPage?.visibility == View.VISIBLE) {
             hideWin98SecondPage(immediate = true)
         }
+        hideWin98AolPage(3, immediate = true)
+        hideWin98AolPage(4, immediate = true)
 
         val page = win98QuickPage ?: buildWin98QuickPage()
         prepareWin98QuickPageSnapshot()
@@ -12267,6 +12379,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (win98QuickPage?.visibility == View.VISIBLE) {
             hideWin98QuickPage(immediate = true)
         }
+        hideWin98AolPage(3, immediate = true)
+        hideWin98AolPage(4, immediate = true)
 
         val page = win98SecondPage ?: buildWin98SecondPage()
         updateWin98PageIndicator(2)
@@ -12446,6 +12560,224 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
+    private fun showWin98AolPage(pageIndex: Int) {
+        if (!themeManager.isClassicTheme()) return
+        hideStartMenu()
+        prewarmWin98Pages()
+        win98QuickPage?.takeIf { it.visibility == View.VISIBLE }?.let { hideWin98QuickPage(immediate = true) }
+        win98SecondPage?.takeIf { it.visibility == View.VISIBLE }?.let { hideWin98SecondPage(immediate = true) }
+        if (pageIndex == 3) {
+            win98AolPageTwo?.takeIf { it.visibility == View.VISIBLE }?.let { hideWin98AolPage(4, immediate = true) }
+        } else {
+            win98AolPageOne?.takeIf { it.visibility == View.VISIBLE }?.let { hideWin98AolPage(3, immediate = true) }
+        }
+
+        val page = win98PageView(pageIndex) ?: buildWin98AolPage(pageIndex)
+        updateWin98PageIndicator(pageIndex)
+        animateWin98PageIn(page, fromLeft = false)
+    }
+
+    private fun buildWin98AolPage(pageIndex: Int): View {
+        val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
+        val scroll = android.widget.ScrollView(this).apply {
+            id = View.generateViewId()
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            visibility = View.INVISIBLE
+            elevation = 11f
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.rgb(1, 35, 118), Color.rgb(12, 91, 190), Color.rgb(0, 30, 96))
+            )
+            layoutParams = RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.MATCH_PARENT,
+                RelativeLayout.LayoutParams.MATCH_PARENT
+            ).apply {
+                setMargins(0, dp(36), 0, dp(70))
+            }
+        }
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(18))
+        }
+        scroll.addView(content)
+
+        val header = android.widget.FrameLayout(this).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(80, 255, 255, 255))
+                setStroke(dp(1), Color.argb(170, 255, 255, 255))
+                cornerRadius = dp(12).toFloat()
+            }
+        }
+        header.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@MainActivity).apply {
+                text = "AMERICA ONLINE"
+                setTextColor(Color.WHITE)
+                textSize = 10f
+                letterSpacing = 0.09f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "Buddy Page ${pageIndex - 2}"
+                setTextColor(Color.WHITE)
+                textSize = 25f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setShadowLayer(2f, 1f, 2f, Color.rgb(0, 0, 64))
+            })
+        }, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.START or Gravity.CENTER_VERTICAL
+        ))
+        header.addView(TextView(this).apply {
+            text = "AOL"
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            textSize = 26f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setShadowLayer(4f, 2f, 3f, Color.rgb(0, 0, 80))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(46, 170, 255), Color.rgb(0, 56, 180), Color.rgb(0, 22, 112))
+            ).apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dp(2), Color.WHITE)
+            }
+        }, android.widget.FrameLayout.LayoutParams(dp(88), dp(88), Gravity.END or Gravity.TOP))
+        content.addView(header, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(108)
+        ).apply { bottomMargin = dp(14) })
+
+        val slots = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(72, 255, 255, 255))
+                setStroke(dp(1), Color.argb(180, 255, 255, 255))
+                cornerRadius = dp(12).toFloat()
+            }
+        }
+        if (pageIndex == 3) win98AolPageOneSlots = slots else win98AolPageTwoSlots = slots
+        content.addView(slots, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        scroll.setOnTouchListener { _, event ->
+            handleWin98SidePagerTouch(pageIndex, scroll, event)
+        }
+
+        mainBackground.addView(scroll)
+        if (pageIndex == 3) win98AolPageOne = scroll else win98AolPageTwo = scroll
+        populateWin98AolPageSlots(pageIndex)
+        return scroll
+    }
+
+    private fun populateWin98AolPageSlots(pageIndex: Int) {
+        val container = if (pageIndex == 3) win98AolPageOneSlots else win98AolPageTwoSlots
+        container ?: return
+        container.removeAllViews()
+
+        aolPageDefaults(pageIndex).indices.forEach { slotIndex ->
+            val packageName = getAolPageSlot(pageIndex, slotIndex)
+            val label = configuredAppLabel(packageName)
+            container.addView(createAolShortcutTile(pageIndex, slotIndex, packageName, label),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(86)
+                ).apply {
+                    if (slotIndex > 0) topMargin = dp(8)
+                }
+            )
+        }
+    }
+
+    private fun createAolShortcutTile(
+        pageIndex: Int,
+        slotIndex: Int,
+        packageName: String,
+        label: String
+    ): View {
+        val colors = listOf(
+            intArrayOf(Color.rgb(255, 216, 55), Color.rgb(234, 122, 20)),
+            intArrayOf(Color.rgb(90, 236, 164), Color.rgb(0, 136, 122)),
+            intArrayOf(Color.rgb(255, 128, 207), Color.rgb(126, 48, 196)),
+            intArrayOf(Color.rgb(125, 218, 255), Color.rgb(0, 98, 210)),
+            intArrayOf(Color.rgb(255, 245, 150), Color.rgb(210, 70, 58))
+        )[slotIndex % 5]
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(9), dp(7), dp(10), dp(7))
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply {
+                cornerRadius = dp(11).toFloat()
+                setStroke(dp(2), Color.WHITE)
+            }
+            elevation = dp(3).toFloat()
+            isClickable = true
+            isFocusable = true
+            contentDescription = label
+            setOnClickListener {
+                if (packageName == CONFIGURED_SLOT_EMPTY) {
+                    showAolPageSlotPicker(pageIndex, slotIndex)
+                } else {
+                    launchConfiguredApp(packageName, label)
+                }
+            }
+            setOnLongClickListener {
+                showAolPageSlotPicker(pageIndex, slotIndex)
+                true
+            }
+
+            addView(android.widget.FrameLayout(this@MainActivity).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.WHITE, colors[0])).apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(dp(2), Color.rgb(0, 0, 128))
+                }
+                addView(ImageView(this@MainActivity).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    val icon = configuredAppIcon(packageName)
+                    if (icon != null) {
+                        setImageDrawable(icon)
+                    } else {
+                        setImageResource(R.drawable.programs_98)
+                        alpha = 0.55f
+                    }
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                }, android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                ))
+            }, LinearLayout.LayoutParams(dp(64), dp(64)).apply {
+                marginEnd = dp(12)
+            })
+
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(this@MainActivity).apply {
+                    text = label
+                    setTextColor(Color.WHITE)
+                    textSize = 18f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setShadowLayer(2f, 1f, 2f, Color.rgb(0, 0, 80))
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = "Tap to open. Hold to change."
+                    setTextColor(Color.rgb(235, 245, 255))
+                    textSize = 10.5f
+                    maxLines = 1
+                })
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+    }
+
     private fun win98PagerWidth(): Float {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
         return (if (mainBackground.width > 0) {
@@ -12453,6 +12785,21 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         } else {
             resources.displayMetrics.widthPixels
         }).toFloat()
+    }
+
+    private fun win98PageView(pageIndex: Int): View? = when (pageIndex) {
+        0 -> win98QuickPage
+        2 -> win98SecondPage
+        3 -> win98AolPageOne
+        4 -> win98AolPageTwo
+        else -> null
+    }
+
+    private fun ensureWin98PageView(pageIndex: Int): View? = when (pageIndex) {
+        0 -> win98QuickPage ?: buildWin98QuickPage()
+        2 -> win98SecondPage ?: buildWin98SecondPage()
+        3, 4 -> win98PageView(pageIndex) ?: buildWin98AolPage(pageIndex)
+        else -> null
     }
 
     private fun snapWin98PagerPixel(value: Float): Float = kotlin.math.round(value)
@@ -12561,9 +12908,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     win98PagerGestureAxis = 1
                     prewarmWin98Pages()
                     val targetPage = if (dx > 0f) 0 else 2
-                    val page = (
-                        if (targetPage == 0) win98QuickPage else win98SecondPage
-                    ) ?: return false
+                    val page = ensureWin98PageView(targetPage) ?: return false
 
                     win98PagerDragging = true
                     win98PagerDragOriginPage = 1
@@ -12597,11 +12942,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     } else {
                         dx.coerceIn(-width, 0f)
                     }
-                    val page = if (win98PagerDragTargetPage == 0) {
-                        win98QuickPage
-                    } else {
-                        win98SecondPage
-                    } ?: return true
+                    val page = win98PageView(win98PagerDragTargetPage) ?: return true
 
                     val snappedDragX = snapWin98PagerPixel(dragX)
                     page.translationX = snapWin98PagerPixel(
@@ -12632,7 +12973,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     val commit = event.actionMasked == MotionEvent.ACTION_UP &&
                         (progress >= 0.18f || directionalFling)
                     val targetPage = win98PagerDragTargetPage
-                    val page = if (targetPage == 0) win98QuickPage else win98SecondPage
+                    val page = win98PageView(targetPage)
 
                     if (page != null) {
                         settleWin98DesktopPagerDrag(targetPage, page, commit)
@@ -12741,9 +13082,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     return false
                 }
 
-                val directionIsTowardDesktop =
-                    (pageIndex == 0 && dx < 0f) || (pageIndex == 2 && dx > 0f)
-
                 if (!win98PagerDragging) {
                     val slop = dp(5).toFloat()
                     if (abs(dx) < slop && abs(dy) < slop) {
@@ -12761,47 +13099,61 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         return false
                     }
 
-                    if (!directionIsTowardDesktop) {
+                    val targetPage = when {
+                        dx < 0f && pageIndex < 4 -> pageIndex + 1
+                        dx > 0f && pageIndex > 0 -> pageIndex - 1
+                        else -> pageIndex
+                    }
+                    if (targetPage == pageIndex) {
                         win98PagerGestureAxis = 2
                         return false
                     }
+                    val targetView = if (targetPage == 1) null else ensureWin98PageView(targetPage)
 
                     win98PagerGestureAxis = 1
                     win98PagerDragging = true
                     cancelLegacyGestureDetector(event)
                     win98PagerDragOriginPage = pageIndex
-                    win98PagerDragTargetPage = 1
+                    win98PagerDragTargetPage = targetPage
 
                     page.animate().cancel()
                     desktopContainer.animate().cancel()
                     win98MusicWidget?.animate()?.cancel()
+                    targetView?.animate()?.cancel()
 
                     val width = win98PagerWidth()
-                    val desktopStart = if (pageIndex == 0) width else -width
-                    desktopContainer.visibility = View.VISIBLE
-                    desktopContainer.translationX = desktopStart
-                    win98MusicWidget?.apply {
-                        visibility = View.VISIBLE
-                        setPagerOffsetX(desktopStart)
+                    if (targetPage == 1) {
+                        val desktopStart = if (pageIndex == 0) width else -width
+                        desktopContainer.visibility = View.VISIBLE
+                        desktopContainer.translationX = desktopStart
+                        win98MusicWidget?.apply {
+                            visibility = View.VISIBLE
+                            setPagerOffsetX(desktopStart)
+                        }
+                    } else {
+                        targetView?.apply {
+                            visibility = View.VISIBLE
+                            alpha = 1f
+                            translationX = if (targetPage > pageIndex) width else -width
+                        }
                     }
                 }
 
                 if (win98PagerDragging && win98PagerDragOriginPage == pageIndex) {
                     val width = win98PagerWidth()
-                    val dragX = if (pageIndex == 0) {
-                        dx.coerceIn(-width, 0f)
-                    } else {
-                        dx.coerceIn(0f, width)
-                    }
-                    val desktopStart = if (pageIndex == 0) width else -width
+                    val goingForward = win98PagerDragTargetPage > pageIndex
+                    val dragX = if (goingForward) dx.coerceIn(-width, 0f) else dx.coerceIn(0f, width)
 
                     val snappedDragX = snapWin98PagerPixel(dragX)
                     page.translationX = snappedDragX
-                    desktopContainer.translationX =
-                        snapWin98PagerPixel(desktopStart + snappedDragX)
-                    win98MusicWidget?.setPagerOffsetX(
-                        snapWin98PagerPixel(desktopStart + snappedDragX)
-                    )
+                    if (win98PagerDragTargetPage == 1) {
+                        val desktopStart = if (pageIndex == 0) width else -width
+                        desktopContainer.translationX = snapWin98PagerPixel(desktopStart + snappedDragX)
+                        win98MusicWidget?.setPagerOffsetX(snapWin98PagerPixel(desktopStart + snappedDragX))
+                    } else {
+                        win98PageView(win98PagerDragTargetPage)?.translationX =
+                            snapWin98PagerPixel((if (goingForward) width else -width) + snappedDragX)
+                    }
                     return true
                 }
             }
@@ -12823,17 +13175,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     val velocityX = currentWin98PagerVelocityX(event)
                     val width = win98PagerWidth()
                     val rawDx = event.rawX - win98PagerDownX
-                    val dragX = if (pageIndex == 0) {
-                        rawDx.coerceIn(-width, 0f)
-                    } else {
-                        rawDx.coerceIn(0f, width)
-                    }
+                    val goingForward = win98PagerDragTargetPage > pageIndex
+                    val dragX = if (goingForward) rawDx.coerceIn(-width, 0f) else rawDx.coerceIn(0f, width)
                     val progress = abs(dragX) / width.coerceAtLeast(1f)
-                    val directionalFling = if (pageIndex == 0) {
-                        velocityX < -450f
-                    } else {
-                        velocityX > 450f
-                    }
+                    val directionalFling = if (goingForward) velocityX < -450f else velocityX > 450f
                     val commit = event.actionMasked == MotionEvent.ACTION_UP &&
                         (progress >= 0.18f || directionalFling)
 
@@ -12854,15 +13199,23 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     ) {
         val width = win98PagerWidth()
         val interpolator = win98PagerInterpolator()
+        val targetPage = win98PagerDragTargetPage
+        val goingForward = targetPage > pageIndex
         val desktopStart = if (pageIndex == 0) width else -width
+        val targetView = if (targetPage == 1) null else win98PageView(targetPage)
         page.animate().cancel()
         desktopContainer.animate().cancel()
         win98MusicWidget?.animate()?.cancel()
+        targetView?.animate()?.cancel()
 
         if (commit) {
-            val pageEnd = if (pageIndex == 0) -width else width
+            val pageEnd = if (goingForward) -width else width
             val duration = win98PagerSettleDuration(pageEnd - page.translationX, width)
-            updateWin98PageIndicator(1)
+            if (targetPage == 0) {
+                prepareWin98QuickPageSnapshot()
+                refreshWin98QuickPageNews()
+            }
+            updateWin98PageIndicator(targetPage)
 
             page.animate()
                 .translationX(pageEnd)
@@ -12871,43 +13224,75 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 .withEndAction {
                     page.visibility = View.INVISIBLE
                     page.translationX = 0f
-                    desktopContainer.visibility = View.VISIBLE
-                    desktopContainer.translationX = 0f
-                    win98MusicWidget?.apply {
-                        visibility = View.VISIBLE
-                        setPagerOffsetX(0f)
+                    if (targetPage == 1) {
+                        desktopContainer.visibility = View.VISIBLE
+                        desktopContainer.translationX = 0f
+                        win98MusicWidget?.apply {
+                            visibility = View.VISIBLE
+                            setPagerOffsetX(0f)
+                        }
+                    } else {
+                        desktopContainer.visibility = View.INVISIBLE
+                        desktopContainer.translationX = 0f
+                        win98MusicWidget?.apply {
+                            visibility = View.GONE
+                            setPagerOffsetX(0f)
+                        }
                     }
                 }
                 .start()
-            desktopContainer.animate()
-                .translationX(0f)
-                .setDuration(duration)
-                .setInterpolator(interpolator)
-                .start()
-            win98MusicWidget?.animatePagerOffsetX(0f, duration, interpolator)
+            if (targetPage == 1) {
+                desktopContainer.animate()
+                    .translationX(0f)
+                    .setDuration(duration)
+                    .setInterpolator(interpolator)
+                    .start()
+                win98MusicWidget?.animatePagerOffsetX(0f, duration, interpolator)
+            } else {
+                targetView?.animate()
+                    ?.translationX(0f)
+                    ?.setDuration(duration)
+                    ?.setInterpolator(interpolator)
+                    ?.start()
+            }
         } else {
             val duration = win98PagerSettleDuration(page.translationX, width)
             updateWin98PageIndicator(pageIndex)
+            val targetEnd = if (goingForward) width else -width
 
             page.animate()
                 .translationX(0f)
                 .setDuration(duration)
                 .setInterpolator(interpolator)
                 .withEndAction {
-                    desktopContainer.visibility = View.INVISIBLE
-                    desktopContainer.translationX = 0f
-                    win98MusicWidget?.apply {
-                        visibility = View.GONE
-                        setPagerOffsetX(0f)
+                    targetView?.apply {
+                        visibility = View.INVISIBLE
+                        translationX = 0f
+                    }
+                    if (targetPage == 1) {
+                        desktopContainer.visibility = View.INVISIBLE
+                        desktopContainer.translationX = 0f
+                        win98MusicWidget?.apply {
+                            visibility = View.GONE
+                            setPagerOffsetX(0f)
+                        }
                     }
                 }
                 .start()
-            desktopContainer.animate()
-                .translationX(desktopStart)
-                .setDuration(duration)
-                .setInterpolator(interpolator)
-                .start()
-            win98MusicWidget?.animatePagerOffsetX(desktopStart, duration, interpolator)
+            if (targetPage == 1) {
+                desktopContainer.animate()
+                    .translationX(desktopStart)
+                    .setDuration(duration)
+                    .setInterpolator(interpolator)
+                    .start()
+                win98MusicWidget?.animatePagerOffsetX(desktopStart, duration, interpolator)
+            } else {
+                targetView?.animate()
+                    ?.translationX(targetEnd)
+                    ?.setDuration(duration)
+                    ?.setInterpolator(interpolator)
+                    ?.start()
+            }
         }
     }
 
@@ -13001,10 +13386,32 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
+    private fun hideWin98AolPage(pageIndex: Int, immediate: Boolean = false) {
+        val page = win98PageView(pageIndex) ?: return
+        if (page.visibility != View.VISIBLE) {
+            restoreWin98MusicWidgetIfDesktopVisible()
+            return
+        }
+        if (immediate) {
+            page.animate().cancel()
+            page.visibility = View.INVISIBLE
+            page.translationX = 0f
+            if (win98CurrentPage == pageIndex) updateWin98PageIndicator(1)
+            restoreWin98MusicWidgetIfDesktopVisible()
+            return
+        }
+        animateWin98PageOut(page, toLeft = false) {
+            updateWin98PageIndicator(1)
+        }
+    }
+
     private fun restoreWin98MusicWidgetIfDesktopVisible() {
         val quickVisible = win98QuickPage?.visibility == View.VISIBLE
         val secondVisible = win98SecondPage?.visibility == View.VISIBLE
-        if (!quickVisible && !secondVisible && themeManager.isClassicTheme()) {
+        val aolVisible =
+            win98AolPageOne?.visibility == View.VISIBLE ||
+                win98AolPageTwo?.visibility == View.VISIBLE
+        if (!quickVisible && !secondVisible && !aolVisible && themeManager.isClassicTheme()) {
             win98MusicWidget?.apply {
                 visibility = View.VISIBLE
                 setPagerOffsetX(0f)
@@ -13503,6 +13910,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             win98SecondPage?.visibility == View.VISIBLE -> {
                 Log.d("MainActivity", "Back pressed (legacy): closing Page 2")
                 hideWin98SecondPage()
+            }
+            win98AolPageOne?.visibility == View.VISIBLE -> {
+                Log.d("MainActivity", "Back pressed (legacy): closing AOL Page 1")
+                hideWin98AolPage(3)
+            }
+            win98AolPageTwo?.visibility == View.VISIBLE -> {
+                Log.d("MainActivity", "Back pressed (legacy): closing AOL Page 2")
+                hideWin98AolPage(4)
             }
             isStartMenuVisible -> {
                 // If start menu is open, close it
