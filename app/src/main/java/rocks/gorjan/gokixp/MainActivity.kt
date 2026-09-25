@@ -12585,23 +12585,179 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         animateWin98PageIn(page, fromLeft = false)
     }
 
+    private fun aolPageBackground(): android.graphics.drawable.Drawable =
+        object : android.graphics.drawable.Drawable() {
+            private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+            override fun draw(canvas: Canvas) {
+                val b = bounds
+                paint.shader = android.graphics.LinearGradient(
+                    0f,
+                    b.top.toFloat(),
+                    b.right.toFloat(),
+                    b.bottom.toFloat(),
+                    intArrayOf(
+                        Color.rgb(16, 72, 150),
+                        Color.rgb(23, 111, 184),
+                        Color.rgb(7, 58, 138)
+                    ),
+                    null,
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(b, paint)
+                paint.shader = null
+
+                paint.strokeWidth = dp(1).toFloat()
+                for (i in 0 until 34) {
+                    val y = b.top + ((i * 47) % b.height())
+                    val x = b.left + ((i * 83) % (b.width().coerceAtLeast(1)))
+                    paint.color = if (i % 2 == 0) {
+                        Color.argb(23, 255, 255, 255)
+                    } else {
+                        Color.argb(20, 0, 18, 76)
+                    }
+                    canvas.drawLine(
+                        (x - dp(70)).toFloat(),
+                        y.toFloat(),
+                        (x + dp(90)).toFloat(),
+                        (y + dp(28)).toFloat(),
+                        paint
+                    )
+                }
+
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.strokeWidth = dp(1).toFloat()
+                for (i in 0 until 9) {
+                    paint.color = Color.argb(18, 225, 245, 255)
+                    val cx = b.left + ((i * 109 + 41) % b.width().coerceAtLeast(1))
+                    val cy = b.top + ((i * 71 + 53) % b.height().coerceAtLeast(1))
+                    canvas.drawOval(
+                        cx.toFloat(),
+                        cy.toFloat(),
+                        (cx + dp(72)).toFloat(),
+                        (cy + dp(24)).toFloat(),
+                        paint
+                    )
+                }
+                paint.style = android.graphics.Paint.Style.FILL
+            }
+
+            override fun setAlpha(alpha: Int) {
+                paint.alpha = alpha
+            }
+
+            override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+                paint.colorFilter = colorFilter
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+        }
+
+    private fun aolMenuButtonBackground(slotIndex: Int): android.graphics.drawable.Drawable {
+        val accentColors = intArrayOf(
+            Color.rgb(255, 155, 20),
+            Color.rgb(56, 208, 90),
+            Color.rgb(0, 194, 244),
+            Color.rgb(224, 63, 208),
+            Color.rgb(245, 66, 48)
+        )
+        val accent = accentColors[slotIndex % accentColors.size]
+
+        return object : android.graphics.drawable.Drawable() {
+            private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+            private fun lozenge(rect: android.graphics.RectF, inset: Float): android.graphics.Path {
+                val r = android.graphics.RectF(
+                    rect.left + inset,
+                    rect.top + inset,
+                    rect.right - inset,
+                    rect.bottom - inset
+                )
+                val p = android.graphics.Path()
+                val cy = r.centerY()
+                p.moveTo(r.left, cy)
+                p.lineTo(r.left + r.width() * 0.17f, r.top)
+                p.lineTo(r.right - r.width() * 0.17f, r.top)
+                p.lineTo(r.right, cy)
+                p.lineTo(r.right - r.width() * 0.17f, r.bottom)
+                p.lineTo(r.left + r.width() * 0.17f, r.bottom)
+                p.close()
+                return p
+            }
+
+            override fun draw(canvas: Canvas) {
+                val rect = android.graphics.RectF(bounds)
+                paint.shader = null
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.color = Color.argb(190, 0, 0, 24)
+                canvas.drawPath(lozenge(rect, 0f), paint)
+
+                paint.shader = android.graphics.LinearGradient(
+                    rect.left,
+                    rect.top,
+                    rect.right,
+                    rect.bottom,
+                    intArrayOf(
+                        Color.WHITE,
+                        accent,
+                        Color.rgb(
+                            (Color.red(accent) * 0.55f).toInt(),
+                            (Color.green(accent) * 0.55f).toInt(),
+                            (Color.blue(accent) * 0.55f).toInt()
+                        )
+                    ),
+                    null,
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                canvas.drawPath(lozenge(rect, dp(2).toFloat()), paint)
+
+                paint.shader = android.graphics.LinearGradient(
+                    rect.left,
+                    rect.top,
+                    rect.left,
+                    rect.bottom,
+                    intArrayOf(
+                        Color.rgb(20, 29, 52),
+                        Color.rgb(1, 4, 14),
+                        Color.rgb(14, 19, 38)
+                    ),
+                    null,
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                canvas.drawPath(lozenge(rect, dp(7).toFloat()), paint)
+
+                paint.shader = null
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.strokeWidth = dp(1).toFloat()
+                paint.color = Color.argb(180, 255, 255, 255)
+                canvas.drawPath(lozenge(rect, dp(5).toFloat()), paint)
+                paint.style = android.graphics.Paint.Style.FILL
+            }
+
+            override fun setAlpha(alpha: Int) {
+                paint.alpha = alpha
+            }
+
+            override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+                paint.colorFilter = colorFilter
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+        }
+    }
+
     private fun buildWin98AolPage(pageIndex: Int): View {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(16), dp(10), dp(16), dp(14))
+            setPadding(dp(10), dp(7), dp(10), dp(12))
             visibility = View.INVISIBLE
             isClickable = true
             elevation = 11f
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    Color.BLACK,
-                    Color.rgb(0, 18, 76),
-                    Color.rgb(0, 57, 153)
-                )
-            )
+            background = aolPageBackground()
             layoutParams = RelativeLayout.LayoutParams(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
                 RelativeLayout.LayoutParams.MATCH_PARENT
@@ -12610,72 +12766,87 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
         }
 
-        val logo = ImageView(this).apply {
-            setImageResource(R.drawable.win98_aol_logo)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "AOL"
-        }
-        page.addView(
-            logo,
-            LinearLayout.LayoutParams(dp(116), dp(116)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(2)
+        val titleBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), 0, dp(5), 0)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(0, 0, 126), Color.rgb(18, 88, 210))
+            ).apply {
+                setStroke(dp(1), Color.rgb(206, 214, 238))
             }
-        )
+        }
+        titleBar.addView(TextView(this).apply {
+            text = "AOL Main Menu  —  Page ${pageIndex - 2}"
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER_VERTICAL
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+        titleBar.addView(TextView(this).apply {
+            text = "×"
+            gravity = Gravity.CENTER
+            setTextColor(Color.BLACK)
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = AppCompatResources.getDrawable(
+                this@MainActivity,
+                R.drawable.window_button_background
+            )
+        }, LinearLayout.LayoutParams(dp(23), dp(19)))
+        page.addView(titleBar, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(25)
+        ).apply { bottomMargin = dp(8) })
 
         page.addView(TextView(this).apply {
-            text = "AOL FAVORITES"
+            text = "AOL"
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            letterSpacing = 0.08f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setShadowLayer(3f, 1f, 2f, Color.BLACK)
+            setTextColor(Color.rgb(195, 238, 255))
+            textSize = 47f
+            typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.SERIF,
+                android.graphics.Typeface.BOLD_ITALIC
+            )
+            setShadowLayer(6f, 2f, 3f, Color.rgb(0, 0, 65))
+            scaleX = 1.18f
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            dp(72)
         ))
 
         page.addView(TextView(this).apply {
-            text = "PAGE ${pageIndex - 2}"
+            text = "AMERICA ONLINE"
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(170, 205, 255))
-            textSize = 10.5f
+            setTextColor(Color.rgb(219, 242, 255))
+            textSize = 9.5f
             letterSpacing = 0.12f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(2), 0, dp(8))
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
-
-        page.addView(View(this).apply {
-            setBackgroundColor(Color.rgb(68, 118, 210))
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(1)
-        ).apply {
-            marginStart = dp(12)
-            marginEnd = dp(12)
-            bottomMargin = dp(10)
-        })
+        ).apply { bottomMargin = dp(7) })
 
         val slots = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(2), dp(2), dp(2), dp(2))
         }
         if (pageIndex == 3) win98AolPageOneSlots = slots else win98AolPageTwoSlots = slots
         page.addView(slots, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            0,
+            1f
         ))
 
         page.addView(TextView(this).apply {
-            text = "Tap to launch  ·  Hold to change"
+            text = "Tap a destination  ·  Hold to customize"
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(185, 211, 245))
-            textSize = 10f
-            setPadding(0, dp(10), 0, 0)
+            setTextColor(Color.rgb(220, 238, 255))
+            textSize = 9.5f
+            setShadowLayer(2f, 1f, 1f, Color.rgb(0, 20, 70))
+            setPadding(0, dp(3), 0, 0)
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -12697,18 +12868,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         container.removeAllViews()
 
         val rows = listOf(
-            listOf(0, 1, 2),
+            listOf(0, 1),
+            listOf(2),
             listOf(3, 4)
         )
         rows.forEachIndexed { rowIndex, indices ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                weightSum = 3f
-            }
-
-            if (indices.size == 2) {
-                row.addView(View(this), LinearLayout.LayoutParams(0, 1, 0.5f))
             }
 
             indices.forEach { slotIndex ->
@@ -12717,25 +12884,21 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 row.addView(
                     createAolShortcutTile(pageIndex, slotIndex, packageName, label),
                     LinearLayout.LayoutParams(
-                        0,
-                        dp(104),
-                        1f
+                        if (indices.size == 1) dp(174) else 0,
+                        dp(72),
+                        if (indices.size == 1) 0f else 1f
                     ).apply {
-                        marginStart = dp(4)
-                        marginEnd = dp(4)
+                        marginStart = dp(5)
+                        marginEnd = dp(5)
                     }
                 )
             }
 
-            if (indices.size == 2) {
-                row.addView(View(this), LinearLayout.LayoutParams(0, 1, 0.5f))
-            }
-
             container.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(104)
+                dp(76)
             ).apply {
-                if (rowIndex > 0) topMargin = dp(8)
+                if (rowIndex > 0) topMargin = dp(2)
             })
         }
     }
@@ -12747,21 +12910,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         label: String
     ): View {
         return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(6), dp(8), dp(6), dp(6))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    Color.rgb(251, 253, 255),
-                    Color.rgb(211, 223, 238),
-                    Color.rgb(126, 150, 181)
-                )
-            ).apply {
-                cornerRadius = dp(10).toFloat()
-                setStroke(dp(2), Color.WHITE)
-            }
-            elevation = dp(2).toFloat()
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            background = aolMenuButtonBackground(slotIndex)
             isClickable = true
             isFocusable = true
             contentDescription = label
@@ -12792,24 +12944,24 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     setImageDrawable(icon)
                 } else {
                     setImageResource(R.drawable.programs_98)
-                    alpha = 0.5f
+                    alpha = 0.6f
                 }
-            }, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
+            }, LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                marginEnd = dp(7)
             })
 
             addView(TextView(this@MainActivity).apply {
-                text = label
+                text = label.uppercase(Locale.getDefault())
                 gravity = Gravity.CENTER
-                setTextColor(Color.rgb(0, 24, 82))
-                textSize = 11f
+                setTextColor(Color.WHITE)
+                textSize = 11.5f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(dp(2), dp(7), dp(2), 0)
+                setShadowLayer(3f, 1f, 1f, Color.BLACK)
             }, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 1f
             ))
         }
@@ -12861,11 +13013,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun snapWin98PagerPixel(value: Float): Float = kotlin.math.round(value)
 
     private fun win98PagerInterpolator(): android.animation.TimeInterpolator =
-        android.view.animation.PathInterpolator(0.16f, 0.72f, 0.23f, 1f)
+        android.view.animation.PathInterpolator(0.18f, 0.82f, 0.20f, 1f)
 
     private fun win98PagerSettleDuration(distancePx: Float, widthPx: Float): Long {
         val remaining = (abs(distancePx) / widthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
-        return (88f + remaining * 92f).toLong().coerceIn(88L, 180L)
+        return (72f + remaining * 78f).toLong().coerceIn(72L, 150L)
     }
 
     private fun win98SideSearchStartY(): Float {
@@ -12947,17 +13099,17 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
 
                 if (!win98PagerDragging) {
-                    val slop = dp(5).toFloat()
+                    val slop = dp(3).toFloat()
                     if (abs(dx) < slop && abs(dy) < slop) {
                         return false
                     }
 
-                    if (abs(dy) > abs(dx) * 1.08f) {
+                    if (abs(dy) > abs(dx) * 1.18f) {
                         win98PagerGestureAxis = 2
                         return false
                     }
 
-                    if (abs(dx) <= abs(dy) * 1.08f) {
+                    if (abs(dx) <= abs(dy) * 0.92f) {
                         return false
                     }
 
@@ -13022,12 +13174,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     }
                     val progress = abs(dragX) / width.coerceAtLeast(1f)
                     val directionalFling = if (win98PagerDragTargetPage == 0) {
-                        velocityX > 400f
+                        velocityX > 320f
                     } else {
-                        velocityX < -400f
+                        velocityX < -320f
                     }
                     val commit = event.actionMasked == MotionEvent.ACTION_UP &&
-                        (progress >= 0.16f || directionalFling)
+                        (progress >= 0.12f || directionalFling)
                     val targetPage = win98PagerDragTargetPage
                     val page = win98PageView(targetPage)
 
@@ -13133,19 +13285,22 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
 
                 if (!win98PagerDragging) {
-                    val slop = dp(5).toFloat()
+                    val aolPage = pageIndex >= 3
+                    val slop = dp(if (aolPage) 2 else 3).toFloat()
                     if (abs(dx) < slop && abs(dy) < slop) {
                         return false
                     }
 
-                    if (abs(dy) > abs(dx) * 1.08f) {
+                    val verticalDominance = if (aolPage) 1.55f else 1.18f
+                    if (abs(dy) > abs(dx) * verticalDominance) {
                         val searchGesture =
                             dy < 0f && win98PagerDownY >= win98SideSearchStartY()
                         win98PagerGestureAxis = if (searchGesture) 3 else 2
                         return searchGesture
                     }
 
-                    if (abs(dx) <= abs(dy) * 1.08f) {
+                    val horizontalBias = if (aolPage) 0.72f else 0.92f
+                    if (abs(dx) <= abs(dy) * horizontalBias) {
                         return false
                     }
 
@@ -13228,9 +13383,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     val goingForward = win98PagerDragTargetPage > pageIndex
                     val dragX = if (goingForward) rawDx.coerceIn(-width, 0f) else rawDx.coerceIn(0f, width)
                     val progress = abs(dragX) / width.coerceAtLeast(1f)
-                    val directionalFling = if (goingForward) velocityX < -400f else velocityX > 400f
+                    val aolPage = pageIndex >= 3
+                    val flingThreshold = if (aolPage) 260f else 320f
+                    val commitProgress = if (aolPage) 0.09f else 0.12f
+                    val directionalFling =
+                        if (goingForward) velocityX < -flingThreshold else velocityX > flingThreshold
                     val commit = event.actionMasked == MotionEvent.ACTION_UP &&
-                        (progress >= 0.16f || directionalFling)
+                        (progress >= commitProgress || directionalFling)
 
                     settleWin98SidePagerDrag(pageIndex, page, commit)
                     resetWin98PagerTouch()
