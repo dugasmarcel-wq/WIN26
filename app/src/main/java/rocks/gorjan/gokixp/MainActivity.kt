@@ -328,6 +328,90 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         enforceDefaultAppRoles()
     }
 
+    /** Result hook for Android's Home-role/default-launcher chooser. */
+    private val homeLauncherRoleRequest = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (isWin26DefaultLauncher()) {
+            showNotification("WIN26", "WIN26 is now your default Home launcher.")
+        }
+    }
+
+    private fun isWin26DefaultLauncher(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            try {
+                val roleManager = getSystemService(android.app.role.RoleManager::class.java)
+                if (
+                    roleManager != null &&
+                    roleManager.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME)
+                ) {
+                    return roleManager.isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+                }
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Could not query Home role", e)
+            }
+        }
+
+        return try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            val resolved = packageManager.resolveActivity(
+                homeIntent,
+                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+            )
+            resolved?.activityInfo?.packageName == packageName
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Could not resolve current Home launcher", e)
+            false
+        }
+    }
+
+    private fun requestWin26AsDefaultLauncher() {
+        hideStartMenu()
+
+        if (isWin26DefaultLauncher()) {
+            showNotification("WIN26", "WIN26 is already your default Home launcher.")
+            return
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            try {
+                val roleManager = getSystemService(android.app.role.RoleManager::class.java)
+                if (
+                    roleManager != null &&
+                    roleManager.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME)
+                ) {
+                    homeLauncherRoleRequest.launch(
+                        roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME)
+                    )
+                    return
+                }
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Could not request Home role", e)
+            }
+        }
+
+        val fallbackScreens = listOf(
+            Intent(android.provider.Settings.ACTION_HOME_SETTINGS),
+            Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+        )
+        for (screen in fallbackScreens) {
+            if (packageManager.resolveActivity(screen, 0) == null) continue
+            try {
+                homeLauncherRoleRequest.launch(screen)
+                return
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Could not open launcher settings", e)
+            }
+        }
+
+        showNotification(
+            "Default launcher",
+            "Open Android Settings and choose WIN26 as the Home app."
+        )
+    }
+
     /**
      * Puts the wall up, or takes it down.
      *
@@ -3058,6 +3142,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val logoffItem = findViewById<LinearLayout>(R.id.logoff_item)
             logoffItem?.setOnClickListener {
                 handleShutdown(isLogoff = true)
+            }
+
+            val makeDefaultLauncherItem =
+                findViewById<LinearLayout>(R.id.make_default_launcher_item)
+            makeDefaultLauncherItem?.setOnClickListener {
+                requestWin26AsDefaultLauncher()
             }
 
             val settingsItem = findViewById<LinearLayout>(R.id.settings_item)
