@@ -180,6 +180,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98PagerLastRawX = 0f
     private var win98PagerLastMotionTime = 0L
     private var win98PagerVelocityX = 0f
+    private var win98PagerGlobalCaptured = false
+    private var win98PagerGlobalBlocked = false
     private var win98NewsLoading = false
     private var win98QuickHeaderTime: TextView? = null
     private var win98QuickCalendarValue: TextView? = null
@@ -12363,10 +12365,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         ))
         renderWin98WidgetPage(0)
 
-        scroll.setOnTouchListener { _, event ->
-            handleWin98SidePagerTouch(0, scroll, event)
-        }
-
         mainBackground.addView(scroll)
         win98QuickPage = scroll
         return scroll
@@ -12467,10 +12465,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         })
         renderWin98WidgetPage(2)
 
-        page.setOnTouchListener { _, event ->
-            handleWin98SidePagerTouch(2, page, event)
-        }
-
         mainBackground.addView(page)
         win98SecondPage = page
         populateWin98SecondPageSlots()
@@ -12518,14 +12512,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     setOnLongClickListener {
                         showSecondPageSlotPicker(index)
                         true
-                    }
-                    setOnTouchListener { _, event ->
-                        val pageRoot = win98SecondPage
-                        if (pageRoot == null) {
-                            false
-                        } else {
-                            handleWin98SidePagerTouch(2, pageRoot, event)
-                        }
                     }
                 }
 
@@ -12852,10 +12838,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        page.setOnTouchListener { _, event ->
-            handleWin98SidePagerTouch(pageIndex, page, event)
-        }
-
         mainBackground.addView(page)
         if (pageIndex == 3) win98AolPageOne = page else win98AolPageTwo = page
         populateWin98AolPageSlots(pageIndex)
@@ -12927,14 +12909,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             setOnLongClickListener {
                 showAolPageSlotPicker(pageIndex, slotIndex)
                 true
-            }
-            setOnTouchListener { _, event ->
-                val pageRoot = win98PageView(pageIndex)
-                if (pageRoot == null) {
-                    false
-                } else {
-                    handleWin98SidePagerTouch(pageIndex, pageRoot, event)
-                }
             }
 
             addView(ImageView(this@MainActivity).apply {
@@ -13049,7 +13023,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         if (dt in 1..80) {
             val instantVelocity = (event.rawX - win98PagerLastRawX) * 1000f / dt.toFloat()
             win98PagerVelocityX =
-                (win98PagerVelocityX * 0.62f) + (instantVelocity * 0.38f)
+                (win98PagerVelocityX * 0.45f) + (instantVelocity * 0.55f)
         } else if (dt > 120) {
             win98PagerVelocityX = 0f
         }
@@ -13253,6 +13227,47 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
+    private fun isTouchInsideView(view: View, event: MotionEvent): Boolean {
+        if (view.visibility != View.VISIBLE || view.width <= 0 || view.height <= 0) return false
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        return event.rawX >= location[0] &&
+            event.rawX < location[0] + view.width &&
+            event.rawY >= location[1] &&
+            event.rawY < location[1] + view.height
+    }
+
+    private fun handleWin98GlobalSidePagerTouch(event: MotionEvent): Boolean {
+        if (!themeManager.isClassicTheme() || win98CurrentPage == 1 || isStartMenuVisible) {
+            win98PagerGlobalBlocked = true
+            return false
+        }
+
+        val page = win98PageView(win98CurrentPage) ?: return false
+
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            win98PagerGlobalCaptured = false
+            win98PagerGlobalBlocked =
+                !isTouchInsideView(page, event) ||
+                    isTouchOnEditableEditText(event) ||
+                    isTouchInGameWindow(event)
+
+            if (win98PagerGlobalBlocked) return false
+        }
+
+        if (win98PagerGlobalBlocked) {
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                win98PagerGlobalBlocked = false
+                win98PagerGlobalCaptured = false
+            }
+            return false
+        }
+
+        return handleWin98SidePagerTouch(win98CurrentPage, page, event)
+    }
+
     private fun handleWin98SidePagerTouch(
         pageIndex: Int,
         page: View,
@@ -13285,22 +13300,21 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
 
                 if (!win98PagerDragging) {
-                    val aolPage = pageIndex >= 3
-                    val slop = dp(if (aolPage) 2 else 3).toFloat()
+                    val slop = dp(3).toFloat()
                     if (abs(dx) < slop && abs(dy) < slop) {
                         return false
                     }
 
-                    val verticalDominance = if (aolPage) 1.55f else 1.18f
-                    if (abs(dy) > abs(dx) * verticalDominance) {
+                    if (abs(dy) > abs(dx) * 1.10f) {
                         val searchGesture =
                             dy < 0f && win98PagerDownY >= win98SideSearchStartY()
                         win98PagerGestureAxis = if (searchGesture) 3 else 2
                         return searchGesture
                     }
 
-                    val horizontalBias = if (aolPage) 0.72f else 0.92f
-                    if (abs(dx) <= abs(dy) * horizontalBias) {
+                    // Stay undecided on a near-perfect diagonal. As soon as horizontal
+                    // movement leads, capture it like a normal launcher pager.
+                    if (abs(dx) <= abs(dy)) {
                         return false
                     }
 
@@ -13383,13 +13397,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     val goingForward = win98PagerDragTargetPage > pageIndex
                     val dragX = if (goingForward) rawDx.coerceIn(-width, 0f) else rawDx.coerceIn(0f, width)
                     val progress = abs(dragX) / width.coerceAtLeast(1f)
-                    val aolPage = pageIndex >= 3
-                    val flingThreshold = if (aolPage) 260f else 320f
-                    val commitProgress = if (aolPage) 0.09f else 0.12f
                     val directionalFling =
-                        if (goingForward) velocityX < -flingThreshold else velocityX > flingThreshold
+                        if (goingForward) velocityX < -280f else velocityX > 280f
                     val commit = event.actionMasked == MotionEvent.ACTION_UP &&
-                        (progress >= commitProgress || directionalFling)
+                        (progress >= 0.10f || directionalFling)
 
                     settleWin98SidePagerDrag(pageIndex, page, commit)
                     resetWin98PagerTouch()
@@ -15896,6 +15907,34 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         showCursorAt(event.rawX, event.rawY, isMoving = false)
                     }
                 }
+            }
+            // Side pages use one activity-level pager stream. Child views still receive
+            // taps and vertical gestures, but once horizontal paging wins we cancel the
+            // child gesture and keep the rest of the sequence for the pager.
+            val sidePagerConsumed = handleWin98GlobalSidePagerTouch(event)
+            if (sidePagerConsumed) {
+                if (!win98PagerGlobalCaptured) {
+                    val cancelEvent = MotionEvent.obtain(event)
+                    cancelEvent.action = MotionEvent.ACTION_CANCEL
+                    super.dispatchTouchEvent(cancelEvent)
+                    cancelEvent.recycle()
+                    win98PagerGlobalCaptured = true
+                }
+
+                if (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL
+                ) {
+                    win98PagerGlobalCaptured = false
+                    win98PagerGlobalBlocked = false
+                }
+                return true
+            }
+
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                win98PagerGlobalCaptured = false
+                win98PagerGlobalBlocked = false
             }
         }
         return super.dispatchTouchEvent(ev)
