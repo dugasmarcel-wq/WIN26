@@ -13001,7 +13001,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         } else {
             resources.displayMetrics.heightPixels
         }
-        return (height - dp(210)).coerceAtLeast(dp(120)).toFloat()
+        // Side-page search should behave like a deliberate bottom-edge gesture, not
+        // ordinary upward scrolling inside widgets or page content.
+        return (height - dp(72)).coerceAtLeast(dp(120)).toFloat()
     }
 
     private fun beginWin98PagerTouch(event: MotionEvent, originPage: Int) {
@@ -13306,10 +13308,21 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     }
 
                     if (abs(dy) > abs(dx) * 1.10f) {
-                        val searchGesture =
-                            dy < 0f && win98PagerDownY >= win98SideSearchStartY()
-                        win98PagerGestureAxis = if (searchGesture) 3 else 2
-                        return searchGesture
+                        val startsInSearchStrip =
+                            win98PagerDownY >= win98SideSearchStartY()
+
+                        if (startsInSearchStrip && dy < 0f) {
+                            // Do not steal a normal vertical touch immediately. Only capture
+                            // after a deliberate upward pull from the narrow bottom strip.
+                            if (dy <= -dp(48).toFloat()) {
+                                win98PagerGestureAxis = 3
+                                return true
+                            }
+                            return false
+                        }
+
+                        win98PagerGestureAxis = 2
+                        return false
                     }
 
                     // Stay undecided on a near-perfect diagonal. As soon as horizontal
@@ -13379,10 +13392,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (win98PagerGestureAxis == 3) {
+                    val dx = event.rawX - win98PagerDownX
                     val dy = event.rawY - win98PagerDownY
                     val openSearch =
                         event.actionMasked == MotionEvent.ACTION_UP &&
-                            dy <= -dp(54).toFloat()
+                            dy <= -dp(96).toFloat() &&
+                            abs(dx) <= dp(28).toFloat()
                     resetWin98PagerTouch()
                     if (openSearch) {
                         showStartMenuWithSearch()
