@@ -367,6 +367,29 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
+    private fun showMakeWin26LauncherDialog() {
+        if (isWin26DefaultLauncher()) {
+            Win98Dialogs.showMessage(
+                context = this,
+                title = "WIN26",
+                message = "WIN26 is already your default Home launcher.",
+                positiveText = "OK"
+            )
+            return
+        }
+
+        Win98Dialogs.showMessage(
+            context = this,
+            title = "Make WIN26 My Launcher",
+            message = "Make WIN26 your default Home launcher?\n\nAndroid will show its Home app chooser next. Select WIN26 there to finish.",
+            positiveText = "Yes",
+            negativeText = "Cancel",
+            onPositive = {
+                requestWin26AsDefaultLauncher()
+            }
+        )
+    }
+
     private fun requestWin26AsDefaultLauncher() {
         hideStartMenu()
 
@@ -3147,7 +3170,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val makeDefaultLauncherItem =
                 findViewById<LinearLayout>(R.id.make_default_launcher_item)
             makeDefaultLauncherItem?.setOnClickListener {
-                requestWin26AsDefaultLauncher()
+                hideStartMenu()
+                showMakeWin26LauncherDialog()
             }
 
             val settingsItem = findViewById<LinearLayout>(R.id.settings_item)
