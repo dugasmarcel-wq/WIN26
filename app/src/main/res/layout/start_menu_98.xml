@@ -261,7 +261,7 @@
                                     android:ellipsize="end"
                                     android:fontFamily="?attr/primaryFontFamily"
                                     android:maxLines="1"
-                                    android:text="Make WIN26 My Launcher..."
+                                    android:text="Switch Home Launcher..."
                                     android:textColor="@color/context_menu_text_selector"
                                     android:textSize="13sp" />
                             </LinearLayout>
