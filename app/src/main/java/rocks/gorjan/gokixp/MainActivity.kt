@@ -390,6 +390,69 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         )
     }
 
+    private fun openHomeLauncherSettings() {
+        val screens = listOf(
+            Intent(android.provider.Settings.ACTION_HOME_SETTINGS),
+            Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+        )
+        for (screen in screens) {
+            if (packageManager.resolveActivity(screen, 0) == null) continue
+            try {
+                homeLauncherRoleRequest.launch(screen)
+                return
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Could not open Home app settings", e)
+            }
+        }
+
+        showNotification(
+            "Home launcher",
+            "Open Android Settings > Apps > Default apps > Home app."
+        )
+    }
+
+    private fun cycleHomeLauncherFromTaskbar() {
+        playClickSound()
+
+        if (isWin26DefaultLauncher()) {
+            // Android does not let an ordinary launcher silently revoke its own HOME role.
+            // Go straight to the system Home-app picker so One UI Home can be selected.
+            openHomeLauncherSettings()
+        } else {
+            // If Samsung/another launcher currently owns HOME, request WIN26 back.
+            requestWin26AsDefaultLauncher()
+        }
+    }
+
+    private fun refreshLauncherSwitchButton() {
+        val button = findViewById<ImageView>(R.id.launcher_switch_button) ?: return
+        if (!themeManager.isClassicTheme()) {
+            button.visibility = View.GONE
+            return
+        }
+
+        button.visibility = View.VISIBLE
+        if (isWin26DefaultLauncher()) {
+            val samsungPackage = "com.sec.android.app.launcher"
+            val samsungIcon = try {
+                packageManager.getApplicationIcon(samsungPackage)
+            } catch (_: Exception) {
+                null
+            }
+
+            if (samsungIcon != null) {
+                button.setImageDrawable(samsungIcon)
+                button.contentDescription = "Switch to One UI Home"
+            } else {
+                button.setImageResource(R.drawable.settings_98)
+                button.contentDescription = "Choose another Home launcher"
+            }
+        } else {
+            button.setImageResource(R.drawable.icon)
+            button.contentDescription = "Switch to WIN26 Home"
+        }
+    }
+
     private fun requestWin26AsDefaultLauncher() {
         hideStartMenu()
 
@@ -1254,6 +1317,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             Win26Updater(this).checkForUpdates()
         }
 
+        val launcherSwitchButton = findViewById<ImageView>(R.id.launcher_switch_button)
+        launcherSwitchButton?.setOnClickListener {
+            cycleHomeLauncherFromTaskbar()
+        }
+        launcherSwitchButton?.setOnLongClickListener {
+            openHomeLauncherSettings()
+            true
+        }
+        refreshLauncherSwitchButton()
+
         // Set up start button click
         val startButton = findViewById<ImageView>(R.id.start_button)
         startButton.setOnClickListener {
@@ -1362,6 +1435,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             quickLaunchContainer.addView(createQuickLaunchButton(slot, packageName, compact = true))
         }
         updateNotificationDots()
+        refreshLauncherSwitchButton()
     }
 
     private fun setupWin98MusicWidget() {
@@ -14326,6 +14400,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Update permission error visibility when returning from settings
         updateEmailPermissionError?.invoke()
         updateNotificationDotsPermissionError?.invoke()
+        refreshLauncherSwitchButton()
 
         // Last, because it covers everything above it: the launcher cannot be used while
         // it is the phone's phone or messaging app, which no theme here can answer. Here

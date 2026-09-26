@@ -74,6 +74,22 @@
                 android:clipChildren="false"
                 android:clipToPadding="false" />
 
+            <!-- One-button Home launcher switch. The icon changes to show the target:
+                 Samsung/One UI Home while WIN26 is default, WIN26 otherwise. -->
+            <ImageView
+                android:id="@+id/launcher_switch_button"
+                android:layout_width="46dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="2dp"
+                android:background="@drawable/window_button_background"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Switch Home launcher"
+                android:padding="7dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/icon" />
+
             <HorizontalScrollView
                 android:id="@+id/taskbar_windows_scroll"
                 android:layout_width="0dp"
