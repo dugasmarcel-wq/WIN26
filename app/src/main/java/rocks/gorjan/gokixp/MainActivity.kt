@@ -331,18 +331,23 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun openHomeLauncherSettings() {
         hideStartMenu()
 
+        // Launch the system's Home-app selector directly. Do not preflight this with
+        // resolveActivity(): package-visibility filtering can report no match even though
+        // Android Settings accepts the intent, which made this item appear to do nothing
+        // on some current devices.
         val screens = listOf(
             Intent(android.provider.Settings.ACTION_HOME_SETTINGS),
             Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
         )
 
         for (screen in screens) {
-            if (packageManager.resolveActivity(screen, 0) == null) continue
             try {
                 startActivity(screen)
                 return
-            } catch (e: Exception) {
-                Log.w("MainActivity", "Could not open Home app settings", e)
+            } catch (e: android.content.ActivityNotFoundException) {
+                Log.w("MainActivity", "Home app settings action is unavailable", e)
+            } catch (e: SecurityException) {
+                Log.w("MainActivity", "Home app settings action was blocked", e)
             }
         }
 
