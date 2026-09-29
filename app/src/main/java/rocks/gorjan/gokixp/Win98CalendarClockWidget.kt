@@ -55,6 +55,9 @@ object Win98CalendarClockWidget {
         private lateinit var yearField: TextView
         private lateinit var calendarGrid: GridLayout
 
+        private fun dp(value: Int): Int =
+            Win98CalendarClockWidget.dp(context, value)
+
         init {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER
