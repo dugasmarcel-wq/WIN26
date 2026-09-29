@@ -641,6 +641,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_START_ROW_PREFIX = "classic_start_row_"
         private const val KEY_SECOND_PAGE_SLOT_PREFIX = "classic_second_page_slot_"
         private const val KEY_AOL_PAGE_SLOT_PREFIX = "classic_aol_page_slot_"
+        private const val WIN98_WIDGET_LIBRARY_PACKAGE = "winsung.widgets.library"
+        private const val KEY_WIN98_WIDGET_LIBRARY_GRID_PORTRAIT = "win98_widget_library_grid_portrait"
+        private const val KEY_WIN98_WIDGET_LIBRARY_GRID_LANDSCAPE = "win98_widget_library_grid_landscape"
         private const val START_ROW_PHONE_ACTION = "__device_phone__"
         private const val CONFIGURED_SLOT_EMPTY = "__empty__"
         private const val CONFIGURED_SLOT_HIDDEN = "__hidden__"
@@ -1344,7 +1347,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 setDesktopIcon(
                     DesktopIcon(
                         name = "WINSUNG\nWidgets",
-                        packageName = "winsung.widgets.library",
+                        packageName = WIN98_WIDGET_LIBRARY_PACKAGE,
                         icon = folderDrawable,
                         x = 0f,
                         y = 0f,
@@ -1367,19 +1370,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             )
             win98WidgetLibraryIcon = libraryIcon
 
-            // Wait until saved desktop icons have been restored, then put the library in the
-            // first free grid cell. It is Classic-only and deliberately not written into the
-            // shared XP/Vista desktop-icon model.
+            // Keep this Classic-only icon outside the shared XP/Vista desktop model, but
+            // remember its own responsive-grid position so it is movable like a real icon.
             desktopContainer.post {
-                val free = findFirstAvailableGridSlot()
-                if (free != null) {
-                    val (x, y) = getGridCoordinates(free.first, free.second)
-                    libraryIcon.x = x
-                    libraryIcon.y = y
-                } else {
-                    libraryIcon.x = dp(12).toFloat()
-                    libraryIcon.y = dp(250).toFloat()
-                }
+                positionWin98WidgetLibraryIcon(libraryIcon)
             }
         }
 
@@ -1476,6 +1470,54 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             Handler(Looper.getMainLooper()).post {
                 showWin98WidgetPlacement(spec)
             }
+        }
+    }
+
+    private fun win98WidgetLibraryGridKey(orientation: ScreenOrientation): String =
+        when (orientation) {
+            ScreenOrientation.PORTRAIT -> KEY_WIN98_WIDGET_LIBRARY_GRID_PORTRAIT
+            ScreenOrientation.LANDSCAPE -> KEY_WIN98_WIDGET_LIBRARY_GRID_LANDSCAPE
+        }
+
+    private fun saveWin98WidgetLibraryGridIndex(icon: DesktopIcon) {
+        val orientation = getCurrentOrientation()
+        val index = desktopGridIndex(icon, orientation) ?: return
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .edit()
+            .putInt(win98WidgetLibraryGridKey(orientation), index)
+            .apply()
+    }
+
+    private fun positionWin98WidgetLibraryIcon(libraryView: DesktopIconView) {
+        val orientation = getCurrentOrientation()
+        val columns = calculateGridColumns(orientation)
+        val rows = calculateGridRows(orientation)
+        val gridSize = columns * rows
+        if (gridSize <= 0) return
+
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val savedIndex = try {
+            prefs.getInt(win98WidgetLibraryGridKey(orientation), -1)
+        } catch (_: ClassCastException) {
+            -1
+        }
+        val occupied = occupiedDesktopGridIndices(orientation, includeWidgetLibrary = false)
+        val desired = when {
+            savedIndex in 0 until gridSize && savedIndex !in occupied -> savedIndex
+            savedIndex in 0 until gridSize ->
+                findNearestAvailableIndex(savedIndex, occupied, columns, rows)
+            else -> (0 until gridSize).firstOrNull { it !in occupied } ?: 0
+        }
+
+        libraryView.getDesktopIcon()?.let { icon ->
+            setDesktopGridIndex(icon, orientation, desired)
+            val (row, col) = convertIndexToPosition(desired, orientation)
+            val (x, y) = getGridCoordinatesFromIndex(row, col)
+            icon.x = x
+            icon.y = y
+            libraryView.x = x
+            libraryView.y = y
+            saveWin98WidgetLibraryGridIndex(icon)
         }
     }
 
@@ -5957,7 +5999,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     
     
 
-    private fun startIconMoveMode(iconView: DesktopIconView) {
+    fun startIconMoveModeFromLongPress(iconView: DesktopIconView) {
+        startIconMoveMode(iconView, preserveTouch = true)
+    }
+
+    private fun startIconMoveMode(iconView: DesktopIconView, preserveTouch: Boolean = false) {
         // Clear any previously selected icon (from context menu)
         selectedIcon?.setSelected(false)
         selectedIcon = null
@@ -5965,7 +6011,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         
         iconInMoveMode = iconView
         iconView.setSelected(true) // Use blue background selection effect
-        iconView.setMoveMode(true)
+        iconView.setMoveMode(true, preserveTouch)
         hideContextMenu()
     }
     
@@ -7094,15 +7140,70 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
     
     private fun createDesktopShortcut(appInfo: AppInfo) {
-        // Find the first available grid slot (ignoring tap location)
-        val firstAvailablePosition = findFirstAvailableGridSlot()
-        if (firstAvailablePosition != null) {
-            val (newX, newY) = getGridCoordinates(firstAvailablePosition.first, firstAvailablePosition.second)
-            addDesktopIcon(appInfo, newX, newY)
-        } else {
-            // Fallback to default position if no grid slots available
-            addDesktopIcon(appInfo, 100f, 100f)
+        addDesktopIconToFirstFreeGridSlot(appInfo)
+    }
+
+    private fun desktopGridIndex(
+        icon: DesktopIcon,
+        orientation: ScreenOrientation
+    ): Int? = when (orientation) {
+        ScreenOrientation.PORTRAIT -> icon.portraitGridIndex
+        ScreenOrientation.LANDSCAPE -> icon.landscapeGridIndex
+    }
+
+    private fun setDesktopGridIndex(
+        icon: DesktopIcon,
+        orientation: ScreenOrientation,
+        index: Int
+    ) {
+        when (orientation) {
+            ScreenOrientation.PORTRAIT -> icon.portraitGridIndex = index
+            ScreenOrientation.LANDSCAPE -> icon.landscapeGridIndex = index
         }
+    }
+
+    private fun occupiedDesktopGridIndices(
+        orientation: ScreenOrientation,
+        includeWidgetLibrary: Boolean = true
+    ): MutableSet<Int> {
+        val occupied = desktopIcons.mapNotNull { icon ->
+            if (icon.parentFolderId != null) null else desktopGridIndex(icon, orientation)
+        }.toMutableSet()
+
+        if (includeWidgetLibrary && themeManager.isClassicTheme()) {
+            win98WidgetLibraryIcon
+                ?.takeIf { it.parent === desktopContainer }
+                ?.getDesktopIcon()
+                ?.let { libraryIcon -> desktopGridIndex(libraryIcon, orientation)?.let(occupied::add) }
+        }
+        return occupied
+    }
+
+    private fun findFirstAvailableResponsiveGridIndex(
+        orientation: ScreenOrientation = getCurrentOrientation(),
+        includeWidgetLibrary: Boolean = true
+    ): Int? {
+        val columns = calculateGridColumns(orientation)
+        val rows = calculateGridRows(orientation)
+        val occupied = occupiedDesktopGridIndices(orientation, includeWidgetLibrary)
+        return (0 until columns * rows).firstOrNull { it !in occupied }
+    }
+
+    private fun addDesktopIconToFirstFreeGridSlot(
+        appInfo: AppInfo,
+        iconTypeOverride: IconType? = null,
+        targetUrl: String? = null
+    ) {
+        val orientation = getCurrentOrientation()
+        val gridIndex = findFirstAvailableResponsiveGridIndex(orientation)
+        if (gridIndex == null || desktopContainer.width <= 0 || desktopContainer.height <= 0) {
+            addDesktopIcon(appInfo, 100f, 100f, iconTypeOverride, targetUrl)
+            return
+        }
+
+        val (row, col) = convertIndexToPosition(gridIndex, orientation)
+        val (newX, newY) = getGridCoordinatesFromIndex(row, col)
+        addDesktopIcon(appInfo, newX, newY, iconTypeOverride, targetUrl)
     }
     
     private fun findFirstAvailableGridSlot(): Pair<Int, Int>? {
@@ -10810,13 +10911,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val packageName = "url_${System.currentTimeMillis()}"
         val appInfo = AppInfo(name = name, packageName = packageName, icon = urlIcon)
 
-        val firstAvailablePosition = findFirstAvailableGridSlot()
-        if (firstAvailablePosition != null) {
-            val (newX, newY) = getGridCoordinates(firstAvailablePosition.first, firstAvailablePosition.second)
-            addDesktopIcon(appInfo, newX, newY, IconType.URL_SHORTCUT, url)
-        } else {
-            addDesktopIcon(appInfo, 100f, 100f, IconType.URL_SHORTCUT, url)
-        }
+        addDesktopIconToFirstFreeGridSlot(appInfo, IconType.URL_SHORTCUT, url)
 
         showNotification("Shortcut Added", "\"$name\" was added to your desktop")
     }
@@ -10838,6 +10933,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     fun saveDesktopIconPosition(desktopIcon: DesktopIcon?) {
         desktopIcon?.let {
+            if (it.packageName == WIN98_WIDGET_LIBRARY_PACKAGE) {
+                saveWin98WidgetLibraryGridIndex(it)
+                return
+            }
 
             // Verify this icon is in the desktopIcons list
             val foundIcon = desktopIcons.find { icon -> icon.id == it.id }
@@ -11071,16 +11170,18 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         // Post to ensure container has dimensions
         desktopContainer.post {
-            // Migrate old x/y positions to grid indices if needed
+            // Migrate old x/y positions to grid indices if needed.
             migrateIconsToGridSystem()
 
-            // Position icons based on grid indices for current orientation
+            // Older pinning code could map several shortcuts into the same responsive
+            // cell. Repair only collisions/out-of-range indices; unique user positions stay put.
+            repairDuplicateGridPositions()
+
+            // Give unpositioned icons a free cell, then place every view from its final index.
+            reflowIconsWithoutPosition()
             positionIconsFromGridIndices()
 
-            // Reflow any icons without position in current orientation
-            reflowIconsWithoutPosition()
-
-            // Save after migration and reflow
+            // Save after migration, collision repair and reflow.
             saveDesktopIcons()
         }
     }
@@ -11780,6 +11881,38 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     /**
      * Position all desktop icons based on their grid indices for current orientation
      */
+    private fun repairDuplicateGridPositions() {
+        val orientation = getCurrentOrientation()
+        val columns = calculateGridColumns(orientation)
+        val rows = calculateGridRows(orientation)
+        val gridSize = columns * rows
+        if (gridSize <= 0) return
+
+        val occupied = mutableSetOf<Int>()
+        var repaired = 0
+
+        desktopIcons.forEach { icon ->
+            if (icon.parentFolderId != null) return@forEach
+            val existing = desktopGridIndex(icon, orientation) ?: return@forEach
+            val clamped = existing.coerceIn(0, gridSize - 1)
+            val replacement = if (existing !in 0 until gridSize || clamped in occupied) {
+                findNearestAvailableIndex(clamped, occupied, columns, rows)
+            } else {
+                clamped
+            }
+
+            if (replacement != existing) {
+                setDesktopGridIndex(icon, orientation, replacement)
+                repaired++
+            }
+            occupied.add(replacement)
+        }
+
+        if (repaired > 0) {
+            Log.i("MainActivity", "Repaired $repaired overlapping desktop grid positions for $orientation")
+        }
+    }
+
     private fun positionIconsFromGridIndices() {
         val currentOrientation = getCurrentOrientation()
 
@@ -11995,6 +12128,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     occupiedIndices.add(gridIndex)
                 }
             }
+        }
+
+        if (iconView !== win98WidgetLibraryIcon) {
+            win98WidgetLibraryIcon
+                ?.takeIf { it.parent === desktopContainer }
+                ?.getDesktopIcon()
+                ?.let { libraryIcon -> desktopGridIndex(libraryIcon, currentOrientation)?.let(occupiedIndices::add) }
         }
 
         // Convert current position to grid index

@@ -12,9 +12,9 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/taskbar_98_background"
-        android:paddingLeft="6dp"
+        android:paddingLeft="0dp"
         android:paddingTop="5dp"
-        android:paddingRight="6dp"
+        android:paddingRight="0dp"
         android:paddingBottom="3dp">
 
         <!-- Start Button - Windows 98 style -->

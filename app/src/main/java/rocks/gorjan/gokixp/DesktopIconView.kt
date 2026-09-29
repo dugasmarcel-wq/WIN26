@@ -40,6 +40,7 @@ open class DesktopIconView : LinearLayout, ThemeAware {
     private var isSelected = false
     private var customLongClickHandler: ((Float, Float) -> Unit)? = null
     private var hadSignificantMovement = false
+    private var moveModeStartedByLongPress = false
     private var originalTextColor: Int = Color.WHITE // Store original text color
 
     @JvmOverloads
@@ -265,7 +266,7 @@ open class DesktopIconView : LinearLayout, ThemeAware {
         setPadding(left, top, right, bottom)
     }
     
-    fun setMoveMode(enabled: Boolean) {
+    fun setMoveMode(enabled: Boolean, preserveTouch: Boolean = false) {
         isMoveMode = enabled
 
         // Log for folders
@@ -276,7 +277,7 @@ open class DesktopIconView : LinearLayout, ThemeAware {
         }
 
         // Reset touch state when entering move mode to ensure clean state
-        if (enabled) {
+        if (enabled && !preserveTouch) {
             resetTouchState()
         }
     }
@@ -317,6 +318,7 @@ open class DesktopIconView : LinearLayout, ThemeAware {
                 isLongPressed = false
                 isGesturing = false
                 hadSignificantMovement = false
+                moveModeStartedByLongPress = false
                 downTime = System.currentTimeMillis()
                 downEvent = MotionEvent.obtain(event)
 
@@ -336,11 +338,19 @@ open class DesktopIconView : LinearLayout, ThemeAware {
                     longPressRunnable = Runnable {
                         isLongPressed = true
 
-                        // Show context menu on long press (only if not in move mode)
                         if (!isMoveMode) {
-                            showIconContextMenu(event.rawX, event.rawY)
-                        }
-                        else{
+                            val mainActivity = context as? MainActivity
+                            if (mainActivity?.themeManager?.isClassicTheme() == true) {
+                                // Classic desktop icons should behave like desktop objects:
+                                // hold, then drag immediately. If the user only holds and
+                                // releases, ACTION_UP still opens the normal context menu.
+                                moveModeStartedByLongPress = true
+                                mainActivity.startIconMoveModeFromLongPress(this)
+                                Helpers.performHapticFeedback(context)
+                            } else {
+                                showIconContextMenu(event.rawX, event.rawY)
+                            }
+                        } else {
                             Helpers.performHapticFeedback(context)
                         }
                     }
@@ -376,7 +386,7 @@ open class DesktopIconView : LinearLayout, ThemeAware {
                 }
 
                 // Detect if this might be a gesture (significant movement)
-                if (!isGesturing && (Math.abs(deltaX) > 80 || Math.abs(deltaY) > 80)) {
+                if (!isMoveMode && !isGesturing && (Math.abs(deltaX) > 80 || Math.abs(deltaY) > 80)) {
                     isGesturing = true
                     return true // We're tracking this as a potential gesture
                 }
@@ -495,8 +505,21 @@ open class DesktopIconView : LinearLayout, ThemeAware {
 
                     // Exit move mode
                     mainActivity?.exitIconMoveMode()
+                    moveModeStartedByLongPress = false
 
                     // Clean up the stored down event
+                    downEvent?.recycle()
+                    downEvent = null
+                    return true
+                }
+
+                if (moveModeStartedByLongPress && isMoveMode) {
+                    // A hold without a drag remains the familiar desktop context-menu action.
+                    // A hold + movement was handled above as a direct drag.
+                    val mainActivity = context as? MainActivity
+                    mainActivity?.exitIconMoveMode()
+                    moveModeStartedByLongPress = false
+                    showIconContextMenu(event.rawX, event.rawY)
                     downEvent?.recycle()
                     downEvent = null
                     return true
@@ -554,6 +577,10 @@ open class DesktopIconView : LinearLayout, ThemeAware {
                 // Cancel any pending long press
                 longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
                 isLongPressed = false
+                if (moveModeStartedByLongPress) {
+                    (context as? MainActivity)?.exitIconMoveMode()
+                    moveModeStartedByLongPress = false
+                }
 
                 // Clean up the stored down event
                 downEvent?.recycle()
