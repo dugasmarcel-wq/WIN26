@@ -84,6 +84,11 @@ object Win98WidgetViews {
             "doodle",
             "Doodle Pad",
             "A touch drawing pad with an old Paint-like white canvas and local Clear button."
+        ),
+        Win98WidgetSpec(
+            "calendar_clock_98",
+            "Calendar + Clock 98",
+            "Working Win98-style month calendar with live analog and digital clock."
         )
     )
 
@@ -98,6 +103,7 @@ object Win98WidgetViews {
             "farm_colony" -> Win98FarmColonyWidget.create(activity)
             "solitaire_desk" -> createEmbeddedSolitaire(activity)
             "doodle" -> createDoodlePad(activity)
+            "calendar_clock_98" -> Win98CalendarClockWidget.create(activity)
             else -> TextView(activity).apply {
                 text = "Widget unavailable"
                 setTextColor(Color.BLACK)
