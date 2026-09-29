@@ -32,25 +32,79 @@ object Win98QuickGlanceNews {
         "https://news.google.com/home?hl=en-US&gl=US&ceid=US:en"
     private const val FEED_URL =
         "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-    private const val MAX_HOME_HTML_CHARS = 4_000_000
+    private const val MAX_HOME_HTML_CHARS = 1_500_000
+    private const val CACHE_TTL_MS = 10 * 60 * 1000L
 
-    suspend fun fetchHeadlines(limit: Int = 7): Result<List<Win98NewsItem>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
+    @Volatile
+    private var cachedHeadlines: List<Win98NewsItem> = emptyList()
+
+    @Volatile
+    private var cachedAtMs: Long = 0L
+
+    suspend fun fetchHeadlines(
+        limit: Int = 7,
+        forceRefresh: Boolean = false
+    ): Result<List<Win98NewsItem>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val now = System.currentTimeMillis()
+            val cached = cachedHeadlines
+            if (
+                !forceRefresh &&
+                cached.isNotEmpty() &&
+                now - cachedAtMs < CACHE_TTL_MS
+            ) {
+                return@runCatching cached.take(limit)
+            }
+
+            // RSS is small and fast. Do not make the user wait for the much heavier
+            // Google News visual page just to see headlines.
+            val rss = loadRssHeadlines(limit)
+            if (rss.isNotEmpty()) {
+                cachedHeadlines = rss
+                cachedAtMs = now
+                rss
+            } else {
+                // Rare fallback when RSS itself is unavailable.
                 val visual = loadVisualHeadlines(limit)
-                if (visual.size >= minOf(4, limit)) {
-                    visual.take(limit)
-                } else {
-                    val fallback = loadRssHeadlines(limit)
-                    (visual + fallback)
-                        .distinctBy { it.title.lowercase(Locale.US) }
-                        .take(limit)
-                }
+                cachedHeadlines = visual
+                cachedAtMs = now
+                visual
             }
         }
+    }
+
+    suspend fun fetchImagesForHeadlines(
+        headlines: List<Win98NewsItem>
+    ): Result<Map<String, String>> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (headlines.isEmpty()) return@runCatching emptyMap()
+
+            val visual = loadVisualHeadlines(maxOf(headlines.size, 10))
+            if (visual.isEmpty()) return@runCatching emptyMap()
+
+            val visualByTitle = visual
+                .filter { !it.imageUrl.isNullOrBlank() }
+                .associateBy { normalizedTitle(it.title) }
+
+            val images = linkedMapOf<String, String>()
+            headlines.forEach { headline ->
+                val image = headline.imageUrl
+                    ?: visualByTitle[normalizedTitle(headline.title)]?.imageUrl
+                if (!image.isNullOrBlank()) images[headline.url] = image
+            }
+
+            if (images.isNotEmpty()) {
+                cachedHeadlines = headlines.map { item ->
+                    item.copy(imageUrl = images[item.url] ?: item.imageUrl)
+                }
+                cachedAtMs = System.currentTimeMillis()
+            }
+            images
+        }
+    }
 
     private fun loadVisualHeadlines(limit: Int): List<Win98NewsItem> {
-        val connection = openConnection(HOME_URL, 9_000, "text/html,application/xhtml+xml")
+        val connection = openConnection(HOME_URL, 4_500, "text/html,application/xhtml+xml")
         try {
             if (connection.responseCode !in 200..299) return emptyList()
             val html = connection.inputStream.bufferedReader().use { reader ->
@@ -119,17 +173,13 @@ object Win98QuickGlanceNews {
                         ?.let(::cleanHtmlText)
                         ?.takeIf { it.isNotBlank() }
 
-                    // Google places the thumbnail in a sibling immediately before the
-                    // <article>, so include a bounded chunk of preceding card markup.
-                    val imageContextStart = maxOf(previousArticleEnd, articleStart - 3500)
-                    val imageContext = html.substring(imageContextStart, articleEnd)
-                    val imageUrl = Regex(
-                        """(?is)<img\b[^>]*(?:src|data-src)\s*=\s*["']([^"']+)["'][^>]*>"""
-                    ).findAll(imageContext)
-                        .mapNotNull { it.groupValues.getOrNull(1) }
-                        .map(::decodeHtml)
-                        .filter { it.startsWith("https://") || it.startsWith("http://") }
-                        .lastOrNull()
+                    // Google commonly lazy-loads thumbnails through data-src/srcset and
+                    // may place the image just outside the <article>. Inspect a bounded
+                    // card-sized neighborhood and normalize relative/protocol-relative URLs.
+                    val imageContextStart = maxOf(previousArticleEnd, articleStart - 6000)
+                    val imageContextEnd = minOf(html.length, articleEnd + 2500)
+                    val imageContext = html.substring(imageContextStart, imageContextEnd)
+                    val imageUrl = extractVisualImageUrl(imageContext)
 
                     items += Win98NewsItem(
                         title = title,
@@ -147,6 +197,67 @@ object Win98QuickGlanceNews {
 
         return items.distinctBy { it.title.lowercase(Locale.US) }
     }
+
+    private fun extractVisualImageUrl(html: String): String? {
+        val imageTags = Regex("""(?is)<img\b[^>]*>""")
+            .findAll(html)
+            .map { it.value }
+            .toList()
+            .asReversed()
+
+        imageTags.forEach { tag ->
+            val directCandidates = listOf("data-src", "src").mapNotNull { attribute ->
+                Regex("""(?is)\b$attribute\s*=\s*["']([^"']+)["']""")
+                    .find(tag)
+                    ?.groupValues
+                    ?.getOrNull(1)
+            }
+
+            for (raw in directCandidates) {
+                normalizeImageUrl(raw)?.let { return it }
+            }
+
+            val srcset = Regex("""(?is)\bsrcset\s*=\s*["']([^"']+)["']""")
+                .find(tag)
+                ?.groupValues
+                ?.getOrNull(1)
+            if (!srcset.isNullOrBlank()) {
+                srcset.split(',')
+                    .asReversed()
+                    .map { it.trim().substringBefore(' ') }
+                    .forEach { raw -> normalizeImageUrl(raw)?.let { return it } }
+            }
+        }
+
+        val background = Regex(
+            """(?is)background-image\s*:\s*url\(\s*['"]?([^)'"]+)"""
+        ).findAll(html)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .toList()
+            .asReversed()
+        for (raw in background) {
+            normalizeImageUrl(raw)?.let { return it }
+        }
+        return null
+    }
+
+    private fun normalizeImageUrl(raw: String): String? {
+        val value = decodeHtml(raw).trim()
+        if (value.isBlank() || value.startsWith("data:", ignoreCase = true)) return null
+        return when {
+            value.startsWith("https://") || value.startsWith("http://") -> value
+            value.startsWith("//") -> "https:$value"
+            value.startsWith("./") -> "https://news.google.com/" + value.removePrefix("./")
+            value.startsWith("/") -> "https://news.google.com$value"
+            else -> null
+        }
+    }
+
+    private fun normalizedTitle(value: String): String =
+        cleanHtmlText(value)
+            .lowercase(Locale.US)
+            .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
+            .trim()
 
     private fun firstMatch(text: String, patterns: List<Regex>): String? {
         for (pattern in patterns) {
@@ -183,7 +294,7 @@ object Win98QuickGlanceNews {
     private fun loadRssHeadlines(limit: Int): List<Win98NewsItem> {
         val connection = openConnection(
             FEED_URL,
-            8_000,
+            3_500,
             "application/rss+xml,application/xml,text/xml"
         )
         try {

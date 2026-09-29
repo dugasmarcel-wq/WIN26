@@ -21,5 +21,7 @@ data class DesktopIcon(
     var parentFolderId: String? = null,  // ID of parent folder, null if on desktop
     var portraitGridIndex: Int? = null,   // Grid index for portrait orientation (0, 1, 2, 3...)
     var landscapeGridIndex: Int? = null,   // Grid index for landscape orientation (0, 1, 2, 3...)
-    var targetUrl: String? = null   // For URL_SHORTCUT icons: the web address to open on tap
+    var targetUrl: String? = null,   // For URL_SHORTCUT icons: the web address to open on tap
+    var freePosition: Boolean = false, // Classic: true means x/y is authoritative instead of the grid
+    var iconScale: Float = 1.0f        // Classic desktop shortcut scale, 0.70f..1.60f
 )

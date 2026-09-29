@@ -207,6 +207,14 @@ open class DesktopIconView : LinearLayout, ThemeAware {
         iconText.setTextColor(color)
     }
 
+    fun applyDesktopScale(scale: Float) {
+        val safeScale = scale.coerceIn(0.70f, 1.60f)
+        pivotX = 0f
+        pivotY = 0f
+        scaleX = safeScale
+        scaleY = safeScale
+    }
+
     fun removeTextShadow() {
         iconText.setShadowLayer(0F,0F,0F,0)
     }
@@ -488,8 +496,9 @@ open class DesktopIconView : LinearLayout, ThemeAware {
                         // Delete the icon (but not if this is the recycle bin itself)
                         mainActivity.deleteDesktopIcon(this)
                     } else {
-                        // Always snap to grid (grid system is always enabled)
-                        mainActivity?.snapSingleIconToGrid(this)
+                        // Grid shortcuts snap; Classic free-position shortcuts keep the
+                        // exact drop point and are only clamped to the usable desktop.
+                        mainActivity?.finishDesktopIconMove(this)
 
                         // Log position before saving for folders
                         desktopIcon?.let { icon ->

@@ -183,6 +183,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98PagerGlobalCaptured = false
     private var win98PagerGlobalBlocked = false
     private var win98NewsLoading = false
+    private var win98NewsRequestSerial = 0
     private var win98QuickHeaderTime: TextView? = null
     private var win98QuickCalendarValue: TextView? = null
     private var win98QuickBatteryValue: TextView? = null
@@ -5487,6 +5488,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 onMoveIcon = {
                     startIconMoveMode(iconView)
                 },
+                onToggleFreePosition = {
+                    toggleDesktopIconFreePosition(iconView)
+                },
+                onResizeIcon = {
+                    showDesktopIconResizeDialog(iconView)
+                },
+                isFreePosition = icon?.freePosition == true,
+                showLayoutControls = themeManager.isClassicTheme(),
                 onChangeIcon = {
                     showIconSelectionDialog(iconView)
                 },
@@ -7172,7 +7181,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         includeWidgetLibrary: Boolean = true
     ): MutableSet<Int> {
         val occupied = desktopIcons.mapNotNull { icon ->
-            if (icon.parentFolderId != null) null else desktopGridIndex(icon, orientation)
+            if (icon.parentFolderId != null || icon.freePosition) {
+                null
+            } else {
+                desktopGridIndex(icon, orientation)
+            }
         }.toMutableSet()
 
         if (includeWidgetLibrary && themeManager.isClassicTheme()) {
@@ -10828,6 +10841,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         
         desktopContainer.addView(iconView, layoutParams)
         desktopIconViews.add(iconView)
+        iconView.applyDesktopScale(desktopIcon.iconScale)
         
         // Set position after adding to container
         iconView.post {
@@ -10973,7 +10987,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 "parentFolderId" to icon.parentFolderId,
                 "portraitGridIndex" to icon.portraitGridIndex,
                 "landscapeGridIndex" to icon.landscapeGridIndex,
-                "targetUrl" to icon.targetUrl
+                "targetUrl" to icon.targetUrl,
+                "freePosition" to icon.freePosition,
+                "iconScale" to icon.iconScale
             )
         }
 
@@ -11012,6 +11028,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 val parentFolderId = iconData["parentFolderId"] as? String
                 val typeStr = iconData["type"] as? String
                 val targetUrl = iconData["targetUrl"] as? String
+                val freePosition = iconData["freePosition"] as? Boolean ?: false
+                val iconScale = ((iconData["iconScale"] as? Double)?.toFloat() ?: 1.0f)
+                    .coerceIn(0.70f, 1.60f)
 
                 // Read grid indices (may be null for old data)
                 val portraitGridIndex = (iconData["portraitGridIndex"] as? Double)?.toInt()
@@ -11084,7 +11103,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         fallbackIconFor(iconType)
                     }
 
-                    val desktopIcon = DesktopIcon(name, packageName, icon, x, y, id, iconType, parentFolderId, portraitGridIndex, landscapeGridIndex, targetUrl)
+                    val desktopIcon = DesktopIcon(
+                        name, packageName, icon, x, y, id, iconType, parentFolderId,
+                        portraitGridIndex, landscapeGridIndex, targetUrl, freePosition, iconScale
+                    )
                     desktopIcons.add(desktopIcon)
 
                     // Skip icons that are inside folders - they shouldn't be shown on desktop
@@ -11138,9 +11160,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
                     desktopContainer.addView(iconView, layoutParams)
                     desktopIconViews.add(iconView)
-                    // Apply current theme font
+                    // Apply current theme font and saved desktop size.
                     val selectedTheme = prefs.getString("selected_theme", "Windows XP") ?: "Windows XP"
                     iconView.setThemeFont(selectedTheme == "Windows Classic")
+                    iconView.applyDesktopScale(desktopIcon.iconScale)
 
                     // Set position after adding to container
                     // NOTE: Position will be set by positionIconsFromGridIndices() after all icons are loaded
@@ -11856,8 +11879,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         var migrationCount = 0
 
         desktopIcons.forEach { icon ->
-            // Skip icons in folders - they don't need grid positions
-            if (icon.parentFolderId != null) return@forEach
+            // Skip icons in folders and free-position Classic shortcuts.
+            if (icon.parentFolderId != null || icon.freePosition) return@forEach
 
             // Check if icon needs migration (has no grid indices)
             if (icon.portraitGridIndex == null && icon.landscapeGridIndex == null) {
@@ -11897,7 +11920,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         var repaired = 0
 
         desktopIcons.forEach { icon ->
-            if (icon.parentFolderId != null) return@forEach
+            if (icon.parentFolderId != null || icon.freePosition) return@forEach
             val existing = desktopGridIndex(icon, orientation) ?: return@forEach
             val clamped = existing.coerceIn(0, gridSize - 1)
             val replacement = if (existing !in 0 until gridSize || clamped in occupied) {
@@ -11932,6 +11955,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 return@forEach
             }
 
+            if (icon.freePosition) {
+                iconView.x = icon.x
+                iconView.y = icon.y
+                iconView.applyDesktopScale(icon.iconScale)
+                clampFreeDesktopIconPosition(iconView)
+                icon.x = iconView.x
+                icon.y = iconView.y
+                return@forEach
+            }
+
             // Get grid index for current orientation
             val gridIndex = when (currentOrientation) {
                 ScreenOrientation.PORTRAIT -> icon.portraitGridIndex
@@ -11962,8 +11995,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         // Get icons that need reflow (no grid index for current orientation)
         val iconsToReflow = desktopIcons.filter { icon ->
-            // Skip icons in folders
-            if (icon.parentFolderId != null) return@filter false
+            // Skip icons in folders and free-position shortcuts.
+            if (icon.parentFolderId != null || icon.freePosition) return@filter false
 
             when (currentOrientation) {
                 ScreenOrientation.PORTRAIT -> icon.portraitGridIndex == null
@@ -12108,6 +12141,90 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return Pair(x, y)
     }
     
+    private fun clampFreeDesktopIconPosition(iconView: DesktopIconView) {
+        val icon = iconView.getDesktopIcon() ?: return
+        val scale = icon.iconScale.coerceIn(0.70f, 1.60f)
+        val visualWidth = (iconView.width.takeIf { it > 0 } ?: dp(90)) * scale
+        val visualHeight = (iconView.height.takeIf { it > 0 } ?: dp(100)) * scale
+        val maxX = (desktopContainer.width.toFloat() - visualWidth).coerceAtLeast(0f)
+        val reservedBottom = dp(70).toFloat()
+        val maxY = (desktopContainer.height.toFloat() - reservedBottom - visualHeight)
+            .coerceAtLeast(0f)
+        iconView.x = iconView.x.coerceIn(0f, maxX)
+        iconView.y = iconView.y.coerceIn(0f, maxY)
+    }
+
+    fun finishDesktopIconMove(iconView: DesktopIconView) {
+        val icon = iconView.getDesktopIcon() ?: return
+        if (themeManager.isClassicTheme() && icon.freePosition) {
+            clampFreeDesktopIconPosition(iconView)
+            icon.x = iconView.x
+            icon.y = iconView.y
+        } else {
+            snapSingleIconToGrid(iconView)
+        }
+    }
+
+    private fun toggleDesktopIconFreePosition(iconView: DesktopIconView) {
+        val icon = iconView.getDesktopIcon() ?: return
+        if (!themeManager.isClassicTheme()) return
+
+        icon.freePosition = !icon.freePosition
+        if (icon.freePosition) {
+            icon.x = iconView.x
+            icon.y = iconView.y
+            clampFreeDesktopIconPosition(iconView)
+            icon.x = iconView.x
+            icon.y = iconView.y
+        } else {
+            snapSingleIconToGrid(iconView)
+        }
+        saveDesktopIcons()
+    }
+
+    private fun showDesktopIconResizeDialog(iconView: DesktopIconView) {
+        val icon = iconView.getDesktopIcon() ?: return
+        if (!themeManager.isClassicTheme()) return
+
+        val scales = floatArrayOf(0.70f, 0.85f, 1.0f, 1.20f, 1.40f, 1.60f)
+        val names = arrayOf("70%", "85%", "100%", "120%", "140%", "160%")
+        val items = names.mapIndexed { index, label ->
+            if (kotlin.math.abs(icon.iconScale - scales[index]) < 0.01f) {
+                "$label  [Current]"
+            } else {
+                label
+            }
+        }.toTypedArray()
+
+        Win98Dialogs.showList(
+            context = this,
+            title = "Resize Desktop Icon",
+            items = items,
+            negativeText = "Cancel"
+        ) { which ->
+            val newScale = scales[which]
+            icon.iconScale = newScale
+
+            // A resized shortcut becomes free-positioned so a larger icon is not forced
+            // into a grid cell sized for the original 90x100dp shortcut.
+            if (kotlin.math.abs(newScale - 1.0f) > 0.01f) {
+                icon.freePosition = true
+            }
+
+            iconView.applyDesktopScale(newScale)
+            iconView.post {
+                if (icon.freePosition) {
+                    clampFreeDesktopIconPosition(iconView)
+                    icon.x = iconView.x
+                    icon.y = iconView.y
+                } else {
+                    snapSingleIconToGrid(iconView)
+                }
+                saveDesktopIcons()
+            }
+        }
+    }
+
     fun snapSingleIconToGrid(iconView: DesktopIconView) {
         val currentOrientation = getCurrentOrientation()
         val columns = calculateGridColumns()
@@ -12118,7 +12235,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Get all current occupied grid indices (excluding the icon being snapped)
         desktopIcons.forEach { icon ->
             // Skip icons in folders
-            if (icon.parentFolderId != null) return@forEach
+            if (icon.parentFolderId != null || icon.freePosition) return@forEach
 
             // Find the view by matching the icon
             val view = desktopIconViews.find { it.getDesktopIcon() == icon }
@@ -12466,7 +12583,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 R.drawable.window_button_background
             )
             setOnClickListener {
-                refreshWin98News(storyContainer, this)
+                refreshWin98News(storyContainer, this, forceRefresh = true)
             }
         }
         win98QuickRefreshButton = refreshButton
@@ -13888,9 +14005,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return valueView
     }
 
-    private fun refreshWin98News(container: LinearLayout, refreshButton: TextView) {
+    private fun refreshWin98News(
+        container: LinearLayout,
+        refreshButton: TextView,
+        forceRefresh: Boolean = false
+    ) {
         if (win98NewsLoading) return
         win98NewsLoading = true
+        val requestSerial = ++win98NewsRequestSerial
         refreshButton.isEnabled = false
         refreshButton.alpha = 0.6f
 
@@ -13904,15 +14026,41 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         })
 
         lifecycleScope.launch {
-            val result = Win98QuickGlanceNews.fetchHeadlines(7)
-            if (win98QuickPage == null || !container.isAttachedToWindow) return@launch
+            val result = Win98QuickGlanceNews.fetchHeadlines(7, forceRefresh)
+            if (
+                requestSerial != win98NewsRequestSerial ||
+                win98QuickPage == null ||
+                !container.isAttachedToWindow
+            ) return@launch
 
             win98NewsLoading = false
             refreshButton.isEnabled = true
             refreshButton.alpha = 1f
 
             result.fold(
-                onSuccess = { items -> renderWin98News(container, items) },
+                onSuccess = { items ->
+                    val imageTargets = renderWin98News(container, items)
+
+                    // Headlines are already on screen. Photo discovery is deliberately a
+                    // second request so a slow Google News visual page cannot hold the UI
+                    // hostage. Existing cached image URLs display immediately.
+                    if (items.any { it.imageUrl.isNullOrBlank() }) {
+                        lifecycleScope.launch {
+                            val images = Win98QuickGlanceNews.fetchImagesForHeadlines(items)
+                                .getOrDefault(emptyMap())
+                            if (
+                                requestSerial == win98NewsRequestSerial &&
+                                container.isAttachedToWindow
+                            ) {
+                                images.forEach { (storyUrl, imageUrl) ->
+                                    imageTargets[storyUrl]?.let { target ->
+                                        loadQuickGlanceImage(target, imageUrl)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 onFailure = {
                     container.removeAllViews()
                     container.addView(TextView(this@MainActivity).apply {
@@ -13927,8 +14075,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
-    private fun renderWin98News(container: LinearLayout, items: List<Win98NewsItem>) {
+    private fun renderWin98News(
+        container: LinearLayout,
+        items: List<Win98NewsItem>
+    ): Map<String, ImageView> {
         container.removeAllViews()
+        val imageTargets = linkedMapOf<String, ImageView>()
         if (items.isEmpty()) {
             container.addView(TextView(this).apply {
                 text = "No stories are available right now."
@@ -13937,7 +14089,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 textSize = 14f
                 setPadding(dp(10), dp(24), dp(10), dp(24))
             })
-            return
+            return emptyMap()
         }
 
         val lead = items.first()
@@ -13961,6 +14113,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             dp(148)
         ))
         loadQuickGlanceImage(leadImage, lead.imageUrl)
+        imageTargets[lead.url] = leadImage
 
         leadCard.addView(TextView(this).apply {
             text = lead.title
@@ -14003,6 +14156,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 marginEnd = dp(9)
             })
             loadQuickGlanceImage(image, item.imageUrl)
+            imageTargets[item.url] = image
 
             val textColumn = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -14035,6 +14189,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(7) })
         }
+
+        return imageTargets
     }
 
     private fun quickGlanceStoryMeta(item: Win98NewsItem): String {
@@ -14056,8 +14212,19 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             return
         }
 
-        Glide.with(this)
-            .load(url)
+        val glideUrl = com.bumptech.glide.load.model.GlideUrl(
+            url,
+            com.bumptech.glide.load.model.LazyHeaders.Builder()
+                .addHeader(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"
+                )
+                .build()
+        )
+
+        Glide.with(view)
+            .load(glideUrl)
             .centerCrop()
             .placeholder(android.graphics.drawable.ColorDrawable(Color.parseColor("#BDBDBD")))
             .error(android.graphics.drawable.ColorDrawable(Color.parseColor("#BDBDBD")))

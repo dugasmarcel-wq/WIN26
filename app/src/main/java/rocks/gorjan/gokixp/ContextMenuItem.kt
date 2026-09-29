@@ -42,15 +42,31 @@ object ContextMenuItems {
         onProperties: () -> Unit,
         onSetSwipeRightApp: () -> Unit,
         onSetWeatherApp: () -> Unit,
+        onToggleFreePosition: () -> Unit = {},
+        onResizeIcon: () -> Unit = {},
+        isFreePosition: Boolean = false,
+        showLayoutControls: Boolean = false,
         isSystemApp: Boolean = false,
         isUrlShortcut: Boolean = false
     ): List<ContextMenuItem> {
         val items = mutableListOf(
             ContextMenuItem("Open", isEnabled = true, action = onOpen),
             ContextMenuItem("", isEnabled = false), // Divider
-            ContextMenuItem("Move Icon", isEnabled = true, action = onMoveIcon),
-            ContextMenuItem("Change Icon", isEnabled = true, action = onChangeIcon)
+            ContextMenuItem("Move Icon", isEnabled = true, action = onMoveIcon)
         )
+
+        if (showLayoutControls) {
+            items.add(
+                ContextMenuItem(
+                    if (isFreePosition) "Snap to Grid" else "Free Position",
+                    isEnabled = true,
+                    action = onToggleFreePosition
+                )
+            )
+            items.add(ContextMenuItem("Resize Icon...", isEnabled = true, action = onResizeIcon))
+        }
+
+        items.add(ContextMenuItem("Change Icon", isEnabled = true, action = onChangeIcon))
 
         // "Set as Swipe/Weather App" only make sense for launchable apps, not URL shortcuts
         if (!isUrlShortcut) {
