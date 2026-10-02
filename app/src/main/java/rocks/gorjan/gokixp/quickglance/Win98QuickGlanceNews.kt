@@ -299,6 +299,12 @@ object Win98QuickGlanceNews {
         return items.distinctBy { normalizedTitle(it.title) }
     }
 
+    private fun normalizedTitle(value: String): String =
+        cleanHtmlText(value)
+            .lowercase(Locale.US)
+            .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
+            .trim()
+
     private fun findVisualMatch(
         headline: Win98NewsItem,
         visual: List<Win98NewsItem>
