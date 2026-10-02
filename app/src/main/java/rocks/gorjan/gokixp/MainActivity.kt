@@ -12692,7 +12692,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(14), dp(18), dp(18))
+            setPadding(dp(18), dp(18), dp(18), dp(18))
             setBackgroundColor(Color.TRANSPARENT)
             visibility = View.INVISIBLE
             isClickable = true
@@ -12705,45 +12705,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
         }
 
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(9), dp(14), dp(10))
-            background = quickGlanceBlueCard()
-            elevation = 3f
-        }
-        header.addView(TextView(this).apply {
-            text = "WINSUNG 98"
-            setTextColor(Color.WHITE)
-            textSize = 10f
-            letterSpacing = 0.08f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        })
-        header.addView(TextView(this).apply {
-            text = "My Page"
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        })
-        page.addView(header, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(14) })
-
-        val slots = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            background = quickGlanceCardBackground("#D6D2CB", 9)
-            elevation = 2f
-        }
-        win98SecondPageSlots = slots
-        page.addView(slots, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
+        // Page 2 is now a clean widget page. The old WINSUNG/My Page banner and
+        // eight-app shortcut panel were intentionally removed from the visible surface.
+        // Keep the saved shortcut preferences intact so existing user data is not destroyed.
+        win98SecondPageSlots = null
 
         val secondWidgets = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(2), 0, dp(8))
+            setPadding(0, 0, 0, dp(8))
         }
         val secondWidgetScroll = android.widget.ScrollView(this).apply {
             isFillViewport = false
@@ -12763,14 +12732,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             LinearLayout.LayoutParams.MATCH_PARENT,
             0,
             1f
-        ).apply {
-            topMargin = dp(10)
-        })
+        ))
         renderWin98WidgetPage(2)
 
         mainBackground.addView(page)
         win98SecondPage = page
-        populateWin98SecondPageSlots()
         return page
     }
 

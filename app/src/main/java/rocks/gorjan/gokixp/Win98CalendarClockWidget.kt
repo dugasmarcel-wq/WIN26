@@ -62,14 +62,14 @@ object Win98CalendarClockWidget {
             minimumHeight = dp(148)
             setPadding(dp(8), dp(7), dp(8), dp(7))
             background = roundedPanel(
-                fill = Color.rgb(250, 250, 250),
-                stroke = Color.rgb(212, 212, 212),
-                radiusDp = 28
+                fill = Color.rgb(248, 248, 248),
+                stroke = Color.rgb(164, 164, 164),
+                radiusDp = 11
             )
 
             addView(buildCalendarPanel(), LayoutParams(0, dp(134), 1.08f))
             addView(View(context).apply {
-                setBackgroundColor(Color.rgb(220, 220, 220))
+                setBackgroundColor(Color.rgb(188, 188, 188))
             }, LayoutParams(dp(1), dp(134)).apply {
                 marginStart = dp(4)
                 marginEnd = dp(4)
@@ -322,7 +322,8 @@ object Win98CalendarClockWidget {
         private fun sunkenField(): GradientDrawable =
             GradientDrawable().apply {
                 setColor(Color.WHITE)
-                setStroke(dp(1), Color.rgb(125, 125, 125))
+                setStroke(dp(1), Color.rgb(105, 105, 105))
+                cornerRadius = dp(1).toFloat()
             }
 
         private fun roundedPanel(fill: Int, stroke: Int, radiusDp: Int): GradientDrawable =
@@ -352,7 +353,8 @@ object Win98CalendarClockWidget {
             typeface = Typeface.MONOSPACE
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
-                setStroke(dp(context, 1), Color.rgb(125, 125, 125))
+                setStroke(dp(context, 1), Color.rgb(105, 105, 105))
+                cornerRadius = dp(context, 1).toFloat()
             }
             updateTime()
         }
@@ -422,12 +424,12 @@ object Win98CalendarClockWidget {
 
             paint.style = Paint.Style.FILL
             paint.color = Color.WHITE
-            canvas.drawCircle(cx, cy, radius + dp(context, 5f), paint)
+            canvas.drawCircle(cx, cy, radius + dp(context, 4f), paint)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(context, 0.7f)
-            paint.color = Color.rgb(235, 235, 235)
-            canvas.drawCircle(cx, cy, radius + dp(context, 5f), paint)
+            paint.strokeWidth = dp(context, 1f)
+            paint.color = Color.rgb(198, 198, 198)
+            canvas.drawCircle(cx, cy, radius + dp(context, 4f), paint)
 
             paint.style = Paint.Style.FILL
             paint.color = Color.rgb(0, 139, 136)
@@ -435,15 +437,15 @@ object Win98CalendarClockWidget {
                 val angle = Math.toRadians((i * 30.0) - 90.0)
                 val x = cx + cos(angle).toFloat() * radius
                 val y = cy + sin(angle).toFloat() * radius
-                canvas.drawCircle(x, y, dp(context, 1.8f), paint)
+                canvas.drawCircle(x, y, dp(context, 1.55f), paint)
             }
 
             val second = now.get(Calendar.SECOND) + now.get(Calendar.MILLISECOND) / 1000f
             val minute = now.get(Calendar.MINUTE) + second / 60f
             val hour = (now.get(Calendar.HOUR) % 12) + minute / 60f
 
-            drawTealHand(canvas, cx, cy, radius * 0.52f, hour * 30f - 90f, dp(context, 5.2f))
-            drawTealHand(canvas, cx, cy, radius * 0.78f, minute * 6f - 90f, dp(context, 3.1f))
+            drawTealHand(canvas, cx, cy, radius * 0.52f, hour * 30f - 90f, dp(context, 4.1f))
+            drawTealHand(canvas, cx, cy, radius * 0.79f, minute * 6f - 90f, dp(context, 2.25f))
 
             paint.color = Color.BLACK
             paint.strokeWidth = dp(context, 0.8f)
