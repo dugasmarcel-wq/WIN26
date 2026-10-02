@@ -180,6 +180,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98PagerLastRawX = 0f
     private var win98PagerLastMotionTime = 0L
     private var win98PagerVelocityX = 0f
+    private var win98DesktopPagerCaptured = false
+    private var win98DesktopPagerBlocked = false
     private var win98PagerGlobalCaptured = false
     private var win98PagerGlobalBlocked = false
     private var win98NewsLoading = false
@@ -552,6 +554,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_DESKTOP_ICONS = "desktop_icons"
         private const val KEY_PINNED_APPS = "pinned_apps"
         private const val KEY_HIDDEN_APPS = "hidden_apps"
+        private const val NOTIFICATION_DOT_FALLBACK_POLL_MS = 10_000L
+        private const val NOTIFICATION_DOT_LISTENER_HEALTH_CHECK_MS = 30_000L
 
         /**
          * Programs that were part of the shell once and are not any more.
@@ -4996,10 +5000,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
             }
             
-            val pagerConsumed = handleWin98DesktopPagerTouch(event)
-            if (!pagerConsumed) {
-                gestureDetector.onTouchEvent(event)
-            }
+            gestureDetector.onTouchEvent(event)
             true // Consume the event
         }
         
@@ -12434,13 +12435,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
         
         try {
-            // Method 4: Try to trigger via broadcast
+            // Method 4: Try to trigger via broadcast. This API gives no confirmation, so
+            // keep going to the visible fallback instead of silently pretending it worked.
             Log.d("MainActivity", "Trying broadcast approach...")
             val intent = Intent("android.intent.action.EXPAND_NOTIFICATIONS")
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             sendBroadcast(intent)
             Log.d("MainActivity", "✅ Broadcast sent")
-            return
             
         } catch (e: Exception) {
             Log.w("MainActivity", "Broadcast approach failed: ${e.message}")
@@ -12448,6 +12449,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         
         // Final fallback: Show a message
         Log.e("MainActivity", "❌ All notification shade expansion methods failed")
+        showNotification("Swipe Down", "Android blocked notification shade access")
     }
     
     private fun launchWebSearch() {
@@ -13360,11 +13362,19 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                win98DesktopPagerBlocked =
+                    isStartMenuVisible ||
+                    (::contextMenu.isInitialized && contextMenu.visibility == View.VISIBLE) ||
+                    isTouchOnEditableEditText(event) ||
+                    isTouchInGameWindow(event) ||
+                    isTouchInFloatingWindow(event)
+                if (win98DesktopPagerBlocked) return false
                 beginWin98PagerTouch(event, 1)
                 return false
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (win98DesktopPagerBlocked) return false
                 updateWin98PagerVelocity(event)
                 val dx = event.rawX - win98PagerDownX
                 val dy = event.rawY - win98PagerDownY
@@ -13440,6 +13450,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (win98DesktopPagerBlocked) {
+                    win98DesktopPagerBlocked = false
+                    resetWin98PagerTouch()
+                    return false
+                }
                 if (win98PagerDragging && win98PagerDragOriginPage == 1) {
                     val velocityX = currentWin98PagerVelocityX(event)
                     val width = win98PagerWidth()
@@ -15210,11 +15225,17 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private fun startNotificationMonitoring() {
         stopNotificationMonitoring()
 
-        // Start periodic refresh of notification dots every 2 seconds
+        // The listener pushes real changes. Poll only as a fallback/health check so the
+        // launcher is not waking itself every two seconds forever.
         val updateRunnable = object : Runnable {
             override fun run() {
                 updateNotificationDots()
-                handler.postDelayed(this, 2000) // 2 seconds
+                val nextDelay = if (isNotificationListenerEnabled()) {
+                    NOTIFICATION_DOT_LISTENER_HEALTH_CHECK_MS
+                } else {
+                    NOTIFICATION_DOT_FALLBACK_POLL_MS
+                }
+                handler.postDelayed(this, nextDelay)
             }
         }
         notificationMonitorRunnable = updateRunnable
@@ -16278,6 +16299,30 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             // Side pages use one activity-level pager stream. Child views still receive
             // taps and vertical gestures, but once horizontal paging wins we cancel the
             // child gesture and keep the rest of the sequence for the pager.
+            val desktopPagerConsumed = handleWin98DesktopPagerTouch(event)
+            if (desktopPagerConsumed) {
+                if (!win98DesktopPagerCaptured) {
+                    val cancelEvent = MotionEvent.obtain(event)
+                    cancelEvent.action = MotionEvent.ACTION_CANCEL
+                    super.dispatchTouchEvent(cancelEvent)
+                    cancelEvent.recycle()
+                    win98DesktopPagerCaptured = true
+                }
+
+                if (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL
+                ) {
+                    win98DesktopPagerCaptured = false
+                }
+                return true
+            }
+
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                win98DesktopPagerCaptured = false
+            }
+
             val sidePagerConsumed = handleWin98GlobalSidePagerTouch(event)
             if (sidePagerConsumed) {
                 if (!win98PagerGlobalCaptured) {
@@ -16331,6 +16376,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
 
         return false
+    }
+
+    private fun isTouchInFloatingWindow(event: MotionEvent): Boolean {
+        if (!::floatingWindowManager.isInitialized) return false
+        return floatingWindowManager
+            .getAllActiveWindows()
+            .asReversed()
+            .any { it.containsWindowFramePoint(event.rawX, event.rawY) }
     }
 
     private fun isTouchOnEditableEditText(event: MotionEvent): Boolean {

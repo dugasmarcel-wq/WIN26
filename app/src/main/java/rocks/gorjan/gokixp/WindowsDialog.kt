@@ -1133,6 +1133,18 @@ class WindowsDialog @JvmOverloads constructor(
         return super.dispatchTouchEvent(ev)
     }
 
+    fun containsWindowFramePoint(rawX: Float, rawY: Float): Boolean {
+        if (!::windowFrame.isInitialized || isMinimized || visibility != View.VISIBLE) return false
+        val location = IntArray(2)
+        windowFrame.getLocationOnScreen(location)
+        val left = location[0].toFloat()
+        val top = location[1].toFloat()
+        return rawX >= left &&
+            rawX < left + windowFrame.width &&
+            rawY >= top &&
+            rawY < top + windowFrame.height
+    }
+
     // ——— Taskbar ———
 
     private fun autoRegisterWithTaskbar() {
