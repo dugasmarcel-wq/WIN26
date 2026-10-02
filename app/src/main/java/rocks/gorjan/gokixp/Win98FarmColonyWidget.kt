@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -281,6 +282,31 @@ object Win98FarmColonyWidget {
             return crop.name + " planted."
         }
 
+        fun plantBest(): String {
+            val crop = availableCrops().filter { coins >= it.cost }
+                .maxWithOrNull(compareBy<Crop> { it.food + it.coins * 2 }.thenBy { -it.days })
+                ?: return "No affordable seasonal seed."
+            return plant(crop.id)
+        }
+
+        fun plantAt(index: Int, preferred: String? = null): String {
+            if (index !in plots.indices || index >= unlockedPlots) return "That plot is locked."
+            val plot = plots[index]
+            if (plot.crop.isNotEmpty()) return harvestAt(index)
+            val crop = preferred?.let { cropMap[it] } ?: availableCrops()
+                .filter { coins >= it.cost }
+                .maxWithOrNull(compareBy<Crop> { it.food + it.coins * 2 }.thenBy { -it.days })
+                ?: return "No affordable seasonal seed."
+            if (crop !in availableCrops()) return crop.name + " is not available."
+            if (coins < crop.cost) return "Need " + crop.cost + " coins for seed."
+            coins -= crop.cost
+            plot.crop = crop.id
+            plot.age = 0
+            record("Planted " + crop.name + " in plot " + (index + 1) + ".")
+            save()
+            return crop.name + " planted."
+        }
+
         fun harvest(): String {
             var count = 0
             var foodGain = 0
@@ -304,6 +330,46 @@ object Win98FarmColonyWidget {
             record(msg)
             save()
             return msg
+        }
+
+        fun harvestAt(index: Int): String {
+            if (index !in plots.indices || index >= unlockedPlots) return "That plot is locked."
+            val plot = plots[index]
+            val crop = cropMap[plot.crop] ?: return "Plot " + (index + 1) + " is empty."
+            if (plot.age < crop.days) {
+                return crop.name + " needs " + (crop.days - plot.age) + " more day(s)."
+            }
+            val foodGain = crop.food + if (rotation) 2 else 0
+            val coinGain = crop.coins
+            plot.crop = ""
+            plot.age = 0
+            food += foodGain
+            coins += coinGain
+            reputation += 3
+            clamp()
+            val msg = "Harvested " + crop.name + ": +" + foodGain + " food, +" + coinGain + " coins."
+            record(msg)
+            save()
+            return msg
+        }
+
+        fun plotSummary(index: Int): String {
+            if (index !in plots.indices || index >= unlockedPlots) return "Plot " + (index + 1) + ": locked"
+            val plot = plots[index]
+            val crop = cropMap[plot.crop] ?: return "Plot " + (index + 1) + ": empty. Tap to plant."
+            return if (plot.age >= crop.days) {
+                "Plot " + (index + 1) + ": " + crop.name + " ready. Tap to harvest."
+            } else {
+                "Plot " + (index + 1) + ": " + crop.name + " growing " + plot.age + "/" + crop.days + "d."
+            }
+        }
+
+        fun handleMapTap(target: String): String {
+            if (target.startsWith("plot:")) {
+                val index = target.removePrefix("plot:").toIntOrNull() ?: return "Unknown plot."
+                return plantAt(index)
+            }
+            return target
         }
 
         fun sellFood(): String {
@@ -550,7 +616,10 @@ object Win98FarmColonyWidget {
     ) : LinearLayout(activity) {
         private val status = TextView(activity)
         private val resources = TextView(activity)
-        private val map = MapView(activity, game)
+        private val map = MapView(activity, game) { target ->
+            toast(game.handleMapTap(target))
+            refresh()
+        }
         private val handler = Handler(Looper.getMainLooper())
         private val ticker = object : Runnable {
             override fun run() {
@@ -576,9 +645,10 @@ object Win98FarmColonyWidget {
             resources.maxLines = 2
             addView(resources, LayoutParams(LayoutParams.MATCH_PARENT, dp(activity, 38)))
             val buttons = LinearLayout(activity).apply { orientation = HORIZONTAL }
-            buttons.addView(button(activity, "Harvest") { toast(game.harvest()); refresh() }, LayoutParams(0, dp(activity, 29), 1f).apply { marginEnd = dp(activity, 3) })
-            buttons.addView(button(activity, "Forage") { toast(game.forage()); refresh() }, LayoutParams(0, dp(activity, 29), 1f).apply { marginStart = dp(activity, 2); marginEnd = dp(activity, 2) })
-            buttons.addView(button(activity, "Expand") { showExpanded(activity, game) { refresh() } }, LayoutParams(0, dp(activity, 29), 1f).apply { marginStart = dp(activity, 3) })
+            buttons.addView(button(activity, "Plant") { toast(game.plantBest()); refresh() }, LayoutParams(0, dp(activity, 29), 1f).apply { marginEnd = dp(activity, 2) })
+            buttons.addView(button(activity, "Harvest") { toast(game.harvest()); refresh() }, LayoutParams(0, dp(activity, 29), 1f).apply { marginStart = dp(activity, 1); marginEnd = dp(activity, 1) })
+            buttons.addView(button(activity, "Forage") { toast(game.forage()); refresh() }, LayoutParams(0, dp(activity, 29), 1f).apply { marginStart = dp(activity, 1); marginEnd = dp(activity, 1) })
+            buttons.addView(button(activity, "Expand") { showExpanded(activity, game) { refresh() } }, LayoutParams(0, dp(activity, 29), 1f).apply { marginStart = dp(activity, 2) })
             addView(buttons, LayoutParams(LayoutParams.MATCH_PARENT, dp(activity, 32)))
             refresh()
         }
@@ -679,7 +749,15 @@ object Win98FarmColonyWidget {
             return true
         }
 
-        private fun zoneAt(nx: Float, ny: Float): String = when {
+        private fun zoneAt(nx: Float, ny: Float): String {
+            val w = width.toFloat().coerceAtLeast(1f)
+            val h = height.toFloat().coerceAtLeast(1f)
+            val px = nx * w
+            val py = ny * h
+            for (i in 0 until game.plots.size) {
+                if (plotRect(i, w, h).contains(px, py)) return "plot:" + i
+            }
+            return when {
             nx > .78f -> "River District — fishing water and the eastern trade route."
             nx < .30f && ny < .48f ->
                 "Farm District — \${game.unlockedPlots} plots, \${game.farmers} farmer(s)."
@@ -693,6 +771,7 @@ object Win98FarmColonyWidget {
                 "Village Core — pop \${game.population}/\${game.housing}, happiness \${game.happiness}%."
             else ->
                 "Homestead — \${game.seasonName}, \${game.weather()}, Colony Lv\${game.level}."
+            }
         }
 
         override fun onDraw(c: Canvas) {
@@ -715,38 +794,33 @@ object Win98FarmColonyWidget {
 
         private fun drawGround(c: Canvas, w: Float, h: Float) {
             val base = when (game.season) {
-                0 -> Color.rgb(94, 143, 75)
-                1 -> Color.rgb(83, 133, 64)
-                2 -> Color.rgb(139, 116, 66)
-                else -> Color.rgb(159, 166, 154)
+                0 -> Color.rgb(109, 166, 82)
+                1 -> Color.rgb(94, 151, 70)
+                2 -> Color.rgb(151, 126, 69)
+                else -> Color.rgb(176, 183, 171)
             }
             c.drawColor(base)
 
-            val cols = 16
-            val rows = if (compact) 8 else 11
+            val cols = if (compact) 10 else 14
+            val rows = if (compact) 7 else 10
             val tw = w / cols
             val th = h / rows
             for (y in 0 until rows) {
                 for (x in 0 until cols) {
-                    val checker = (x + y + game.day) and 3
+                    val checker = (x + y + game.day) and 1
                     pixel.color = when (game.season) {
-                        0 -> if (checker == 0) Color.rgb(103, 153, 82) else Color.rgb(94, 143, 75)
-                        1 -> if (checker == 0) Color.rgb(90, 143, 67) else Color.rgb(83, 133, 64)
-                        2 -> if (checker == 0) Color.rgb(149, 124, 70) else Color.rgb(139, 116, 66)
-                        else -> if (checker == 0) Color.rgb(171, 178, 167) else Color.rgb(159, 166, 154)
+                        0 -> if (checker == 0) Color.rgb(117, 174, 88) else Color.rgb(109, 166, 82)
+                        1 -> if (checker == 0) Color.rgb(102, 160, 76) else Color.rgb(94, 151, 70)
+                        2 -> if (checker == 0) Color.rgb(162, 135, 75) else Color.rgb(151, 126, 69)
+                        else -> if (checker == 0) Color.rgb(188, 193, 182) else Color.rgb(176, 183, 171)
                     }
                     c.drawRect(x * tw, y * th, (x + 1) * tw + 1f, (y + 1) * th + 1f, pixel)
                 }
             }
 
-            if (!compact) {
-                p.style = Paint.Style.STROKE
-                p.strokeWidth = 1f
-                p.color = Color.argb(55, 35, 55, 30)
-                for (x in 1 until cols) c.drawLine(x * tw, 0f, x * tw, h, p)
-                for (y in 1 until rows) c.drawLine(0f, y * th, w, y * th, p)
-                p.style = Paint.Style.FILL
-            }
+            p.color = Color.argb(45, 50, 80, 45)
+            c.drawOval(RectF(-w * .18f, h * .71f, w * .72f, h * 1.12f), p)
+            c.drawOval(RectF(w * .24f, h * .68f, w * .98f, h * 1.08f), p)
         }
 
         private fun drawRiver(c: Canvas, w: Float, h: Float) {
@@ -812,55 +886,112 @@ object Win98FarmColonyWidget {
         }
 
         private fun drawFields(c: Canvas, w: Float, h: Float) {
-            val left = w * .035f
-            val top = h * .06f
-            val zoneW = w * .49f
-            val zoneH = h * .38f
-            val gap = if (compact) 3f else 5f
-            val cellW = (zoneW - gap * 3) / 4f
-            val cellH = (zoneH - gap) / 2f
-            for (i in 0 until game.unlockedPlots) {
-                val col = i % 4
-                val row = i / 4
-                val l = left + col * (cellW + gap)
-                val t = top + row * (cellH + gap)
-                val r = l + cellW
-                val b = t + cellH
-                p.color = Color.rgb(105, 75, 45)
-                c.drawRect(l, t, r, b, p)
-                p.color = Color.rgb(78, 55, 34)
-                for (line in 1..3) {
-                    val yy = t + line * (cellH / 4f)
-                    c.drawRect(l + 2f, yy, r - 2f, yy + 1f, p)
+            for (i in game.plots.indices) {
+                val rect = plotRect(i, w, h)
+                val locked = i >= game.unlockedPlots
+                p.color = Color.argb(80, 0, 0, 0)
+                c.drawRoundRect(
+                    RectF(rect.left + 2f, rect.top + 3f, rect.right + 2f, rect.bottom + 4f),
+                    6f,
+                    6f,
+                    p
+                )
+                p.color = if (locked) Color.rgb(86, 94, 76) else Color.rgb(128, 83, 45)
+                c.drawRoundRect(rect, 6f, 6f, p)
+                p.color = if (locked) Color.rgb(111, 121, 99) else Color.rgb(101, 64, 35)
+                val lines = if (compact) 3 else 4
+                for (line in 1..lines) {
+                    val yy = rect.top + line * (rect.height() / (lines + 1))
+                    c.drawRect(rect.left + 4f, yy, rect.right - 4f, yy + 1.4f, p)
+                }
+
+                if (locked) {
+                    p.color = Color.argb(165, 40, 40, 40)
+                    c.drawRoundRect(rect, 6f, 6f, p)
+                    if (!compact) drawLabel(c, "LOCKED", rect.centerX(), rect.centerY() + 4f, Color.WHITE)
+                    continue
                 }
 
                 val plot = game.plots[i]
                 val crop = cropMap[plot.crop]
-                if (crop != null) {
-                    val progress = min(1f, plot.age.toFloat() / crop.days.toFloat())
-                    val rows = 2 + (progress * 3f).toInt()
-                    p.color = when {
-                        progress >= 1f -> Color.rgb(225, 200, 72)
-                        crop.id == "tomato" -> Color.rgb(57, 143, 63)
-                        crop.id == "pumpkin" -> Color.rgb(104, 151, 48)
-                        else -> Color.rgb(71, 154, 61)
-                    }
-                    repeat(rows) { n ->
-                        val px = l + 5f + (n % 3) * max(4f, (cellW - 10f) / 3f)
-                        val py = b - 5f - (n / 3) * max(5f, cellH / 3f)
-                        c.drawRect(
-                            px, py,
-                            px + if (compact) 2f else 4f,
-                            py + if (compact) 3f else 6f,
-                            p
-                        )
-                    }
-                    if (!compact && progress >= 1f) {
-                        drawLabel(c, "READY", (l + r) / 2f, b - 3f, Color.rgb(55, 35, 0))
-                    }
+                if (crop == null) {
+                    p.color = Color.argb(92, 255, 236, 168)
+                    c.drawCircle(rect.centerX(), rect.centerY(), min(rect.width(), rect.height()) * .16f, p)
+                    if (!compact) drawLabel(c, "TAP TO PLANT", rect.centerX(), rect.bottom - 6f, Color.rgb(50, 34, 20))
+                    continue
+                }
+
+                val progress = min(1f, plot.age.toFloat() / crop.days.toFloat())
+                drawCrop(c, crop, progress, rect)
+                if (progress >= 1f) {
+                    p.color = Color.argb(if (frame % 24 < 12) 210 else 150, 255, 244, 108)
+                    val badge = RectF(rect.right - rect.width() * .37f, rect.top + 3f, rect.right - 3f, rect.top + rect.height() * .33f)
+                    c.drawRoundRect(badge, 8f, 8f, p)
+                    if (!compact) drawLabel(c, "READY", badge.centerX(), badge.centerY() + 4f, Color.rgb(61, 42, 0))
                 }
             }
-            if (!compact) drawLabel(c, "FARM DISTRICT", left + zoneW * .5f, top + zoneH + 15f, Color.WHITE)
+            if (!compact) drawLabel(c, "FARM", w * .32f, h * .49f, Color.WHITE)
+        }
+
+        private fun plotRect(index: Int, w: Float, h: Float): RectF {
+            val cols = 4
+            val rows = 2
+            val left = w * if (compact) .045f else .055f
+            val top = h * if (compact) .075f else .09f
+            val zoneW = w * if (compact) .62f else .58f
+            val zoneH = h * if (compact) .43f else .40f
+            val gap = if (compact) 5f else 8f
+            val cellW = (zoneW - gap * (cols - 1)) / cols
+            val cellH = (zoneH - gap * (rows - 1)) / rows
+            val col = index % cols
+            val row = index / cols
+            val l = left + col * (cellW + gap)
+            val t = top + row * (cellH + gap)
+            return RectF(l, t, l + cellW, t + cellH)
+        }
+
+        private fun drawCrop(c: Canvas, crop: Crop, progress: Float, rect: RectF) {
+            val growth = .38f + progress * .62f
+            val stems = if (compact) 4 else 6
+            val stemColor = when (crop.id) {
+                "wheat" -> if (progress >= 1f) Color.rgb(220, 188, 72) else Color.rgb(115, 164, 63)
+                "pumpkin" -> Color.rgb(71, 145, 55)
+                "winterroot" -> Color.rgb(87, 126, 84)
+                "mushroom" -> Color.rgb(122, 105, 88)
+                else -> Color.rgb(54, 150, 57)
+            }
+            p.strokeWidth = if (compact) 2f else 3f
+            p.style = Paint.Style.STROKE
+            p.color = stemColor
+            repeat(stems) { n ->
+                val x = rect.left + rect.width() * (.18f + n * (.64f / max(1, stems - 1)))
+                val bottom = rect.bottom - rect.height() * .18f
+                val top = bottom - rect.height() * .46f * growth
+                c.drawLine(x, bottom, x, top, p)
+            }
+            p.style = Paint.Style.FILL
+
+            val fruitColor = when (crop.id) {
+                "carrot" -> Color.rgb(230, 115, 42)
+                "potato" -> Color.rgb(164, 123, 73)
+                "wheat" -> Color.rgb(235, 202, 91)
+                "corn" -> Color.rgb(239, 212, 69)
+                "tomato" -> Color.rgb(211, 54, 46)
+                "pumpkin" -> Color.rgb(224, 126, 42)
+                "winterroot" -> Color.rgb(226, 231, 218)
+                else -> Color.rgb(206, 78, 64)
+            }
+            p.color = fruitColor
+            val size = min(rect.width(), rect.height()) * (.08f + progress * .10f)
+            repeat(if (compact) 3 else 5) { n ->
+                val x = rect.left + rect.width() * (.25f + (n % 3) * .24f)
+                val y = rect.top + rect.height() * (.38f + (n / 3) * .18f)
+                if (crop.id == "wheat" || crop.id == "corn") {
+                    c.drawRect(x - size * .45f, y - size, x + size * .45f, y + size, p)
+                } else {
+                    c.drawOval(RectF(x - size, y - size * .72f, x + size, y + size * .72f), p)
+                }
+            }
         }
 
         private fun drawSettlement(c: Canvas, w: Float, h: Float) {
@@ -1143,7 +1274,12 @@ object Win98FarmColonyWidget {
         }
 
         val map = MapView(activity, game, compact = false) { zone ->
-            selection.text = zone
+            selection.text = if (zone.startsWith("plot:")) {
+                val index = zone.removePrefix("plot:").toIntOrNull() ?: -1
+                game.plotSummary(index)
+            } else {
+                zone
+            }
         }
         root.addView(
             map,
