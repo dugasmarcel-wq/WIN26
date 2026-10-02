@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -27,10 +26,8 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Native Win98/WINSUNG recreation of the split calendar + analog clock widget.
- *
- * It is entirely local: the calendar uses java.util.Calendar and the clock follows
- * the device's current locale/time zone. No network or Android app-widget framework.
+ * Compact rounded Windows-98-style calendar + clock based on the user's reference.
+ * Entirely local; no network access.
  */
 object Win98CalendarClockWidget {
 
@@ -47,6 +44,7 @@ object Win98CalendarClockWidget {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
+
         private var selectedYear = Calendar.getInstance().get(Calendar.YEAR)
         private var selectedMonth = Calendar.getInstance().get(Calendar.MONTH)
         private var selectedDay = Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
@@ -61,17 +59,22 @@ object Win98CalendarClockWidget {
         init {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = roundedPanel(Color.rgb(247, 247, 247), Color.rgb(205, 205, 205), 18)
+            minimumHeight = dp(148)
+            setPadding(dp(8), dp(7), dp(8), dp(7))
+            background = roundedPanel(
+                fill = Color.rgb(250, 250, 250),
+                stroke = Color.rgb(212, 212, 212),
+                radiusDp = 28
+            )
 
-            addView(buildCalendarPanel(), LayoutParams(0, dp(184), 1.08f))
+            addView(buildCalendarPanel(), LayoutParams(0, dp(134), 1.08f))
             addView(View(context).apply {
-                setBackgroundColor(Color.rgb(210, 210, 210))
-            }, LayoutParams(dp(1), dp(184)).apply {
-                marginStart = dp(3)
-                marginEnd = dp(3)
+                setBackgroundColor(Color.rgb(220, 220, 220))
+            }, LayoutParams(dp(1), dp(134)).apply {
+                marginStart = dp(4)
+                marginEnd = dp(4)
             })
-            addView(buildClockPanel(), LayoutParams(0, dp(184), 0.92f))
+            addView(buildClockPanel(), LayoutParams(0, dp(134), 0.92f))
 
             refreshCalendar()
         }
@@ -79,7 +82,7 @@ object Win98CalendarClockWidget {
         private fun buildCalendarPanel(): View {
             val panel = LinearLayout(context).apply {
                 orientation = VERTICAL
-                setPadding(dp(4), dp(4), dp(4), dp(4))
+                setPadding(dp(2), dp(1), dp(2), dp(1))
             }
 
             val controls = LinearLayout(context).apply {
@@ -88,58 +91,58 @@ object Win98CalendarClockWidget {
             }
 
             monthField = TextView(context).apply {
-                gravity = Gravity.CENTER_VERTICAL
+                gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
-                textSize = 11f
+                textSize = 9.5f
                 typeface = Typeface.DEFAULT_BOLD
-                setPadding(dp(5), 0, dp(4), 0)
+                setPadding(dp(3), 0, dp(3), 0)
                 background = sunkenField()
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { showMonthPicker() }
             }
-            controls.addView(monthField, LayoutParams(0, dp(28), 1f))
+            controls.addView(monthField, LayoutParams(0, dp(23), 1f))
 
             controls.addView(TextView(context).apply {
                 text = "▼"
                 gravity = Gravity.CENTER
                 setTextColor(Color.DKGRAY)
-                textSize = 8f
+                textSize = 6.5f
                 background = AppCompatResources.getDrawable(
                     context,
                     R.drawable.window_button_background
                 )
                 isClickable = true
                 setOnClickListener { showMonthPicker() }
-            }, LayoutParams(dp(22), dp(28)).apply {
-                marginEnd = dp(5)
+            }, LayoutParams(dp(17), dp(23)).apply {
+                marginEnd = dp(4)
             })
 
             yearField = TextView(context).apply {
                 gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
-                textSize = 11f
+                textSize = 9.5f
                 typeface = Typeface.DEFAULT_BOLD
                 background = sunkenField()
             }
-            controls.addView(yearField, LayoutParams(dp(58), dp(28)))
+            controls.addView(yearField, LayoutParams(dp(44), dp(23)))
 
             val yearSpin = LinearLayout(context).apply {
                 orientation = VERTICAL
             }
             yearSpin.addView(spinButton("▲") { changeYear(1) },
-                LayoutParams(dp(22), 0, 1f))
+                LayoutParams(dp(17), 0, 1f))
             yearSpin.addView(spinButton("▼") { changeYear(-1) },
-                LayoutParams(dp(22), 0, 1f))
-            controls.addView(yearSpin, LayoutParams(dp(22), dp(28)).apply {
+                LayoutParams(dp(17), 0, 1f))
+            controls.addView(yearSpin, LayoutParams(dp(17), dp(23)).apply {
                 marginStart = dp(2)
             })
 
             panel.addView(controls, LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(28)
+                dp(23)
             ).apply {
-                bottomMargin = dp(5)
+                bottomMargin = dp(4)
             })
 
             val weekdayRow = GridLayout(context).apply {
@@ -147,29 +150,28 @@ object Win98CalendarClockWidget {
                 rowCount = 1
                 setBackgroundColor(Color.rgb(112, 112, 104))
             }
-            val weekdays = arrayOf("S", "M", "T", "W", "T", "F", "S")
-            weekdays.forEach { label ->
+            arrayOf("S", "M", "T", "W", "T", "F", "S").forEach { label ->
                 weekdayRow.addView(TextView(context).apply {
                     text = label
                     gravity = Gravity.CENTER
                     setTextColor(Color.WHITE)
-                    textSize = 9.5f
+                    textSize = 8.5f
                     typeface = Typeface.DEFAULT_BOLD
                 }, GridLayout.LayoutParams().apply {
                     width = 0
-                    height = dp(23)
+                    height = dp(18)
                     columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
                 })
             }
             panel.addView(weekdayRow, LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(23)
+                dp(18)
             ))
 
             calendarGrid = GridLayout(context).apply {
                 columnCount = 7
                 rowCount = 6
-                setPadding(0, dp(2), 0, 0)
+                setPadding(0, dp(1), 0, 0)
             }
             panel.addView(calendarGrid, LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -183,11 +185,10 @@ object Win98CalendarClockWidget {
             val panel = LinearLayout(context).apply {
                 orientation = VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dp(3), dp(4), dp(3), dp(4))
+                setPadding(dp(2), 0, dp(2), 0)
             }
 
-            val clock = AnalogClockView(context)
-            panel.addView(clock, LayoutParams(
+            panel.addView(AnalogClockView(context), LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
                 1f
@@ -198,24 +199,22 @@ object Win98CalendarClockWidget {
                 gravity = Gravity.CENTER
             }
             val digital = LiveDigitalClock(context)
-            digitalRow.addView(digital, LayoutParams(0, dp(29), 1f))
+            digitalRow.addView(digital, LayoutParams(0, dp(24), 1f))
 
             val formatSpin = LinearLayout(context).apply {
                 orientation = VERTICAL
             }
-            formatSpin.addView(spinButton("▲") {
-                digital.toggleFormat()
-            }, LayoutParams(dp(22), 0, 1f))
-            formatSpin.addView(spinButton("▼") {
-                digital.toggleFormat()
-            }, LayoutParams(dp(22), 0, 1f))
-            digitalRow.addView(formatSpin, LayoutParams(dp(22), dp(29)).apply {
-                marginStart = dp(3)
+            formatSpin.addView(spinButton("▲") { digital.toggleFormat() },
+                LayoutParams(dp(17), 0, 1f))
+            formatSpin.addView(spinButton("▼") { digital.toggleFormat() },
+                LayoutParams(dp(17), 0, 1f))
+            digitalRow.addView(formatSpin, LayoutParams(dp(17), dp(24)).apply {
+                marginStart = dp(2)
             })
 
             panel.addView(digitalRow, LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(29)
+                dp(24)
             ))
             return panel
         }
@@ -224,7 +223,7 @@ object Win98CalendarClockWidget {
             TextView(context).apply {
                 text = label
                 gravity = Gravity.CENTER
-                textSize = 7f
+                textSize = 6f
                 setTextColor(Color.BLACK)
                 background = AppCompatResources.getDrawable(
                     context,
@@ -247,16 +246,12 @@ object Win98CalendarClockWidget {
                 negativeText = "Cancel"
             ) { which ->
                 selectedMonth = which.coerceIn(0, 11)
-                displayMonth.set(Calendar.MONTH, selectedMonth)
-                displayMonth.set(Calendar.YEAR, selectedYear)
                 refreshCalendar()
             }
         }
 
         private fun changeYear(delta: Int) {
             selectedYear = (selectedYear + delta).coerceIn(1900, 2199)
-            displayMonth.set(Calendar.YEAR, selectedYear)
-            displayMonth.set(Calendar.MONTH, selectedMonth)
             refreshCalendar()
         }
 
@@ -265,10 +260,8 @@ object Win98CalendarClockWidget {
             displayMonth.set(Calendar.MONTH, selectedMonth)
             displayMonth.set(Calendar.DAY_OF_MONTH, 1)
 
-            monthField.text = SimpleDateFormat("MMMM", Locale.getDefault())
-                .format(displayMonth.time)
+            monthField.text = SimpleDateFormat("MMMM", Locale.getDefault()).format(displayMonth.time)
             yearField.text = selectedYear.toString()
-
             calendarGrid.removeAllViews()
 
             val firstWeekday = displayMonth.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
@@ -293,22 +286,20 @@ object Win98CalendarClockWidget {
                 val cell = TextView(context).apply {
                     text = if (valid) day.toString() else ""
                     gravity = Gravity.CENTER
-                    textSize = 9.5f
+                    textSize = 8.2f
                     setTextColor(Color.BLACK)
                     typeface = if (isToday) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-
                     background = when {
                         isToday -> GradientDrawable().apply {
                             setColor(Color.rgb(55, 245, 170))
                             setStroke(dp(1), Color.rgb(0, 145, 105))
                         }
                         isSelected -> GradientDrawable().apply {
-                            setColor(Color.rgb(220, 235, 245))
-                            setStroke(dp(1), Color.rgb(70, 110, 145))
+                            setColor(Color.rgb(225, 238, 246))
+                            setStroke(dp(1), Color.rgb(90, 125, 150))
                         }
                         else -> null
                     }
-
                     if (valid) {
                         isClickable = true
                         isFocusable = true
@@ -331,7 +322,7 @@ object Win98CalendarClockWidget {
         private fun sunkenField(): GradientDrawable =
             GradientDrawable().apply {
                 setColor(Color.WHITE)
-                setStroke(dp(1), Color.rgb(115, 115, 115))
+                setStroke(dp(1), Color.rgb(125, 125, 125))
             }
 
         private fun roundedPanel(fill: Int, stroke: Int, radiusDp: Int): GradientDrawable =
@@ -357,11 +348,11 @@ object Win98CalendarClockWidget {
         init {
             gravity = Gravity.CENTER
             setTextColor(Color.BLACK)
-            textSize = 10.5f
+            textSize = 9.2f
             typeface = Typeface.MONOSPACE
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
-                setStroke(dp(context, 1), Color.rgb(120, 120, 120))
+                setStroke(dp(context, 1), Color.rgb(125, 125, 125))
             }
             updateTime()
         }
@@ -408,7 +399,7 @@ object Win98CalendarClockWidget {
         }
 
         init {
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(Color.TRANSPARENT)
         }
 
         override fun onAttachedToWindow() {
@@ -426,31 +417,36 @@ object Win98CalendarClockWidget {
             super.onDraw(canvas)
             val cx = width / 2f
             val cy = height / 2f
-            val radius = min(width, height) * 0.39f
+            val radius = min(width, height) * 0.40f
             val now = Calendar.getInstance()
 
             paint.style = Paint.Style.FILL
             paint.color = Color.WHITE
-            canvas.drawCircle(cx, cy, radius + dp(context, 8), paint)
+            canvas.drawCircle(cx, cy, radius + dp(context, 5f), paint)
 
-            // Twelve teal hour markers.
-            paint.color = Color.rgb(0, 135, 132)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(context, 0.7f)
+            paint.color = Color.rgb(235, 235, 235)
+            canvas.drawCircle(cx, cy, radius + dp(context, 5f), paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.rgb(0, 139, 136)
             for (i in 0 until 12) {
                 val angle = Math.toRadians((i * 30.0) - 90.0)
                 val x = cx + cos(angle).toFloat() * radius
                 val y = cy + sin(angle).toFloat() * radius
-                canvas.drawCircle(x, y, dp(context, 2.2f), paint)
+                canvas.drawCircle(x, y, dp(context, 1.8f), paint)
             }
 
             val second = now.get(Calendar.SECOND) + now.get(Calendar.MILLISECOND) / 1000f
             val minute = now.get(Calendar.MINUTE) + second / 60f
             val hour = (now.get(Calendar.HOUR) % 12) + minute / 60f
 
-            drawTealHand(canvas, cx, cy, radius * 0.53f, hour * 30f - 90f, dp(context, 7f))
-            drawTealHand(canvas, cx, cy, radius * 0.80f, minute * 6f - 90f, dp(context, 4f))
+            drawTealHand(canvas, cx, cy, radius * 0.52f, hour * 30f - 90f, dp(context, 5.2f))
+            drawTealHand(canvas, cx, cy, radius * 0.78f, minute * 6f - 90f, dp(context, 3.1f))
 
             paint.color = Color.BLACK
-            paint.strokeWidth = dp(context, 1f)
+            paint.strokeWidth = dp(context, 0.8f)
             paint.style = Paint.Style.STROKE
             val secondAngle = Math.toRadians((second * 6f - 90f).toDouble())
             canvas.drawLine(
@@ -463,9 +459,9 @@ object Win98CalendarClockWidget {
 
             paint.style = Paint.Style.FILL
             paint.color = Color.BLACK
-            canvas.drawCircle(cx, cy, dp(context, 2.1f), paint)
+            canvas.drawCircle(cx, cy, dp(context, 1.8f), paint)
             paint.color = Color.WHITE
-            canvas.drawCircle(cx, cy, dp(context, 0.8f), paint)
+            canvas.drawCircle(cx, cy, dp(context, 0.7f), paint)
         }
 
         private fun drawTealHand(
@@ -493,8 +489,8 @@ object Win98CalendarClockWidget {
             canvas.drawPath(handPath, paint)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(context, 0.8f)
-            paint.color = Color.rgb(0, 95, 92)
+            paint.strokeWidth = dp(context, 0.7f)
+            paint.color = Color.rgb(0, 90, 88)
             canvas.drawPath(handPath, paint)
         }
     }

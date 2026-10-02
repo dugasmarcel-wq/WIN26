@@ -1657,6 +1657,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun createWin98WidgetCard(spec: Win98WidgetSpec, pageIndex: Int): View {
+        if (spec.id == "calendar_clock_98") {
+            // This widget is modeled after the rounded split calendar/clock reference.
+            // Do not wrap it in the generic blue WINSUNG title bar; placement/removal is
+            // still managed from WINSUNG Widgets.
+            return Win98WidgetViews.create(this, spec.id).apply {
+                elevation = 2f
+            }
+        }
+
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
@@ -14225,6 +14234,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         Glide.with(view)
             .load(glideUrl)
+            .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.DATA)
             .centerCrop()
             .placeholder(android.graphics.drawable.ColorDrawable(Color.parseColor("#BDBDBD")))
             .error(android.graphics.drawable.ColorDrawable(Color.parseColor("#BDBDBD")))
