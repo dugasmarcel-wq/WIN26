@@ -619,10 +619,14 @@ object Win98FarmColonyWidget {
     ) : LinearLayout(activity) {
         private val status = TextView(activity)
         private val resources = TextView(activity)
-        private val map = MapView(activity, game) { target ->
-            toast(game.handleMapTap(target))
-            refresh()
-        }
+        private val map = MapView(
+            activity,
+            game,
+            onSelection = { target ->
+                toast(game.handleMapTap(target))
+                refresh()
+            }
+        )
         private val handler = Handler(Looper.getMainLooper())
         private val ticker = object : Runnable {
             override fun run() {
