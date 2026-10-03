@@ -10,7 +10,10 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.view.GestureDetector
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -678,13 +681,74 @@ object Win98FarmColonyWidget {
         context: Context,
         private val game: Game,
         private val compact: Boolean = true,
-        private val onSelection: ((String) -> Unit)? = null
+        private val onSelection: ((String) -> Unit)? = null,
+        private val onViewportChanged: ((Int) -> Unit)? = null
     ) : View(context) {
         private val p = Paint(Paint.ANTI_ALIAS_FLAG)
         private val pixel = Paint().apply { isAntiAlias = false }
         private val handler = Handler(Looper.getMainLooper())
         private var frame = 0
         private var mode = 0
+
+        private var zoom = 1f
+        private var offsetX = 0f
+        private var offsetY = 0f
+        private val minZoom = 1f
+        private val maxZoom = 4f
+
+        private val scaleDetector = ScaleGestureDetector(
+            context,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScaleBegin(detector: ScaleGestureDetector): Boolean = !compact
+
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    if (compact) return false
+                    applyZoom(
+                        zoom * detector.scaleFactor,
+                        detector.focusX,
+                        detector.focusY
+                    )
+                    return true
+                }
+            }
+        )
+
+        private val gestureDetector = GestureDetector(
+            context,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent): Boolean = true
+
+                override fun onScroll(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    distanceX: Float,
+                    distanceY: Float
+                ): Boolean {
+                    if (compact) return false
+                    offsetX -= distanceX
+                    offsetY -= distanceY
+                    clampViewport()
+                    invalidate()
+                    return true
+                }
+
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    if (compact) return false
+                    selectAt(e.x, e.y)
+                    return true
+                }
+
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    if (compact) return false
+                    if (zoom < 1.6f) {
+                        applyZoom(2.2f, e.x, e.y)
+                    } else {
+                        resetViewport()
+                    }
+                    return true
+                }
+            }
+        )
 
         private val ticker = object : Runnable {
             override fun run() {
@@ -708,6 +772,55 @@ object Win98FarmColonyWidget {
             invalidate()
         }
 
+        fun zoomIn() {
+            if (compact) return
+            applyZoom(zoom * 1.35f, width * .5f, height * .5f)
+        }
+
+        fun zoomOut() {
+            if (compact) return
+            applyZoom(zoom / 1.35f, width * .5f, height * .5f)
+        }
+
+        fun resetViewport() {
+            zoom = 1f
+            offsetX = 0f
+            offsetY = 0f
+            onViewportChanged?.invoke(100)
+            invalidate()
+        }
+
+        fun zoomPercent(): Int = (zoom * 100f).toInt()
+
+        private fun applyZoom(target: Float, focusX: Float, focusY: Float) {
+            if (compact || width <= 0 || height <= 0) return
+            val oldZoom = zoom
+            val newZoom = target.coerceIn(minZoom, maxZoom)
+            if (kotlin.math.abs(newZoom - oldZoom) < 0.001f) return
+
+            val worldFocusX = (focusX - offsetX) / oldZoom
+            val worldFocusY = (focusY - offsetY) / oldZoom
+            zoom = newZoom
+            offsetX = focusX - worldFocusX * zoom
+            offsetY = focusY - worldFocusY * zoom
+            clampViewport()
+            onViewportChanged?.invoke(zoomPercent())
+            invalidate()
+        }
+
+        private fun clampViewport() {
+            if (compact || width <= 0 || height <= 0) return
+            val minX = width.toFloat() - width.toFloat() * zoom
+            val minY = height.toFloat() - height.toFloat() * zoom
+            offsetX = offsetX.coerceIn(minX, 0f)
+            offsetY = offsetY.coerceIn(minY, 0f)
+        }
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            clampViewport()
+        }
+
         override fun onAttachedToWindow() {
             super.onAttachedToWindow()
             handler.removeCallbacks(ticker)
@@ -719,29 +832,54 @@ object Win98FarmColonyWidget {
             super.onDetachedFromWindow()
         }
 
-        override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (compact) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                        val zone = zoneAt(
+                            event.x / width.coerceAtLeast(1),
+                            event.y / height.coerceAtLeast(1)
+                        )
+                        onSelection?.invoke(zone)
+                        invalidate()
+                        performClick()
+                        return true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                        return true
+                    }
+                }
+                return true
+            }
+
+            parent?.requestDisallowInterceptTouchEvent(true)
+            scaleDetector.onTouchEvent(event)
+            gestureDetector.onTouchEvent(event)
+
             when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    parent?.requestDisallowInterceptTouchEvent(true)
-                    return true
-                }
-                android.view.MotionEvent.ACTION_UP -> {
-                    parent?.requestDisallowInterceptTouchEvent(false)
-                    val zone = zoneAt(
-                        event.x / width.coerceAtLeast(1),
-                        event.y / height.coerceAtLeast(1)
-                    )
-                    onSelection?.invoke(zone)
-                    invalidate()
-                    performClick()
-                    return true
-                }
-                android.view.MotionEvent.ACTION_CANCEL -> {
-                    parent?.requestDisallowInterceptTouchEvent(false)
-                    return true
-                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> parent?.requestDisallowInterceptTouchEvent(false)
             }
             return true
+        }
+
+        private fun selectAt(screenX: Float, screenY: Float) {
+            val w = width.toFloat().coerceAtLeast(1f)
+            val h = height.toFloat().coerceAtLeast(1f)
+            val worldX = (screenX - offsetX) / zoom
+            val worldY = (screenY - offsetY) / zoom
+            val nx = worldX / w
+            val ny = worldY / h
+            if (nx !in 0f..1f || ny !in 0f..1f) return
+            onSelection?.invoke(zoneAt(nx, ny))
+            invalidate()
+            performClick()
         }
 
         override fun performClick(): Boolean {
@@ -780,6 +918,24 @@ object Win98FarmColonyWidget {
             val h = height.toFloat()
             if (w <= 0f || h <= 0f) return
 
+            if (compact) {
+                drawGround(c, w, h)
+                drawRiver(c, w, h)
+                drawRoads(c, w, h)
+                drawForest(c, w, h)
+                drawFields(c, w, h)
+                drawSettlement(c, w, h)
+                drawWorkers(c, w, h)
+                drawMapMode(c, w, h)
+                drawWeather(c, w, h)
+                drawHud(c, w, h)
+                return
+            }
+
+            val save = c.save()
+            c.clipRect(0f, 0f, w, h)
+            c.translate(offsetX, offsetY)
+            c.scale(zoom, zoom)
             drawGround(c, w, h)
             drawRiver(c, w, h)
             drawRoads(c, w, h)
@@ -788,6 +944,9 @@ object Win98FarmColonyWidget {
             drawSettlement(c, w, h)
             drawWorkers(c, w, h)
             drawMapMode(c, w, h)
+            c.restoreToCount(save)
+
+            // Weather and map-mode header remain readable at any camera zoom.
             drawWeather(c, w, h)
             drawHud(c, w, h)
         }
@@ -1246,7 +1405,7 @@ object Win98FarmColonyWidget {
         )
 
         val selection = TextView(activity).apply {
-            text = "Village Core — tap anywhere on the map to inspect a district."
+            text = "Pinch to zoom, drag to pan, double-tap to zoom/reset. Tap a plot or district to inspect it."
             setTextColor(Color.BLACK)
             textSize = 10f
             typeface = Typeface.MONOSPACE
@@ -1273,14 +1432,31 @@ object Win98FarmColonyWidget {
             )
         }
 
-        val map = MapView(activity, game, compact = false) { zone ->
-            selection.text = if (zone.startsWith("plot:")) {
-                val index = zone.removePrefix("plot:").toIntOrNull() ?: -1
-                game.plotSummary(index)
-            } else {
-                zone
-            }
+        val zoomLabel = TextView(activity).apply {
+            text = "100%"
+            gravity = Gravity.CENTER
+            setTextColor(Color.BLACK)
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            background = inset(activity, Color.WHITE)
         }
+
+        val map = MapView(
+            activity,
+            game,
+            compact = false,
+            onSelection = { zone ->
+                selection.text = if (zone.startsWith("plot:")) {
+                    val index = zone.removePrefix("plot:").toIntOrNull() ?: -1
+                    game.plotSummary(index)
+                } else {
+                    zone
+                }
+            },
+            onViewportChanged = { percent ->
+                zoomLabel.text = percent.toString() + "%"
+            }
+        )
         root.addView(
             map,
             LinearLayout.LayoutParams(
@@ -1288,6 +1464,58 @@ object Win98FarmColonyWidget {
                 dp(activity, 286)
             )
         )
+
+        val zoomControls = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(activity, 2), 0, dp(activity, 2))
+        }
+        zoomControls.addView(
+            button(activity, "−") {
+                map.zoomOut()
+                zoomLabel.text = map.zoomPercent().toString() + "%"
+            },
+            LinearLayout.LayoutParams(dp(activity, 44), dp(activity, 27))
+        )
+        zoomControls.addView(
+            zoomLabel,
+            LinearLayout.LayoutParams(dp(activity, 62), dp(activity, 27)).apply {
+                marginStart = dp(activity, 3)
+                marginEnd = dp(activity, 3)
+            }
+        )
+        zoomControls.addView(
+            button(activity, "+") {
+                map.zoomIn()
+                zoomLabel.text = map.zoomPercent().toString() + "%"
+            },
+            LinearLayout.LayoutParams(dp(activity, 44), dp(activity, 27))
+        )
+        zoomControls.addView(
+            TextView(activity).apply {
+                text = "  PINCH / DRAG"
+                setTextColor(Color.DKGRAY)
+                textSize = 9f
+                typeface = Typeface.MONOSPACE
+                gravity = Gravity.CENTER_VERTICAL
+            },
+            LinearLayout.LayoutParams(0, dp(activity, 27), 1f)
+        )
+        zoomControls.addView(
+            button(activity, "Reset") {
+                map.resetViewport()
+                zoomLabel.text = "100%"
+            },
+            LinearLayout.LayoutParams(dp(activity, 62), dp(activity, 27))
+        )
+        root.addView(
+            zoomControls,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, 31)
+            )
+        )
+
         root.addView(
             selection,
             LinearLayout.LayoutParams(
