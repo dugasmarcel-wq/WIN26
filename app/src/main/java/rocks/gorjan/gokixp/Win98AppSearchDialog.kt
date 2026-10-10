@@ -247,8 +247,8 @@ class Win98AppSearchDialog(
         adapter.notifyDataSetChanged()
         resultsLabel.text = when {
             !loaded -> "Loading apps..."
-            q.isEmpty() -> "All apps  ·  \${entries.size}"
-            else -> "App results  ·  \${entries.size}"
+            q.isEmpty() -> "All apps  ·  ${entries.size}"
+            else -> "App results  ·  ${entries.size}"
         }
         emptyLabel.text = when {
             !loaded -> "Looking up installed apps"
@@ -258,7 +258,7 @@ class Win98AppSearchDialog(
         emptyLabel.visibility = if (!loaded || entries.isEmpty()) View.VISIBLE else View.GONE
         clear.visibility = if (input.text.isNotEmpty()) View.VISIBLE else View.INVISIBLE
         webRow.text = if (q.isEmpty()) "Search the web in Internet Explorer" else
-            "Search web for  “\${input.text.toString().trim().take(40)}”"
+            "Search web for  “${input.text.toString().trim().take(40)}”"
         webRow.visibility = if (q.isEmpty()) View.GONE else View.VISIBLE
     }
 
@@ -313,7 +313,7 @@ class Win98AppSearchDialog(
             val app = entries[position]
             holder.image.setImageDrawable(app.icon)
             holder.name.text = app.name
-            holder.row.contentDescription = "Open \${app.name}"
+            holder.row.contentDescription = "Open ${app.name}"
             val lp = (holder.row.layoutParams as? RecyclerView.LayoutParams)
                 ?: RecyclerView.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
