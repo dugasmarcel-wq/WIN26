@@ -3205,14 +3205,34 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 handleShutdown()
             }
 
-            // Setup shutdown item click (if it exists - only in Windows 98 theme)
-            val shutdownItem = findViewById<LinearLayout>(R.id.shutdown_item)
-            shutdownItem?.setOnClickListener {
-                handleShutdown()
+            // Classic's bottom Start entries are quick access to the real Android
+            // dialer and default SMS app. XP/Vista keep their original power controls.
+            findViewById<LinearLayout>(R.id.phone_item)?.setOnClickListener {
+                hideStartMenu()
+                try {
+                    startActivity(Intent(Intent.ACTION_DIAL).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    })
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Unable to open phone", e)
+                    showNotification("Phone", "Unable to open the phone app")
+                }
             }
-            val logoffItem = findViewById<LinearLayout>(R.id.logoff_item)
-            logoffItem?.setOnClickListener {
-                handleShutdown(isLogoff = true)
+            findViewById<LinearLayout>(R.id.messages_item)?.setOnClickListener {
+                hideStartMenu()
+                try {
+                    val smsPackage = android.provider.Telephony.Sms.getDefaultSmsPackage(this)
+                    val launchIntent = smsPackage?.let { packageManager.getLaunchIntentForPackage(it) }
+                        ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING)
+                    startActivity(launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (e: Exception) {
+                    try {
+                        startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:")))
+                    } catch (fallback: Exception) {
+                        Log.e("MainActivity", "Unable to open Messages", fallback)
+                        showNotification("Messages", "Unable to open the messaging app")
+                    }
+                }
             }
 
             val makeDefaultLauncherItem =

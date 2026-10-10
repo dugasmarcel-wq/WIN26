@@ -171,7 +171,7 @@
                             android:orientation="vertical">
 
                             <LinearLayout
-                                android:id="@+id/logoff_item"
+                                android:id="@+id/phone_item"
                                 android:clickable="true"
                                 android:focusable="true"
                                 android:layout_width="match_parent"
@@ -189,7 +189,7 @@
                                     android:layout_width="35dp"
                                     android:layout_height="35dp"
                                     android:layout_marginEnd="2dp"
-                                    android:src="@drawable/logoff_98" />
+                                    android:src="@drawable/dialer_icon" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
@@ -197,13 +197,13 @@
                                     android:ellipsize="end"
                                     android:fontFamily="?attr/primaryFontFamily"
                                     android:maxLines="1"
-                                    android:text="Log Off..."
+                                    android:text="Phone"
                                     android:textColor="@color/context_menu_text_selector"
                                     android:textSize="13sp" />
                             </LinearLayout>
 
                             <LinearLayout
-                                android:id="@+id/shutdown_item"
+                                android:id="@+id/messages_item"
                                 android:clickable="true"
                                 android:focusable="true"
                                 android:layout_width="match_parent"
@@ -221,7 +221,7 @@
                                     android:layout_width="35dp"
                                     android:layout_height="35dp"
                                     android:layout_marginEnd="2dp"
-                                    android:src="@drawable/shut_down_98" />
+                                    android:src="@drawable/win98_messages_icon" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
@@ -229,7 +229,7 @@
                                     android:ellipsize="end"
                                     android:fontFamily="?attr/primaryFontFamily"
                                     android:maxLines="1"
-                                    android:text="Shut Down..."
+                                    android:text="Messages"
                                     android:textColor="@color/context_menu_text_selector"
                                     android:textSize="13sp" />
                             </LinearLayout>
