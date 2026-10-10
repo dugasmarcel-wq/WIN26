@@ -2,9 +2,12 @@ package rocks.gorjan.gokixp
 
 import android.app.Dialog
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -18,14 +21,20 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.util.Locale
 
 /**
- * A keyboard-aware, full-height Classic app finder. Replaces the cramped Start-menu
- * search on swipe-up only; XP/Vista search and the regular Start menu are unchanged.
- * Filtering is entirely local. Internet Explorer only opens on explicit user action.
+ * Classic Find window used only for the Windows 98 swipe-up gesture. It deliberately
+ * follows the existing WIN26 Windows shell: square bevels, dark blue title bar,
+ * gray surfaces and dense Explorer-like results, not modern Android search cards.
+ *
+ * No background requests, search history or telemetry. Web search is explicit.
  */
 class Win98AppSearchDialog(
     context: Context,
@@ -33,86 +42,126 @@ class Win98AppSearchDialog(
     private val onWebSearch: (String) -> Unit
 ) : Dialog(context, android.R.style.Theme_Translucent_NoTitleBar) {
 
-    private fun dp(value: Int) =
+    private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density + 0.5f).toInt()
 
-    private val ink = Color.rgb(34, 40, 49)
-    private val muted = Color.rgb(108, 116, 129)
-    private val outline = Color.rgb(180, 185, 192)
-    private val entries = ArrayList<AppInfo>()
-    private val adapter = SearchAdapter()
-    private val resultsLabel = TextView(context)
-    private val emptyLabel = TextView(context)
-    private val input = EditText(context)
-    private val clear = TextView(context)
-    private val webRow = TextView(context)
-    private var allApps: List<AppInfo> = emptyList()
-    private var pinned: Set<String> = emptySet()
+    private val shellGray = Color.rgb(192, 192, 192)
+    private val ink = Color.BLACK
+    private val darkEdge = Color.rgb(82, 82, 82)
+    private val blue = Color.rgb(0, 0, 128)
+    private val allApps = ArrayList<AppInfo>()
+    private val matches = ArrayList<AppInfo>()
+    private var pinned = emptySet<String>()
     private var loaded = false
 
-    private fun panel(fill: Int, stroke: Int, radius: Int) =
+    private val resultsTitle = TextView(context)
+    private val emptyText = TextView(context)
+    private val searchInput = EditText(context)
+    private val clearButton = TextView(context)
+    private val webButton = TextView(context)
+    private val statusText = TextView(context)
+    private val resultAdapter = ApplicationAdapter()
+    private val resultsList = RecyclerView(context)
+    private val root = LinearLayout(context)
+
+    private fun flat(fill: Int, edge: Int = darkEdge): GradientDrawable =
         GradientDrawable().apply {
             setColor(fill)
-            cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), stroke)
+            setStroke(dp(1), edge)
+            cornerRadius = 0f
         }
 
-    private fun text(value: String, size: Float, color: Int, bold: Boolean = false) =
+    private fun sunken(): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(Color.WHITE)
+            setStroke(dp(2), Color.rgb(110, 110, 110))
+            cornerRadius = 0f
+        }
+
+    private fun winButton(): android.graphics.drawable.Drawable =
+        AppCompatResources.getDrawable(context, R.drawable.window_button_background)
+            ?.constantState?.newDrawable()?.mutate()
+            ?: flat(shellGray)
+
+    private fun label(text: String, size: Float = 12f, bold: Boolean = false): TextView =
         TextView(context).apply {
-            this.text = value
+            this.text = text
             textSize = size
-            setTextColor(color)
+            setTextColor(ink)
             gravity = Gravity.CENTER_VERTICAL
-            if (bold) setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            includeFontPadding = false
+        }
+
+    private fun button(text: String, description: String, click: () -> Unit): TextView =
+        label(text, 12f).apply {
+            gravity = Gravity.CENTER
+            background = winButton()
+            contentDescription = description
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { click() }
         }
 
     init {
         setCancelable(true)
         setCanceledOnTouchOutside(false)
 
-        val root = LinearLayout(context).apply {
+        root.apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(8), dp(14), dp(10))
+            background = flat(shellGray, Color.rgb(47, 47, 47))
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+        }
+
+        val titleBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), 0, dp(4), 0)
             background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.rgb(31, 45, 70), Color.rgb(32, 36, 44))
-            )
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(0, 0, 128), Color.rgb(0, 95, 190))
+            ).apply { cornerRadius = 0f }
         }
+        titleBar.addView(TextView(context).apply {
+            text = "Find: Applications"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            gravity = Gravity.CENTER_VERTICAL
+            includeFontPadding = false
+        }, LinearLayout.LayoutParams(0, dp(30), 1f))
+        titleBar.addView(button("X", "Close Find") { dismiss() },
+            LinearLayout.LayoutParams(dp(25), dp(23)))
+        root.addView(titleBar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(31)
+        ))
 
-        val header = LinearLayout(context).apply {
+        val body = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(7), dp(5), dp(7), dp(4))
+        }
+        root.addView(body, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+
+        body.addView(label("Find an application by name:", 12f),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(24)
+            ))
+
+        val searchLine = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(text("WINSUNG  /  Search", 16f, Color.WHITE, true),
-            LinearLayout.LayoutParams(0, dp(48), 1f))
-        header.addView(text("X", 16f, Color.WHITE, true).apply {
-            gravity = Gravity.CENTER
-            contentDescription = "Close search"
-            background = panel(Color.rgb(66, 73, 85), Color.rgb(115, 126, 147), 10)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { dismiss() }
-        }, LinearLayout.LayoutParams(dp(44), dp(38)))
-        root.addView(header)
-
-        val searchBar = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = panel(Color.WHITE, Color.rgb(171, 186, 208), 15)
-            setPadding(dp(10), dp(2), dp(6), dp(2))
-        }
-        searchBar.addView(text("⌕", 25f, Color.rgb(24, 83, 146)).apply {
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(dp(32), dp(48)))
-        input.apply {
-            hint = "Search apps"
-            setHintTextColor(Color.rgb(125, 132, 142))
-            setTextColor(ink)
-            textSize = 17f
+        searchInput.apply {
+            hint = "Type to find an app"
+            setHintTextColor(Color.rgb(118, 118, 118))
+            setTextColor(Color.BLACK)
+            textSize = 14f
             setSingleLine(true)
+            background = sunken()
+            setPadding(dp(9), 0, dp(6), 0)
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            background = null
-            setPadding(dp(4), 0, 0, 0)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -121,208 +170,278 @@ class Win98AppSearchDialog(
                 override fun afterTextChanged(s: Editable?) {}
             })
             setOnEditorActionListener { _, actionId, event ->
-                if (actionId == EditorInfo.IME_ACTION_SEARCH ||
-                    (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)) {
-                    if (entries.isNotEmpty()) launch(entries.first())
-                    else if (text.toString().isNotBlank()) webSearch()
-                    true
-                } else false
+                val submitted = actionId == EditorInfo.IME_ACTION_SEARCH ||
+                    (event?.keyCode == KeyEvent.KEYCODE_ENTER &&
+                        event.action == KeyEvent.ACTION_DOWN)
+                if (submitted) {
+                    if (matches.isNotEmpty()) openApp(matches.first())
+                    else if (text.toString().isNotBlank()) searchWeb()
+                }
+                submitted
             }
         }
-        searchBar.addView(input, LinearLayout.LayoutParams(0, dp(48), 1f))
-        clear.apply {
-            text = "X"
-            textSize = 14f
+        searchLine.addView(searchInput,
+            LinearLayout.LayoutParams(0, dp(39), 1f))
+        clearButton.apply {
+            text = "Clear"
+            textSize = 11f
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(76, 84, 96))
-            contentDescription = "Clear search"
+            background = winButton()
             isClickable = true
             isFocusable = true
-            setOnClickListener { input.setText("") }
+            setOnClickListener { searchInput.setText("") }
         }
-        searchBar.addView(clear, LinearLayout.LayoutParams(dp(36), dp(42)))
-        root.addView(searchBar, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(54)
-        ).apply { bottomMargin = dp(13) })
+        searchLine.addView(clearButton,
+            LinearLayout.LayoutParams(dp(54), dp(30)).apply {
+                marginStart = dp(6)
+            })
+        body.addView(searchLine, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(42)
+        ))
 
-        val resultsPanel = LinearLayout(context).apply {
+        val listFrame = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = panel(Color.rgb(247, 247, 247), outline, 14)
-            setPadding(dp(8), dp(11), dp(8), dp(6))
+            background = flat(Color.WHITE, Color.rgb(90, 90, 90))
+            setPadding(dp(2), dp(2), dp(2), dp(2))
         }
-        resultsLabel.apply {
-            textSize = 14f
-            setTextColor(Color.rgb(36, 54, 79))
-            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(dp(9), 0, dp(9), dp(7))
-        }
-        resultsPanel.addView(resultsLabel)
-        emptyLabel.apply {
-            textSize = 14f
-            setTextColor(muted)
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(28), dp(16), dp(28))
-        }
-        resultsPanel.addView(emptyLabel)
 
-        val list = RecyclerView(context).apply {
-            layoutManager = LinearLayoutManager(context)
-            adapter = this@Win98AppSearchDialog.adapter
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            clipToPadding = false
-            setPadding(0, 0, 0, dp(5))
-            itemAnimator = null // Fast re-filtering without rows jumping or flickering.
+        val columnHeader = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = winButton()
+            setPadding(dp(9), 0, dp(6), 0)
         }
-        resultsPanel.addView(list, LinearLayout.LayoutParams(
+        columnHeader.addView(label("Name", 12f, true),
+            LinearLayout.LayoutParams(0, dp(25), 1f))
+        resultsTitle.apply {
+            textSize = 11f
+            setTextColor(Color.rgb(52, 52, 52))
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            includeFontPadding = false
+        }
+        columnHeader.addView(resultsTitle,
+            LinearLayout.LayoutParams(dp(88), dp(25)))
+        listFrame.addView(columnHeader, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(26)
+        ))
+
+        val listArea = android.widget.FrameLayout(context).apply {
+            setBackgroundColor(Color.WHITE)
+        }
+        resultsList.apply {
+            layoutManager = LinearLayoutManager(context)
+            adapter = resultAdapter
+            itemAnimator = null
+            setHasFixedSize(true)
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isVerticalScrollBarEnabled = true
+        }
+        listArea.addView(resultsList,
+            android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+
+        emptyText.apply {
+            gravity = Gravity.CENTER
+            textSize = 12f
+            setTextColor(Color.rgb(90, 90, 90))
+            setPadding(dp(8), dp(16), dp(8), dp(16))
+        }
+        listArea.addView(emptyText,
+            android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            ))
+        listFrame.addView(listArea, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         ))
-        webRow.apply {
-            textSize = 13f
-            setTextColor(Color.rgb(0, 60, 130))
-            setPadding(dp(12), dp(5), dp(10), dp(5))
+
+        body.addView(listFrame, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ).apply { topMargin = dp(7) })
+
+        val bottom = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = panel(Color.rgb(228, 235, 246), Color.rgb(170, 187, 214), 9)
+            setPadding(dp(5), 0, 0, 0)
+        }
+        statusText.apply {
+            textSize = 11f
+            setTextColor(Color.rgb(45, 45, 45))
+            gravity = Gravity.CENTER_VERTICAL
+            includeFontPadding = false
+        }
+        bottom.addView(statusText, LinearLayout.LayoutParams(0, dp(33), 1f))
+        webButton.apply {
+            text = "Search Web..."
+            textSize = 11f
+            gravity = Gravity.CENTER
+            background = winButton()
             isClickable = true
             isFocusable = true
-            setOnClickListener { webSearch() }
+            setOnClickListener { searchWeb() }
         }
-        resultsPanel.addView(webRow, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(46)
-        ).apply { topMargin = dp(5) })
-        root.addView(resultsPanel, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        bottom.addView(webButton,
+            LinearLayout.LayoutParams(dp(114), dp(27)))
+        body.addView(bottom, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(37)
         ))
 
-        root.addView(text("Installed apps only  •  No search history", 10f,
-            Color.rgb(179, 191, 208)).apply {
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(27)
-        ))
+        // The dialog is sized above the Android keyboard. On edge-to-edge Android
+        // versions inset the title bar only if the decor actually overlaps the
+        // status bar; this avoids a clipped title and avoids double-padding.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val topOfStatusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val location = IntArray(2)
+            view.getLocationOnScreen(location)
+            val extraTop = (topOfStatusBar - location[1]).coerceAtLeast(0)
+            val desiredTop = dp(3) + extraTop
+            if (view.paddingTop != desiredTop) {
+                view.setPadding(dp(3), desiredTop, dp(3), dp(3))
+            }
+            insets
+        }
 
-        setContentView(root)
+        val outer = android.widget.FrameLayout(context).apply {
+            setPadding(dp(8), dp(8), dp(8), dp(7))
+            background = ColorDrawable(Color.TRANSPARENT)
+        }
+        outer.addView(root, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        setContentView(outer)
         filterApps()
     }
 
     override fun onStart() {
         super.onStart()
-        window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setDimAmount(0.40f)
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            setGravity(Gravity.TOP)
-            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+        window?.let { w ->
+            WindowCompat.setDecorFitsSystemWindows(w, true)
+            w.setBackgroundDrawableResource(android.R.color.transparent)
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            w.setDimAmount(0.34f)
+            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT)
+            w.setGravity(Gravity.TOP)
+            w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         }
-        input.requestFocus()
-        input.post {
+        ViewCompat.requestApplyInsets(root)
+        searchInput.requestFocus()
+        searchInput.post {
             if (isShowing) {
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                    .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+                    .showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT)
             }
         }
     }
 
     fun setApps(apps: List<AppInfo>, pinnedPackages: Set<String>) {
-        allApps = apps
+        allApps.clear()
+        allApps.addAll(apps)
         pinned = pinnedPackages
         loaded = true
         filterApps()
     }
 
     private fun filterApps() {
-        val q = input.text.toString().trim().lowercase(Locale.getDefault())
-        val matched = if (q.isEmpty()) allApps else allApps.filter {
-            it.name.lowercase(Locale.getDefault()).contains(q)
+        val query = searchInput.text.toString().trim().lowercase(Locale.getDefault())
+        val filtered = if (query.isEmpty()) allApps else allApps.filter {
+            it.name.lowercase(Locale.getDefault()).contains(query)
         }
-        val ranked = matched.sortedWith(
+        matches.clear()
+        matches.addAll(filtered.sortedWith(
             compareBy<AppInfo> {
-                if (q.isNotEmpty() && it.name.lowercase(Locale.getDefault()).startsWith(q)) 0 else 1
+                if (query.isNotEmpty() && it.name.lowercase(Locale.getDefault()).startsWith(query)) 0 else 1
             }.thenBy { if (it.packageName in pinned) 0 else 1 }
                 .thenBy { it.name.lowercase(Locale.getDefault()) }
-        )
-        entries.clear()
-        entries.addAll(ranked)
-        adapter.notifyDataSetChanged()
-        resultsLabel.text = when {
-            !loaded -> "Loading apps..."
-            q.isEmpty() -> "All apps  ·  ${entries.size}"
-            else -> "App results  ·  ${entries.size}"
+        ))
+        resultAdapter.notifyDataSetChanged()
+        if (matches.isNotEmpty()) resultsList.scrollToPosition(0)
+        resultsTitle.text = if (loaded) matches.size.toString() + " found" else "Loading..."
+        statusText.text = when {
+            !loaded -> "Loading installed applications"
+            matches.size == 1 -> "1 application"
+            else -> matches.size.toString() + " applications"
         }
-        emptyLabel.text = when {
-            !loaded -> "Looking up installed apps"
-            entries.isEmpty() -> "No matching installed apps"
-            else -> ""
-        }
-        emptyLabel.visibility = if (!loaded || entries.isEmpty()) View.VISIBLE else View.GONE
-        clear.visibility = if (input.text.isNotEmpty()) View.VISIBLE else View.INVISIBLE
-        webRow.text = if (q.isEmpty()) "Search the web in Internet Explorer" else
-            "Search web for  “${input.text.toString().trim().take(40)}”"
-        webRow.visibility = if (q.isEmpty()) View.GONE else View.VISIBLE
+        emptyText.text = if (!loaded) "Loading installed apps..." else
+            "No matching applications"
+        emptyText.visibility = if (!loaded || matches.isEmpty()) View.VISIBLE else View.GONE
+        clearButton.visibility = if (searchInput.text.isNotEmpty()) View.VISIBLE else View.INVISIBLE
+        webButton.visibility = if (query.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun launch(app: AppInfo) {
+    private fun openApp(app: AppInfo) {
         dismiss()
         onLaunchApp(app)
     }
 
-    private fun webSearch() {
-        val query = input.text.toString().trim()
-        if (query.isEmpty()) return
+    private fun searchWeb() {
+        val query = searchInput.text.toString().trim()
+        if (query.isBlank()) return
         dismiss()
         onWebSearch(query)
     }
 
-    private inner class SearchAdapter : RecyclerView.Adapter<SearchAdapter.AppHolder>() {
-        inner class AppHolder(val row: LinearLayout, val image: ImageView, val name: TextView) :
-            RecyclerView.ViewHolder(row)
+    private inner class ApplicationAdapter : RecyclerView.Adapter<ApplicationAdapter.AppHolder>() {
+        inner class AppHolder(
+            val row: LinearLayout,
+            val icon: ImageView,
+            val name: TextView
+        ) : RecyclerView.ViewHolder(row)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AppHolder {
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(4), dp(10), dp(4))
-                minimumHeight = dp(61)
-                background = panel(Color.WHITE, Color.rgb(225, 226, 230), 9)
+                setPadding(dp(8), 0, dp(6), 0)
+                background = StateListDrawable().apply {
+                    addState(intArrayOf(android.R.attr.state_pressed), ColorDrawable(blue))
+                    addState(intArrayOf(), ColorDrawable(Color.WHITE))
+                }
+                minimumHeight = dp(43)
                 isClickable = true
                 isFocusable = true
             }
             val icon = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
-            row.addView(icon, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
-                marginEnd = dp(13)
+            row.addView(icon, LinearLayout.LayoutParams(dp(29), dp(29)).apply {
+                marginEnd = dp(10)
             })
-            val name = text("", 15f, ink, true)
-            name.maxLines = 2
+            val name = label("", 13f)
+            name.maxLines = 1
+            name.ellipsize = android.text.TextUtils.TruncateAt.END
+            name.setTextColor(ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
+                intArrayOf(Color.WHITE, Color.BLACK)
+            ))
             row.addView(name, LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
             ))
             row.setOnClickListener {
                 val holder = row.tag as? AppHolder ?: return@setOnClickListener
-                val position = holder.bindingAdapterPosition
-                if (position != RecyclerView.NO_POSITION && position in entries.indices) {
-                    launch(entries[position])
+                val i = holder.bindingAdapterPosition
+                if (i != RecyclerView.NO_POSITION && i in matches.indices) {
+                    openApp(matches[i])
                 }
             }
             return AppHolder(row, icon, name).also { row.tag = it }
         }
 
         override fun onBindViewHolder(holder: AppHolder, position: Int) {
-            val app = entries[position]
-            holder.image.setImageDrawable(app.icon)
+            val app = matches[position]
+            holder.icon.setImageDrawable(app.icon)
             holder.name.text = app.name
-            holder.row.contentDescription = "Open ${app.name}"
-            val lp = (holder.row.layoutParams as? RecyclerView.LayoutParams)
-                ?: RecyclerView.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(65)
-                )
-            lp.bottomMargin = dp(4)
-            holder.row.layoutParams = lp
+            holder.row.contentDescription = "Open " + app.name
+            holder.row.layoutParams = RecyclerView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(43)
+            )
         }
 
-        override fun getItemCount() = entries.size
+        override fun getItemCount(): Int = matches.size
     }
 }
