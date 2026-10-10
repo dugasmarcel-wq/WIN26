@@ -88,7 +88,17 @@ object Win98WidgetViews {
         Win98WidgetSpec(
             "calendar_clock_98",
             "Calendar + Clock 98",
-            "Working Win98-style month calendar with live analog and digital clock."
+            "Working horizontal calendar with live analog and digital clock."
+        ),
+        Win98WidgetSpec(
+            "calendar_clock_98_vertical",
+            "Calendar + Clock 98 (Vertical)",
+            "Portrait layout: full month calendar above the live analog and digital clock."
+        ),
+        Win98WidgetSpec(
+            "youtube_music_98",
+            "YouTube Music Player",
+            "Show or hide the movable desktop MediaSession player. Desktop only."
         )
     )
 
@@ -104,6 +114,7 @@ object Win98WidgetViews {
             "solitaire_desk" -> createEmbeddedSolitaire(activity)
             "doodle" -> createDoodlePad(activity)
             "calendar_clock_98" -> Win98CalendarClockWidget.create(activity)
+            "calendar_clock_98_vertical" -> Win98CalendarClockWidget.create(activity, portrait = true)
             else -> TextView(activity).apply {
                 text = "Widget unavailable"
                 setTextColor(Color.BLACK)

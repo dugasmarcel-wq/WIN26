@@ -31,10 +31,12 @@ import kotlin.math.sin
  */
 object Win98CalendarClockWidget {
 
-    fun create(activity: MainActivity): View = CalendarClockView(activity)
+    fun create(activity: MainActivity, portrait: Boolean = false): View =
+        CalendarClockView(activity, portrait)
 
     private class CalendarClockView(
-        private val activity: MainActivity
+        private val activity: MainActivity,
+        private val portrait: Boolean
     ) : LinearLayout(activity) {
 
         private val displayMonth = Calendar.getInstance().apply {
@@ -57,9 +59,9 @@ object Win98CalendarClockWidget {
             Win98CalendarClockWidget.dp(context, value)
 
         init {
-            orientation = HORIZONTAL
+            orientation = if (portrait) VERTICAL else HORIZONTAL
             gravity = Gravity.CENTER
-            minimumHeight = dp(148)
+            minimumHeight = dp(if (portrait) 349 else 148)
             setPadding(dp(8), dp(7), dp(8), dp(7))
             background = roundedPanel(
                 fill = Color.rgb(248, 248, 248),
@@ -67,14 +69,31 @@ object Win98CalendarClockWidget {
                 radiusDp = 11
             )
 
-            addView(buildCalendarPanel(), LayoutParams(0, dp(134), 1.08f))
-            addView(View(context).apply {
-                setBackgroundColor(Color.rgb(188, 188, 188))
-            }, LayoutParams(dp(1), dp(134)).apply {
-                marginStart = dp(4)
-                marginEnd = dp(4)
-            })
-            addView(buildClockPanel(), LayoutParams(0, dp(134), 0.92f))
+            if (portrait) {
+                // A separate upright layout, not a rotated or stretched horizontal clock.
+                // Keep the full calendar controls and real-time analog/digital clock.
+                addView(buildCalendarPanel(), LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
+                ))
+                addView(View(context).apply {
+                    setBackgroundColor(Color.rgb(188, 188, 188))
+                }, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                    topMargin = dp(6)
+                    bottomMargin = dp(6)
+                })
+                addView(buildClockPanel(), LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(172)
+                ))
+            } else {
+                addView(buildCalendarPanel(), LayoutParams(0, dp(134), 1.08f))
+                addView(View(context).apply {
+                    setBackgroundColor(Color.rgb(188, 188, 188))
+                }, LayoutParams(dp(1), dp(134)).apply {
+                    marginStart = dp(4)
+                    marginEnd = dp(4)
+                })
+                addView(buildClockPanel(), LayoutParams(0, dp(134), 0.92f))
+            }
 
             refreshCalendar()
         }

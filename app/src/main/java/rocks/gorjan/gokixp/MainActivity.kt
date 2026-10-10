@@ -652,6 +652,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         private const val KEY_SECOND_PAGE_SLOT_PREFIX = "classic_second_page_slot_"
         private const val KEY_AOL_PAGE_SLOT_PREFIX = "classic_aol_page_slot_"
         private const val WIN98_WIDGET_LIBRARY_PACKAGE = "winsung.widgets.library"
+        private const val KEY_WIN98_MUSIC_WIDGET_VISIBLE = "win98_music_widget_visible"
         private const val KEY_WIN98_WIDGET_LIBRARY_GRID_PORTRAIT = "win98_widget_library_grid_portrait"
         private const val KEY_WIN98_WIDGET_LIBRARY_GRID_LANDSCAPE = "win98_widget_library_grid_landscape"
         private const val START_ROW_PHONE_ACTION = "__device_phone__"
@@ -1294,10 +1295,20 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         updateNotificationDots()
     }
 
+    private fun isWin98MusicWidgetVisible(): Boolean =
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(KEY_WIN98_MUSIC_WIDGET_VISIBLE, true)
+
+    private fun setWin98MusicWidgetVisible(visible: Boolean) {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .edit().putBoolean(KEY_WIN98_MUSIC_WIDGET_VISIBLE, visible).apply()
+        setupWin98MusicWidget()
+    }
+
     private fun setupWin98MusicWidget() {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background) ?: return
 
-        if (!themeManager.isClassicTheme()) {
+        if (!themeManager.isClassicTheme() || !isWin98MusicWidgetVisible()) {
             win98MusicWidget?.let { widget ->
                 (widget.parent as? ViewGroup)?.removeView(widget)
             }
@@ -1317,6 +1328,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             },
             onOpenYouTubeMusic = {
                 launchQuickLaunchPackage(QUICK_LAUNCH_YTMUSIC, "YouTube Music")
+            },
+            onRemoveWidget = {
+                setWin98MusicWidgetVisible(false)
             }
         ).also {
             win98MusicWidget = it
@@ -1462,6 +1476,23 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun showWin98WidgetPlacement(spec: Win98WidgetSpec) {
+        if (spec.id == "youtube_music_98") {
+            // The MediaSession deck has its own saved position and lives on Desktop only.
+            // It must not be put into the generic widget shelf or side pages.
+            val visible = isWin98MusicWidgetVisible()
+            Win98Dialogs.showList(
+                context = this,
+                title = spec.title,
+                items = arrayOf("Desktop    [${if (visible) "On" else "Off"}]"),
+                negativeText = "Done"
+            ) { _ ->
+                setWin98MusicWidgetVisible(!visible)
+                Handler(Looper.getMainLooper()).post {
+                    showWin98WidgetPlacement(spec)
+                }
+            }
+            return
+        }
         val pages = listOf(1, 0, 2)
         val items = pages.map { page ->
             val enabled = spec.id in win98WidgetIdsForPage(page)
@@ -1598,7 +1629,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            val activePages = (0..2).filter { spec.id in win98WidgetIdsForPage(it) }
+            val activePages = if (spec.id == "youtube_music_98") {
+                if (isWin98MusicWidgetVisible()) listOf(1) else emptyList()
+            } else {
+                (0..2).filter { spec.id in win98WidgetIdsForPage(it) }
+            }
             textColumn.addView(TextView(this).apply {
                 text = if (activePages.isEmpty()) {
                     "Not on a page"
@@ -1661,12 +1696,46 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     private fun createWin98WidgetCard(spec: Win98WidgetSpec, pageIndex: Int): View {
-        if (spec.id == "calendar_clock_98") {
-            // This widget is modeled after the rounded split calendar/clock reference.
-            // Do not wrap it in the generic blue WINSUNG title bar; placement/removal is
-            // still managed from WINSUNG Widgets.
-            return Win98WidgetViews.create(this, spec.id).apply {
+        if (spec.id == "calendar_clock_98" || spec.id == "calendar_clock_98_vertical") {
+            // Keep the clock's rounded reference styling, but add a real removal
+            // control rather than hiding removal behind the widget library.
+            val portrait = spec.id == "calendar_clock_98_vertical"
+            val content = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 elevation = 2f
+            }
+            val removeRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.END
+            }
+            removeRow.addView(TextView(this).apply {
+                text = "Remove  X"
+                contentDescription = "Remove ${spec.title} from ${widgetPageName(pageIndex)}"
+                gravity = Gravity.CENTER
+                setTextColor(Color.BLACK)
+                textSize = 10f
+                background = AppCompatResources.getDrawable(
+                    this@MainActivity, R.drawable.window_button_background
+                )
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { setWin98WidgetOnPage(spec.id, pageIndex, false) }
+            }, LinearLayout.LayoutParams(dp(80), dp(25)))
+            content.addView(removeRow, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(28)
+            ))
+            content.addView(Win98WidgetViews.create(this, spec.id),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            return FrameLayout(this).apply {
+                addView(content, FrameLayout.LayoutParams(
+                    if (portrait) dp(236) else FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                ))
             }
         }
 
