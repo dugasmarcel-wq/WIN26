@@ -12,6 +12,8 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
+import kotlin.math.abs
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -63,6 +65,9 @@ class Win98AppSearchDialog(
     private val resultAdapter = ApplicationAdapter()
     private val resultsList = RecyclerView(context)
     private val root = LinearLayout(context)
+    private var dismissStartX = 0f
+    private var dismissStartY = 0f
+    private var swipeToDismissEligible = false
 
     private fun flat(fill: Int, edge: Int = darkEdge): GradientDrawable =
         GradientDrawable().apply {
@@ -314,6 +319,43 @@ class Win98AppSearchDialog(
         ))
         setContentView(outer)
         filterApps()
+    }
+
+    /**
+     * Like the Android app drawer, pull downward to close Find. A list that is
+     * already scrolled down must first scroll back to its top; normal results
+     * scrolling and short taps remain untouched.
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dismissStartX = ev.rawX
+                dismissStartY = ev.rawY
+                val location = IntArray(2)
+                resultsList.getLocationOnScreen(location)
+                val startedInList = ev.rawX >= location[0] &&
+                    ev.rawX < location[0] + resultsList.width &&
+                    ev.rawY >= location[1] &&
+                    ev.rawY < location[1] + resultsList.height
+                swipeToDismissEligible =
+                    !startedInList || !resultsList.canScrollVertically(-1)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = ev.rawX - dismissStartX
+                val dy = ev.rawY - dismissStartY
+                if (swipeToDismissEligible &&
+                    dy > dp(72) &&
+                    dy > abs(dx) * 1.2f) {
+                    swipeToDismissEligible = false
+                    dismiss()
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                swipeToDismissEligible = false
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onStart() {

@@ -199,6 +199,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98WidgetLibraryIcon: DesktopIconView? = null
     private var win98DesktopWidgetShelf: LinearLayout? = null
     private var win98DesktopWidgetShelfScroll: android.widget.ScrollView? = null
+    private val win98MovableClockHosts =
+        mutableMapOf<Int, MutableMap<String, Win98MovableClockHost>>()
     private var win98QuickWidgetContainer: LinearLayout? = null
     private var win98SecondWidgetContainer: LinearLayout? = null
     private var win98SecondWidgetScroll: android.widget.ScrollView? = null
@@ -1356,6 +1358,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             win98DesktopWidgetShelfScroll?.let { (it.parent as? ViewGroup)?.removeView(it) }
             win98DesktopWidgetShelfScroll = null
             win98DesktopWidgetShelf = null
+            win98MovableClockHosts.values.forEach { hosts ->
+                hosts.values.forEach { (it.parent as? ViewGroup)?.removeView(it) }
+            }
+            win98MovableClockHosts.clear()
             win98QuickWidgetContainer?.visibility = View.GONE
             win98SecondWidgetScroll?.visibility = View.GONE
             return
@@ -1752,6 +1758,75 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return card
     }
 
+    private fun isWin98ClockId(widgetId: String): Boolean =
+        widgetId == "calendar_clock_98" ||
+            widgetId == "calendar_clock_98_vertical"
+
+    private fun syncWin98MovableClocks(pageIndex: Int, enabled: Set<String>) {
+        val parent: ViewGroup = when (pageIndex) {
+            0 -> win98QuickPage as? FrameLayout
+            1 -> desktopContainer
+            2 -> win98SecondPage as? FrameLayout
+            else -> null
+        } ?: return
+
+        val hosts = win98MovableClockHosts.getOrPut(pageIndex) { mutableMapOf() }
+        hosts.keys.toList().forEach { id ->
+            val view = hosts[id] ?: return@forEach
+            if (id !in enabled || view.parent !== parent) {
+                (view.parent as? ViewGroup)?.removeView(view)
+                hosts.remove(id)
+            }
+        }
+
+        enabled.filter(::isWin98ClockId).forEachIndexed { index, id ->
+            if (hosts[id]?.parent === parent) return@forEachIndexed
+            val vertical = id == "calendar_clock_98_vertical"
+            val width = dp(if (vertical) 194 else 300)
+            val height = dp(if (vertical) 291 else 148)
+            val key = "win98_clock_${pageIndex}_${id}"
+            val clock = Win98MovableClockHost(this) { x, y ->
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                    .putInt("${key}_x", (x / resources.displayMetrics.density).toInt())
+                    .putInt("${key}_y", (y / resources.displayMetrics.density).toInt())
+                    .apply()
+            }
+            clock.addView(Win98WidgetViews.create(this, id),
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            clock.elevation = dp(12).toFloat()
+            val params = if (parent is RelativeLayout) {
+                RelativeLayout.LayoutParams(width, height)
+            } else {
+                FrameLayout.LayoutParams(width, height)
+            }
+            parent.addView(clock, params)
+            hosts[id] = clock
+            clock.post {
+                if (clock.parent !== parent) return@post
+                val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                val density = resources.displayMetrics.density
+                val fallbackX = (parent.width - clock.width - dp(12)).coerceAtLeast(0)
+                val fallbackY = dp(when (pageIndex) {
+                    0 -> 218
+                    1 -> 64
+                    else -> 36
+                } + (index * 45))
+                val savedX = if (prefs.contains("${key}_x"))
+                    (prefs.getInt("${key}_x", 0) * density).toInt()
+                else fallbackX
+                val savedY = if (prefs.contains("${key}_y"))
+                    (prefs.getInt("${key}_y", 0) * density).toInt()
+                else fallbackY
+                clock.x = savedX.coerceIn(0, (parent.width - clock.width).coerceAtLeast(0)).toFloat()
+                clock.y = savedY.coerceIn(0, (parent.height - clock.height).coerceAtLeast(0)).toFloat()
+            }
+        }
+    }
+
     private fun renderWin98WidgetPage(pageIndex: Int) {
         if (!themeManager.isClassicTheme()) return
 
@@ -1765,7 +1840,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val enabled = win98WidgetIdsForPage(pageIndex)
         container.removeAllViews()
 
-        Win98WidgetViews.specs.filter { it.id in enabled }.forEachIndexed { index, spec ->
+        if (pageIndex in 0..2) syncWin98MovableClocks(pageIndex, enabled)
+        val shelfEnabled = if (pageIndex in 0..2)
+            enabled.filterNot(::isWin98ClockId).toSet()
+        else enabled
+
+        Win98WidgetViews.specs.filter { it.id in shelfEnabled }.forEachIndexed { index, spec ->
             container.addView(
                 createWin98WidgetCard(spec, pageIndex),
                 LinearLayout.LayoutParams(
@@ -1777,14 +1857,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             )
         }
 
-        val visible = enabled.isNotEmpty()
+        val visible = shelfEnabled.isNotEmpty()
         container.visibility = if (visible) View.VISIBLE else View.GONE
         when (pageIndex) {
             1 -> win98DesktopWidgetShelfScroll?.let { scroll ->
                 // The portrait clock is shorter than this viewport and does not
                 // require scrolling. Also narrow the touch target to the clock.
                 val portraitOnly = enabled.size == 1 &&
-                    "calendar_clock_98_vertical" in enabled
+                    "calendar_clock_98_vertical" in shelfEnabled
                 val available = (resources.displayMetrics.widthPixels - dp(24))
                     .coerceAtLeast(dp(180))
                 val targetWidth = minOf(available, dp(if (portraitOnly) 206 else 300))
@@ -12602,21 +12682,28 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun buildWin98QuickPage(): View {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
-        val scroll = android.widget.ScrollView(this).apply {
-            id = View.generateViewId()
-            setBackgroundColor(Color.parseColor("#D6D2CB"))
-            isFillViewport = true
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        val quickPageFrame = FrameLayout(this).apply {
             visibility = View.INVISIBLE
             elevation = 12f
             layoutParams = RelativeLayout.LayoutParams(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
                 RelativeLayout.LayoutParams.MATCH_PARENT
             ).apply {
-                // Keep the page below the launcher's gray status strip and above the taskbar.
                 setMargins(0, dp(36), 0, dp(70))
             }
         }
+        val scroll = android.widget.ScrollView(this).apply {
+            id = View.generateViewId()
+            setBackgroundColor(Color.parseColor("#D6D2CB"))
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            visibility = View.VISIBLE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        quickPageFrame.addView(scroll)
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -12795,9 +12882,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         ))
         renderWin98WidgetPage(0)
 
-        mainBackground.addView(scroll)
-        win98QuickPage = scroll
-        return scroll
+        mainBackground.addView(quickPageFrame)
+        win98QuickPage = quickPageFrame
+        renderWin98WidgetPage(0)
+        return quickPageFrame
     }
 
     private fun showWin98SecondPage() {
@@ -12817,8 +12905,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun buildWin98SecondPage(): View {
         val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val page = FrameLayout(this).apply {
             setPadding(dp(18), dp(18), dp(18), dp(18))
             setBackgroundColor(Color.TRANSPARENT)
             visibility = View.INVISIBLE
@@ -12855,15 +12942,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
         win98SecondWidgetContainer = secondWidgets
         win98SecondWidgetScroll = secondWidgetScroll
-        page.addView(secondWidgetScroll, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1f
+        page.addView(secondWidgetScroll, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
         ))
-        renderWin98WidgetPage(2)
 
         mainBackground.addView(page)
         win98SecondPage = page
+        renderWin98WidgetPage(2)
         return page
     }
 
@@ -13460,7 +13546,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     (::contextMenu.isInitialized && contextMenu.visibility == View.VISIBLE) ||
                     isTouchOnEditableEditText(event) ||
                     isTouchInGameWindow(event) ||
-                    isTouchInFloatingWindow(event)
+                    isTouchInFloatingWindow(event) ||
+                    win98MovableClockHosts[1]?.values?.any {
+                        isTouchInsideView(it, event)
+                    } == true
                 if (win98DesktopPagerBlocked) return false
                 beginWin98PagerTouch(event, 1)
                 return false
@@ -13661,7 +13750,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             win98PagerGlobalBlocked =
                 !isTouchInsideView(page, event) ||
                     isTouchOnEditableEditText(event) ||
-                    isTouchInGameWindow(event)
+                    isTouchInGameWindow(event) ||
+                    win98MovableClockHosts[win98CurrentPage]?.values?.any {
+                        isTouchInsideView(it, event)
+                    } == true
 
             if (win98PagerGlobalBlocked) return false
         }
