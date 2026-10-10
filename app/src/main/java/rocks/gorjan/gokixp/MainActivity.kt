@@ -169,6 +169,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98AolPageOne: View? = null
     private var win98AolPageTwo: View? = null
     private var win98MusicWidget: Win98YouTubeMusicWidget? = null
+    private var win98SearchDialog: Win98AppSearchDialog? = null
     private var win98PageIndicator: LinearLayout? = null
     private val win98PageIndicatorDots = mutableListOf<View>()
     private var win98CurrentPage = 1 // 0 = Quick Glance, 1 = desktop, 2 = Page 2, 3/4 = AOL
@@ -4801,7 +4802,65 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }
     }
 
+    /**
+     * Classic swipe-up search is a dedicated app finder, not an expanded Start menu.
+     * Installed apps are only enumerated on user action, using the existing cache.
+     */
+    private fun showWin98AppSearch() {
+        if (!themeManager.isClassicTheme() || defaultAppsGate != null) return
+        if (win98SearchDialog?.isShowing == true) return
+
+        if (isStartMenuVisible) hideStartMenu()
+
+        val dialog = Win98AppSearchDialog(
+            context = this,
+            onLaunchApp = { app ->
+                launchQuickLaunchPackage(app.packageName, app.name)
+            },
+            onWebSearch = { query ->
+                openSearchWithQuery(query)
+            }
+        )
+        win98SearchDialog = dialog
+        dialog.setOnDismissListener {
+            if (win98SearchDialog === dialog) win98SearchDialog = null
+        }
+        dialog.show()
+
+        val pinned = getPinnedApps().toSet()
+        val hidden = getHiddenApps()
+        fun populate(apps: List<AppInfo>) {
+            if (win98SearchDialog !== dialog || !dialog.isShowing) return
+            dialog.setApps(apps.filterNot { it.packageName in hidden }, pinned)
+        }
+
+        cachedAppList?.let {
+            populate(it)
+            return
+        }
+
+        // No persistent search thread, history, telemetry, or background network request.
+        Thread {
+            val apps = try {
+                loadAppsInBackground()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Unable to load search apps", e)
+                emptyList()
+            }
+            runOnUiThread {
+                if (win98SearchDialog === dialog && dialog.isShowing) {
+                    if (cachedAppList == null) cachedAppList = apps
+                    populate(apps)
+                }
+            }
+        }.start()
+    }
+
     fun showStartMenuWithSearch() {
+        if (themeManager.isClassicTheme()) {
+            showWin98AppSearch()
+            return
+        }
         if (::startMenu.isInitialized) {
             startMenu.visibility = View.VISIBLE
             isStartMenuVisible = true
@@ -14728,6 +14787,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     override fun onDestroy() {
+        win98SearchDialog?.dismiss()
+        win98SearchDialog = null
         super.onDestroy()
         handler.removeCallbacks(clockRunnable)
         stopNotificationMonitoring()
