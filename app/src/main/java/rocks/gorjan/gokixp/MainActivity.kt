@@ -1330,9 +1330,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             },
             onOpenYouTubeMusic = {
                 launchQuickLaunchPackage(QUICK_LAUNCH_YTMUSIC, "YouTube Music")
-            },
-            onRemoveWidget = {
-                setWin98MusicWidgetVisible(false)
             }
         ).also {
             win98MusicWidget = it
@@ -1429,7 +1426,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 scroll,
                 RelativeLayout.LayoutParams(shelfWidth, dp(330)).apply {
                     addRule(RelativeLayout.ALIGN_PARENT_END)
-                    topMargin = dp(10)
+                    topMargin = dp(52)
                     marginEnd = dp(10)
                 }
             )
@@ -1485,7 +1482,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             Win98Dialogs.showList(
                 context = this,
                 title = spec.title,
-                items = arrayOf("Desktop    [${if (visible) "On" else "Off"}]"),
+                items = arrayOf(if (visible) "Remove from Desktop" else "Add to Desktop"),
                 negativeText = "Done"
             ) { _ ->
                 setWin98MusicWidgetVisible(!visible)
@@ -1498,7 +1495,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val pages = listOf(1, 0, 2)
         val items = pages.map { page ->
             val enabled = spec.id in win98WidgetIdsForPage(page)
-            "${widgetPageName(page)}    [${if (enabled) "On" else "Off"}]"
+            "${if (enabled) "Remove from" else "Add to"} ${widgetPageName(page)}"
         }.toTypedArray()
 
         Win98Dialogs.showList(
@@ -1592,7 +1589,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         ).apply { bottomMargin = dp(7) })
 
         root.addView(TextView(this).apply {
-            text = "Local animated and interactive WINSUNG widgets. Tap one to choose which home pages it lives on."
+            text = "Add or remove widgets on Desktop, Quick Glance, or Page 2. Widgets are managed here, not on the home screen."
             setTextColor(Color.BLACK)
             textSize = 12f
             setPadding(dp(3), 0, dp(3), dp(7))
@@ -1652,7 +1649,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             )
 
             row.addView(TextView(this).apply {
-                text = "Place..."
+                text = "Manage"
                 gravity = Gravity.CENTER
                 setTextColor(Color.BLACK)
                 textSize = 11f
@@ -1699,45 +1696,18 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     private fun createWin98WidgetCard(spec: Win98WidgetSpec, pageIndex: Int): View {
         if (spec.id == "calendar_clock_98" || spec.id == "calendar_clock_98_vertical") {
-            // Keep the clock's rounded reference styling, but add a real removal
-            // control rather than hiding removal behind the widget library.
+            // The clock artwork is the widget. Page membership is managed exclusively
+            // in WINSUNG Widgets; never put remove chrome on the clock itself.
             val portrait = spec.id == "calendar_clock_98_vertical"
-            val content = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                elevation = 2f
-            }
-            val removeRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.END
-            }
-            removeRow.addView(TextView(this).apply {
-                text = "Remove  X"
-                contentDescription = "Remove ${spec.title} from ${widgetPageName(pageIndex)}"
-                gravity = Gravity.CENTER
-                setTextColor(Color.BLACK)
-                textSize = 10f
-                background = AppCompatResources.getDrawable(
-                    this@MainActivity, R.drawable.window_button_background
-                )
-                isClickable = true
-                isFocusable = true
-                setOnClickListener { setWin98WidgetOnPage(spec.id, pageIndex, false) }
-            }, LinearLayout.LayoutParams(dp(80), dp(25)))
-            content.addView(removeRow, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(28)
-            ))
-            content.addView(Win98WidgetViews.create(this, spec.id),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            )
             return FrameLayout(this).apply {
-                addView(content, FrameLayout.LayoutParams(
-                    if (portrait) dp(236) else FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                ))
+                elevation = 2f
+                addView(Win98WidgetViews.create(this@MainActivity, spec.id),
+                    FrameLayout.LayoutParams(
+                        if (portrait) dp(194) else FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    )
+                )
             }
         }
 
@@ -1767,20 +1737,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-
-        header.addView(TextView(this).apply {
-            text = "X"
-            gravity = Gravity.CENTER
-            setTextColor(Color.BLACK)
-            textSize = 10f
-            background = AppCompatResources.getDrawable(
-                this@MainActivity,
-                R.drawable.window_button_background
-            )
-            setOnClickListener {
-                setWin98WidgetOnPage(spec.id, pageIndex, false)
-            }
-        }, LinearLayout.LayoutParams(dp(24), dp(21)))
 
         card.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1824,8 +1780,30 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         val visible = enabled.isNotEmpty()
         container.visibility = if (visible) View.VISIBLE else View.GONE
         when (pageIndex) {
-            1 -> win98DesktopWidgetShelfScroll?.visibility =
-                if (visible) View.VISIBLE else View.GONE
+            1 -> win98DesktopWidgetShelfScroll?.let { scroll ->
+                // The portrait clock is shorter than this viewport and does not
+                // require scrolling. Also narrow the touch target to the clock.
+                val portraitOnly = enabled.size == 1 &&
+                    "calendar_clock_98_vertical" in enabled
+                val available = (resources.displayMetrics.widthPixels - dp(24))
+                    .coerceAtLeast(dp(180))
+                val targetWidth = minOf(available, dp(if (portraitOnly) 206 else 300))
+                (scroll.layoutParams as? RelativeLayout.LayoutParams)?.let { params ->
+                    if (params.width != targetWidth ||
+                        params.height != dp(if (portraitOnly) 312 else 330)) {
+                        params.width = targetWidth
+                        params.height = dp(if (portraitOnly) 312 else 330)
+                        scroll.layoutParams = params
+                    }
+                }
+                scroll.isVerticalScrollBarEnabled = !portraitOnly
+                scroll.overScrollMode = if (portraitOnly) {
+                    View.OVER_SCROLL_NEVER
+                } else {
+                    View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                }
+                scroll.visibility = if (visible) View.VISIBLE else View.GONE
+            }
             2 -> win98SecondWidgetScroll?.visibility =
                 if (visible) View.VISIBLE else View.GONE
         }

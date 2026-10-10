@@ -47,8 +47,7 @@ import kotlin.math.sin
 class Win98YouTubeMusicWidget(
     context: Context,
     private val onOpenNotificationAccess: () -> Unit,
-    private val onOpenYouTubeMusic: () -> Unit,
-    private val onRemoveWidget: () -> Unit
+    private val onOpenYouTubeMusic: () -> Unit
 ) : FrameLayout(context) {
 
     companion object {
@@ -170,13 +169,6 @@ class Win98YouTubeMusicWidget(
                 marginStart = dp(4)
             }
         )
-
-        header.addView(tinyButton("X").apply {
-            contentDescription = "Remove YouTube Music player from desktop"
-            setOnClickListener { onRemoveWidget() }
-        }, LinearLayout.LayoutParams(dp(24), dp(19)).apply {
-            marginStart = dp(3)
-        })
 
         addView(
             header,

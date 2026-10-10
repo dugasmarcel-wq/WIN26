@@ -61,7 +61,7 @@ object Win98CalendarClockWidget {
         init {
             orientation = if (portrait) VERTICAL else HORIZONTAL
             gravity = Gravity.CENTER
-            minimumHeight = dp(if (portrait) 349 else 148)
+            minimumHeight = dp(if (portrait) 291 else 148)
             setPadding(dp(8), dp(7), dp(8), dp(7))
             background = roundedPanel(
                 fill = Color.rgb(248, 248, 248),
@@ -70,19 +70,19 @@ object Win98CalendarClockWidget {
             )
 
             if (portrait) {
-                // A separate upright layout, not a rotated or stretched horizontal clock.
-                // Keep the full calendar controls and real-time analog/digital clock.
+                // Reflow the same calendar and clock into their original compact
+                // proportions: calendar over clock, upright text, no scaling or scroll.
                 addView(buildCalendarPanel(), LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(135)
                 ))
                 addView(View(context).apply {
                     setBackgroundColor(Color.rgb(188, 188, 188))
                 }, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                    topMargin = dp(6)
-                    bottomMargin = dp(6)
+                    topMargin = dp(4)
+                    bottomMargin = dp(4)
                 })
                 addView(buildClockPanel(), LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(172)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(133)
                 ))
             } else {
                 addView(buildCalendarPanel(), LayoutParams(0, dp(134), 1.08f))
