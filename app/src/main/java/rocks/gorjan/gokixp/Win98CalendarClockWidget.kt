@@ -61,8 +61,8 @@ object Win98CalendarClockWidget {
         init {
             orientation = if (portrait) VERTICAL else HORIZONTAL
             gravity = Gravity.CENTER
-            minimumHeight = dp(if (portrait) 291 else 148)
-            setPadding(dp(8), dp(7), dp(8), dp(7))
+            minimumHeight = 0
+            setPadding(dp(4), dp(4), dp(4), dp(4))
             background = roundedPanel(
                 fill = Color.rgb(248, 248, 248),
                 stroke = Color.rgb(164, 164, 164),
@@ -73,26 +73,29 @@ object Win98CalendarClockWidget {
                 // Reflow the same calendar and clock into their original compact
                 // proportions: calendar over clock, upright text, no scaling or scroll.
                 addView(buildCalendarPanel(), LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(135)
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
                 ))
                 addView(View(context).apply {
                     setBackgroundColor(Color.rgb(188, 188, 188))
                 }, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                    topMargin = dp(4)
-                    bottomMargin = dp(4)
+                    topMargin = dp(2)
+                    bottomMargin = dp(2)
                 })
                 addView(buildClockPanel(), LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(133)
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(108)
                 ))
             } else {
-                addView(buildCalendarPanel(), LayoutParams(0, dp(134), 1.08f))
+                addView(buildCalendarPanel(), LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.08f
+                ))
                 addView(View(context).apply {
                     setBackgroundColor(Color.rgb(188, 188, 188))
-                }, LayoutParams(dp(1), dp(134)).apply {
-                    marginStart = dp(4)
-                    marginEnd = dp(4)
+                }, LayoutParams(dp(1), dp(110)).apply {
+                    marginStart = dp(3)
+                    marginEnd = dp(3)
                 })
-                addView(buildClockPanel(), LayoutParams(0, dp(134), 0.92f))
+                addView(buildClockPanel(), LayoutParams(0, dp(113), 0.92f))
             }
 
             refreshCalendar()
@@ -189,13 +192,12 @@ object Win98CalendarClockWidget {
 
             calendarGrid = GridLayout(context).apply {
                 columnCount = 7
-                rowCount = 6
+                rowCount = 5
                 setPadding(0, dp(1), 0, 0)
             }
             panel.addView(calendarGrid, LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+                ViewGroup.LayoutParams.WRAP_CONTENT
             ))
             return panel
         }
@@ -290,7 +292,9 @@ object Win98CalendarClockWidget {
             val todayMonth = today.get(Calendar.MONTH)
             val todayDay = today.get(Calendar.DAY_OF_MONTH)
 
-            repeat(42) { cellIndex ->
+            val weekCount = (firstWeekday + daysInMonth + 6) / 7
+            calendarGrid.rowCount = weekCount
+            repeat(weekCount * 7) { cellIndex ->
                 val day = cellIndex - firstWeekday + 1
                 val valid = day in 1..daysInMonth
                 val isToday = valid &&
@@ -331,9 +335,9 @@ object Win98CalendarClockWidget {
 
                 calendarGrid.addView(cell, GridLayout.LayoutParams().apply {
                     width = 0
-                    height = 0
+                    height = dp(16)
                     columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                    rowSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    rowSpec = GridLayout.spec(GridLayout.UNDEFINED)
                 })
             }
         }

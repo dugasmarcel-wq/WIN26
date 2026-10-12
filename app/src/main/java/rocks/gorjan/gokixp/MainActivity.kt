@@ -186,6 +186,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98DesktopPagerBlocked = false
     private var win98PagerGlobalCaptured = false
     private var win98PagerGlobalBlocked = false
+    private var win98WidgetSearchEligible = false
+    private var win98WidgetSearchStartX = 0f
+    private var win98WidgetSearchStartY = 0f
+    private var win98WidgetSearchStartTime = 0L
     private var win98NewsLoading = false
     private var win98NewsRequestSerial = 0
     private var win98QuickHeaderTime: TextView? = null
@@ -1709,7 +1713,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 elevation = 2f
                 addView(Win98WidgetViews.create(this@MainActivity, spec.id),
                     FrameLayout.LayoutParams(
-                        if (portrait) dp(194) else FrameLayout.LayoutParams.MATCH_PARENT,
+                        if (portrait) dp(186) else FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.WRAP_CONTENT,
                         Gravity.TOP or Gravity.CENTER_HORIZONTAL
                     )
@@ -1782,8 +1786,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         enabled.filter(::isWin98ClockId).forEachIndexed { index, id ->
             if (hosts[id]?.parent === parent) return@forEachIndexed
             val vertical = id == "calendar_clock_98_vertical"
-            val width = dp(if (vertical) 194 else 300)
-            val height = dp(if (vertical) 291 else 148)
+            val width = dp(if (vertical) 186 else 284)
+            val height = ViewGroup.LayoutParams.WRAP_CONTENT
             val key = "win98_clock_${pageIndex}_${id}"
             val clock = Win98MovableClockHost(this) { x, y ->
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
@@ -1794,7 +1798,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             clock.addView(Win98WidgetViews.create(this, id),
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
+                    ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
             clock.elevation = dp(12).toFloat()
@@ -16417,6 +16421,72 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return android.graphics.Bitmap.createBitmap(src, left, top, right - left + 1, bottom - top + 1)
     }
 
+    /** Widget content consumes touch events before the old desktop fling recognizer.
+     * Keep vertical Find accessible from clocks, pets, music and widget shelves,
+     * without hijacking taps, horizontal pager swipes or clock long-press dragging.
+     */
+    private fun win98SearchStartsOnWidget(event: MotionEvent): Boolean {
+        if (!themeManager.isClassicTheme() || win98CurrentPage !in 0..2 ||
+            defaultAppsGate != null || isStartMenuVisible ||
+            (::contextMenu.isInitialized && contextMenu.visibility == View.VISIBLE) ||
+            isTouchOnEditableEditText(event) || isTouchInFloatingWindow(event)
+        ) return false
+
+        if (win98MovableClockHosts[win98CurrentPage]?.values?.any {
+            isTouchInsideView(it, event)
+        } == true) return true
+
+        return when (win98CurrentPage) {
+            0 -> win98QuickWidgetContainer?.let { isTouchInsideView(it, event) } == true
+            1 -> (win98DesktopWidgetShelfScroll?.let {
+                    isTouchInsideView(it, event)
+                } == true) ||
+                (win98MusicWidget?.let { isTouchInsideView(it, event) } == true) ||
+                (::quickGlanceWidget.isInitialized &&
+                    isTouchInsideView(quickGlanceWidget, event)) ||
+                (::agentView.isInitialized && isTouchInsideView(agentView, event))
+            2 -> win98SecondWidgetContainer?.let { isTouchInsideView(it, event) } == true
+            else -> false
+        }
+    }
+
+    private fun handleWin98WidgetSearchSwipe(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                win98WidgetSearchEligible = win98SearchStartsOnWidget(event)
+                win98WidgetSearchStartX = event.rawX
+                win98WidgetSearchStartY = event.rawY
+                win98WidgetSearchStartTime = event.eventTime
+            }
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> {
+                win98WidgetSearchEligible = false
+            }
+            MotionEvent.ACTION_UP -> {
+                val eligible = win98WidgetSearchEligible
+                win98WidgetSearchEligible = false
+                if (!eligible) return false
+
+                val dx = event.rawX - win98WidgetSearchStartX
+                val dy = event.rawY - win98WidgetSearchStartY
+                val clockDrag = win98MovableClockHosts[win98CurrentPage]?.values
+                    ?.any { it.isMoveArmed() } == true
+                if (!clockDrag && event.eventTime - win98WidgetSearchStartTime <= 750L &&
+                    dy <= -dp(94).toFloat() &&
+                    kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.35f
+                ) {
+                    val cancel = MotionEvent.obtain(event)
+                    cancel.action = MotionEvent.ACTION_CANCEL
+                    super.dispatchTouchEvent(cancel)
+                    cancel.recycle()
+                    resetWin98PagerTouch()
+                    showStartMenuWithSearch()
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         ev?.let { event ->
             val edgeThresholdPx = BACK_GESTURE_EDGE_THRESHOLD_DP * resources.displayMetrics.density
@@ -16456,6 +16526,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             if (isBackGestureInProgress) {
                 return true // Consume the event without processing
             }
+
+            if (handleWin98WidgetSearchSwipe(event)) return true
 
             // Reset screensaver timer on any touch event
             if (::screensaverManager.isInitialized) {

@@ -34,6 +34,8 @@ class Win98MovableClockHost(
         isFocusable = false
     }
 
+    fun isMoveArmed(): Boolean = armed
+
     private fun cancelArm() {
         pendingArm?.let { handler.removeCallbacks(it) }
         pendingArm = null

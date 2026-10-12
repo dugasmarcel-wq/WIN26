@@ -42,10 +42,7 @@ class AgentView @JvmOverloads constructor(
     private var lastIdleAnimation: String? = null
     private val idlePools = mutableMapOf<String, List<String>>()
     
-    // Drag functionality
-    private var isDragging = false
-    private var initialX = 0f
-    private var initialY = 0f
+    // Rover and Clippy keep their saved location; swipes no longer drag the agent.
     private var initialTouchX = 0f
     private var initialTouchY = 0f
     private var dragThreshold = 10f
@@ -270,72 +267,49 @@ class AgentView @JvmOverloads constructor(
     }
     
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
+        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                isDragging = false
                 hasMoved = false
                 isLongPress = false
-                initialX = x
-                initialY = y
                 initialTouchX = event.rawX
                 initialTouchY = event.rawY
-                
-                // Start long-press detection
+                longPressRunnable?.let { handler.removeCallbacks(it) }
                 longPressRunnable = Runnable {
                     if (!hasMoved) {
                         isLongPress = true
                         onAgentLongPress?.invoke(currentAgent, x, y)
                     }
                 }
-                handler.postDelayed(longPressRunnable!!, 500) // 500ms for long press
-                
+                handler.postDelayed(longPressRunnable!!, 500L)
                 return true
             }
-            
             MotionEvent.ACTION_MOVE -> {
-                val deltaX = event.rawX - initialTouchX
-                val deltaY = event.rawY - initialTouchY
-                val distance = abs(deltaX) + abs(deltaY)
-                
+                val distance = abs(event.rawX - initialTouchX) +
+                    abs(event.rawY - initialTouchY)
                 if (distance > dragThreshold && !hasMoved) {
-                    isDragging = true
                     hasMoved = true
-                    // Cancel long press when movement is detected
                     longPressRunnable?.let { handler.removeCallbacks(it) }
                 }
-                
-                if (isDragging) {
-                    x = initialX + deltaX
-                    y = initialY + deltaY
-                }
+                // Do not modify x/y or savePosition here. A swipe belongs
+                // to the launcher and must not relocate the dog.
                 return true
             }
-            
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // Cancel long press if still pending
                 longPressRunnable?.let { handler.removeCallbacks(it) }
-                
-                if (isDragging) {
-                    isDragging = false
-                    savePosition()
-                } else if (!hasMoved && !isLongPress) {
-                    // This was a tap, not a drag or long press - just notify the callback
+                if (event.actionMasked == MotionEvent.ACTION_UP &&
+                    !hasMoved && !isLongPress) {
                     if (!isLoadingSpeech) {
                         onAgentTapped?.invoke(currentAgent, x, y, width, height)
                         Log.d("AgentView", "Agent tapped - showing input bubble")
-                    } else {
-                        Log.d("AgentView", "Ignoring tap - agent is already loading/processing speech")
                     }
                 }
-                
-                // Reset states
                 isLongPress = false
                 return true
             }
         }
         return super.onTouchEvent(event)
     }
-    
+
     fun savePosition() {
         val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().apply {
