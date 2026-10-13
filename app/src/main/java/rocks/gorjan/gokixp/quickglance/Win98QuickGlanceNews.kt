@@ -34,6 +34,10 @@ object Win98QuickGlanceNews {
         "https://news.google.com/home?hl=en-US&gl=US&ceid=US:en"
     private const val FEED_URL =
         "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+    // The Google RSS feed rarely provides any media URLs. BBC publishes
+    // first-party per-story media:thumbnail URLs in its public RSS feed, so
+    // prefer those photographed stories and keep Google as a fallback.
+    private const val PHOTO_FEED_URL = "https://feeds.bbci.co.uk/news/rss.xml"
     private const val MAX_HOME_HTML_CHARS = 1_500_000
     private const val MAX_ARTICLE_HTML_CHARS = 420_000
     private const val CACHE_TTL_MS = 10 * 60 * 1000L
@@ -55,8 +59,23 @@ object Win98QuickGlanceNews {
                 return@runCatching cached.take(limit)
             }
 
-            val rss = loadRssHeadlines(limit)
-            val result = if (rss.isNotEmpty()) rss else loadVisualHeadlines(limit)
+            val photographed = runCatching {
+                loadRssHeadlines(limit + 5, PHOTO_FEED_URL, "BBC News")
+                    .filter { !it.imageUrl.isNullOrBlank() && looksLikeUsableImage(it.imageUrl) }
+                    .take(limit)
+            }.getOrDefault(emptyList())
+            // Never claim a source has photos unless it actually provided
+            // media URLs. A brief BBC outage must not break Top Stories.
+            val result = if (photographed.size >= minOf(limit, 3)) {
+                photographed
+            } else {
+                val google = runCatching {
+                    loadRssHeadlines(limit, FEED_URL, "Google News")
+                }.getOrDefault(emptyList())
+                if (google.isNotEmpty()) google else
+                    if (photographed.isNotEmpty()) photographed else
+                        loadVisualHeadlines(limit)
+            }
             cachedHeadlines = result
             cachedAtMs = now
             result
@@ -441,9 +460,13 @@ object Win98QuickGlanceNews {
         }
     }
 
-    private fun loadRssHeadlines(limit: Int): List<Win98NewsItem> {
+    private fun loadRssHeadlines(
+        limit: Int,
+        feedUrl: String,
+        defaultSource: String
+    ): List<Win98NewsItem> {
         val connection = openConnection(
-            FEED_URL,
+            feedUrl,
             3_500,
             "application/rss+xml,application/xml,text/xml"
         )
@@ -493,10 +516,23 @@ object Win98QuickGlanceNews {
                                         imageUrl = extractVisualImageUrl(description)
                                     }
                                 }
-                                "media:content", "media:thumbnail", "enclosure" -> if (inItem) {
+                                "media:content", "media:thumbnail", "enclosure",
+                                "thumbnail" -> if (inItem) {
                                     val candidate = parser.getAttributeValue(null, "url")
-                                    if (!candidate.isNullOrBlank() && looksLikeUsableImage(candidate)) {
-                                        imageUrl = candidate
+                                    val medium = parser.getAttributeValue(null, "medium")
+                                    val type = parser.getAttributeValue(null, "type")
+                                    val isImage = medium.equals("image", ignoreCase = true) ||
+                                        type?.startsWith("image/", ignoreCase = true) == true ||
+                                        tag == "media:thumbnail" || tag == "thumbnail"
+                                    if (!candidate.isNullOrBlank() &&
+                                        (isImage || tag == "media:content" || tag == "enclosure") &&
+                                        looksLikeUsableImage(candidate)
+                                    ) {
+                                        // Prefer the thumbnail over a surrounding media
+                                        // enclosure. BBC uses media:thumbnail per article.
+                                        if (imageUrl == null || tag.endsWith("thumbnail")) {
+                                            imageUrl = candidate
+                                        }
                                     }
                                 }
                             }
@@ -507,7 +543,7 @@ object Win98QuickGlanceNews {
                         ) {
                             if (title.isNotBlank() && link.startsWith("https://")) {
                                 val resolvedSource = source.ifBlank {
-                                    title.substringAfterLast(" - ", "Google News").trim()
+                                    title.substringAfterLast(" - ", defaultSource).trim()
                                 }
                                 val cleanTitle = if (
                                     resolvedSource.isNotBlank() &&
@@ -519,7 +555,7 @@ object Win98QuickGlanceNews {
                                 }
                                 items += Win98NewsItem(
                                     title = cleanTitle,
-                                    source = resolvedSource.ifBlank { "Google News" },
+                                    source = resolvedSource.ifBlank { defaultSource },
                                     url = link,
                                     imageUrl = imageUrl,
                                     publishedAtMs = publishedAtMs

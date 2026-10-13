@@ -13481,16 +13481,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         return (72f + remaining * 78f).toLong().coerceIn(72L, 150L)
     }
 
-    private fun win98SideSearchStartY(): Float {
-        val mainBackground = findViewById<RelativeLayout>(R.id.main_background)
-        val height = if (mainBackground.height > 0) {
-            mainBackground.height
-        } else {
-            resources.displayMetrics.heightPixels
-        }
-        // Side-page search should behave like a deliberate bottom-edge gesture, not
-        // ordinary upward scrolling inside widgets or page content.
-        return (height - dp(72)).coerceAtLeast(dp(120)).toFloat()
+    private fun win98SideSearchStartY(page: View): Float {
+        // Side pages have their own 36dp/70dp top/bottom margins. Measuring the
+        // old strip against full-screen height put it *below* the usable page.
+        // Work in the same RAW screen coordinates as the pager gesture instead.
+        val location = IntArray(2)
+        page.getLocationOnScreen(location)
+        return (location[1] + page.height - dp(210)).toFloat()
     }
 
     private fun beginWin98PagerTouch(event: MotionEvent, originPage: Int) {
@@ -13814,8 +13811,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     }
 
                     if (abs(dy) > abs(dx) * 1.10f) {
-                        val startsInSearchStrip =
-                            win98PagerDownY >= win98SideSearchStartY()
+                        // AOL pages are non-scrollable; swipe up anywhere on them.
+                        // Quick Glance and Page 2 have scrollable content, so keep
+                        // the lower gesture zone to avoid stealing ordinary scroll.
+                        val startsInSearchStrip = pageIndex == 3 || pageIndex == 4 ||
+                            win98PagerDownY >= win98SideSearchStartY(page)
 
                         if (startsInSearchStrip && dy < 0f) {
                             // Do not steal a normal vertical touch immediately. Only capture
@@ -13903,7 +13903,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     val openSearch =
                         event.actionMasked == MotionEvent.ACTION_UP &&
                             dy <= -dp(96).toFloat() &&
-                            abs(dx) <= dp(28).toFloat()
+                            abs(dy) > abs(dx) * 1.35f
                     resetWin98PagerTouch()
                     if (openSearch) {
                         showStartMenuWithSearch()
@@ -16427,7 +16427,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      * without hijacking taps, horizontal pager swipes or clock long-press dragging.
      */
     private fun win98SearchStartsOnWidget(event: MotionEvent): Boolean {
-        if (!themeManager.isClassicTheme() || win98CurrentPage !in 0..2 ||
+        if (!themeManager.isClassicTheme() || win98CurrentPage !in 0..4 ||
             defaultAppsGate != null || isStartMenuVisible ||
             (::contextMenu.isInitialized && contextMenu.visibility == View.VISIBLE) ||
             isTouchOnEditableEditText(event) || isTouchInFloatingWindow(event)
@@ -16447,6 +16447,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     isTouchInsideView(quickGlanceWidget, event)) ||
                 (::agentView.isInitialized && isTouchInsideView(agentView, event))
             2 -> win98SecondWidgetContainer?.let { isTouchInsideView(it, event) } == true
+            // Main-menu tiles swallow touch events just like live widgets.
+            // Recognize upward search gestures before they reach a tile click.
+            3, 4 -> win98PageView(win98CurrentPage)?.let {
+                isTouchInsideView(it, event)
+            } == true
             else -> false
         }
     }
