@@ -12867,6 +12867,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             gravity = Gravity.CENTER
             setPadding(0, dp(1), 0, 0)
         }
+        sources.addView(createTinyNewsSource("BBC", "https://www.bbc.com/news"))
         sources.addView(createTinyNewsSource("Google News", "https://news.google.com"))
         sources.addView(createTinyNewsSource("Reuters", "https://www.reuters.com"))
         sources.addView(createTinyNewsSource("AP", "https://apnews.com"))

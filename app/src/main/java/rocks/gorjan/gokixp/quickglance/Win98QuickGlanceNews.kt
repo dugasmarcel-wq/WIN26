@@ -38,6 +38,7 @@ object Win98QuickGlanceNews {
     // first-party per-story media:thumbnail URLs in its public RSS feed, so
     // prefer those photographed stories and keep Google as a fallback.
     private const val PHOTO_FEED_URL = "https://feeds.bbci.co.uk/news/rss.xml"
+    private const val PHOTO_FALLBACK_URL = "https://feeds.bbci.co.uk/news/world/rss.xml"
     private const val MAX_HOME_HTML_CHARS = 1_500_000
     private const val MAX_ARTICLE_HTML_CHARS = 420_000
     private const val CACHE_TTL_MS = 10 * 60 * 1000L
@@ -59,13 +60,25 @@ object Win98QuickGlanceNews {
                 return@runCatching cached.take(limit)
             }
 
-            val photographed = runCatching {
+            val firstPhotoFeed = runCatching {
                 loadRssHeadlines(limit + 5, PHOTO_FEED_URL, "BBC News")
                     .filter { !it.imageUrl.isNullOrBlank() && looksLikeUsableImage(it.imageUrl) }
                     .take(limit)
             }.getOrDefault(emptyList())
+            // Try the dedicated World feed only when the main image feed cannot
+            // supply enough photographed stories. No polling or prewarm fetches.
+            val photographed = if (firstPhotoFeed.size >= minOf(limit, 3)) firstPhotoFeed
+                else {
+                    val world = runCatching {
+                        loadRssHeadlines(limit + 5, PHOTO_FALLBACK_URL, "BBC News")
+                            .filter { !it.imageUrl.isNullOrBlank() && looksLikeUsableImage(it.imageUrl) }
+                    }.getOrDefault(emptyList())
+                    (firstPhotoFeed + world)
+                        .distinctBy { it.url }
+                        .take(limit)
+                }
             // Never claim a source has photos unless it actually provided
-            // media URLs. A brief BBC outage must not break Top Stories.
+            // media URLs. A brief publisher outage must not break Top Stories.
             val result = if (photographed.size >= minOf(limit, 3)) {
                 photographed
             } else {
