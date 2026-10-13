@@ -1346,8 +1346,13 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
             val availableWidth = (resources.displayMetrics.widthPixels - dp(28))
                 .coerceAtLeast(dp(250))
-            val widgetWidth = minOf(availableWidth, dp(334))
-            val widgetHeight = dp(166)
+            val mediaPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            val widgetWidth = minOf(availableWidth,
+                dp(mediaPrefs.getInt("win98_music_widget_w_dp", 334).coerceAtLeast(278)))
+            val widgetHeight = minOf(
+                (resources.displayMetrics.heightPixels - dp(120)).coerceAtLeast(dp(166)),
+                dp(mediaPrefs.getInt("win98_music_widget_h_dp", 166).coerceAtLeast(166))
+            )
 
             widget.layoutParams = RelativeLayout.LayoutParams(widgetWidth, widgetHeight)
             widget.elevation = 7f
@@ -16524,6 +16529,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
 
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                win98MusicWidget?.let { media ->
+                    if (media.isResizeEditing() && !isTouchInsideView(media, event)) {
+                        media.finishResizeEditing()
+                    }
+                }
                 // Touch outside the edited widget dismisses the temporary resize
                 // handles; no permanent on-widget close/remove button.
                 win98MovableClockHosts.values.forEach { hosts ->

@@ -54,6 +54,8 @@ class Win98YouTubeMusicWidget(
         private const val YT_MUSIC_PACKAGE = "com.google.android.apps.youtube.music"
         private const val PREF_X = "win98_music_widget_x"
         private const val PREF_Y = "win98_music_widget_y"
+        private const val PREF_W = "win98_music_widget_w_dp"
+        private const val PREF_H = "win98_music_widget_h_dp"
         private const val MOVE_HOLD_MS = 430L
     }
 
@@ -90,6 +92,17 @@ class Win98YouTubeMusicWidget(
     private val repeatButton: TextView
     private val spectrum: SpectrumView
     private val moveStatus: TextView
+    private val resizeHandles = mutableListOf<View>()
+    private var resizeEditing = false
+
+    fun isResizeEditing(): Boolean = resizeEditing
+
+    fun finishResizeEditing() {
+        if (!resizeEditing) return
+        resizeEditing = false
+        resizeHandles.forEach { it.visibility = View.GONE }
+        invalidate()
+    }
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) {
@@ -403,6 +416,8 @@ class Win98YouTubeMusicWidget(
             })
         }
         controls.addView(volume, LinearLayout.LayoutParams(0, dp(24), 1f))
+
+        installResizeHandles()
 
         albumArt.setOnClickListener { onOpenYouTubeMusic() }
         display.setOnClickListener {
@@ -803,6 +818,103 @@ class Win98YouTubeMusicWidget(
         y = desktopY
     }
 
+    private fun setResizeEditing(value: Boolean) {
+        resizeEditing = value
+        resizeHandles.forEach { it.visibility = if (value) View.VISIBLE else View.GONE }
+    }
+
+    private fun installResizeHandles() {
+        // Only visible after holding the original media title bar.
+        // MediaSession controls remain fully interactive otherwise.
+        val handles = listOf(
+            Gravity.TOP or Gravity.START,
+            Gravity.TOP or Gravity.END,
+            Gravity.BOTTOM or Gravity.START,
+            Gravity.BOTTOM or Gravity.END
+        )
+        handles.forEach { gravity ->
+            val atLeft = gravity and Gravity.START == Gravity.START
+            val atTop = gravity and Gravity.TOP == Gravity.TOP
+            var downRawX = 0f
+            var downRawY = 0f
+            var startLeft = 0f
+            var startTop = 0f
+            var startWidth = 0
+            var startHeight = 0
+            val handle = TextView(context).apply {
+                text = "+"
+                gravity = Gravity.CENTER
+                textSize = 13f
+                setTextColor(Color.BLACK)
+                background = androidx.appcompat.content.res.AppCompatResources.getDrawable(
+                    context, R.drawable.window_button_background
+                )
+                visibility = View.GONE
+                contentDescription = "Resize YouTube Music from corner"
+                elevation = dp(12).toFloat()
+                isClickable = true
+            }
+            handle.setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downRawX = event.rawX
+                        downRawY = event.rawY
+                        startLeft = desktopX
+                        startTop = desktopY
+                        startWidth = width
+                        startHeight = height
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val owner = parent as? ViewGroup ?: return@setOnTouchListener true
+                        val dx = event.rawX - downRawX
+                        val dy = event.rawY - downRawY
+                        val minW = dp(278)
+                        val minH = dp(166)
+                        val right = startLeft + startWidth
+                        val bottom = startTop + startHeight
+                        val left = if (atLeft) (startLeft + dx).coerceIn(
+                            0f, (right - minW).coerceAtLeast(0f)
+                        ) else startLeft
+                        val top = if (atTop) (startTop + dy).coerceIn(
+                            0f, (bottom - minH).coerceAtLeast(0f)
+                        ) else startTop
+                        val newRight = if (atLeft) right else
+                            (right + dx).coerceIn(left + minW, owner.width.toFloat())
+                        val newBottom = if (atTop) bottom else
+                            (bottom + dy).coerceIn(top + minH, owner.height.toFloat())
+                        val targetWidth = (newRight - left).toInt().coerceAtLeast(minW)
+                        val targetHeight = (newBottom - top).toInt().coerceAtLeast(minH)
+                        layoutParams = layoutParams.apply {
+                            width = targetWidth
+                            height = targetHeight
+                        }
+                        desktopX = left.coerceIn(0f, (owner.width - targetWidth).coerceAtLeast(0).toFloat())
+                        desktopY = top.coerceIn(0f, (owner.height - targetHeight).coerceAtLeast(0).toFloat())
+                        pagerOffsetX = 0f
+                        positionRestored = true
+                        applyDesktopPosition()
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        savePosition()
+                        context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                            .edit()
+                            .putInt(PREF_W, (width / resources.displayMetrics.density).toInt())
+                            .putInt(PREF_H, (height / resources.displayMetrics.density).toInt())
+                            .apply()
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                        true
+                    }
+                    else -> true
+                }
+            }
+            addView(handle, LayoutParams(dp(26), dp(26), gravity))
+            resizeHandles.add(handle)
+        }
+    }
+
     private fun enableLongPressDragging(handle: View) {
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
         var downRawX = 0f
@@ -815,6 +927,7 @@ class Win98YouTubeMusicWidget(
         val armMove = Runnable {
             if (!gestureCancelled) {
                 moveArmed = true
+                setResizeEditing(true)
                 moveStatus.text = "MOVE MODE"
                 moveStatus.setTextColor(Color.rgb(236, 196, 96))
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
