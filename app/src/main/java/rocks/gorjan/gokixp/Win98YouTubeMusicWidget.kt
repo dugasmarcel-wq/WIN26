@@ -832,9 +832,9 @@ class Win98YouTubeMusicWidget(
             Gravity.BOTTOM or Gravity.START,
             Gravity.BOTTOM or Gravity.END
         )
-        handles.forEach { gravity ->
-            val atLeft = (gravity and Gravity.START) == Gravity.START
-            val atTop = (gravity and Gravity.TOP) == Gravity.TOP
+        handles.forEach { cornerGravity ->
+            val atLeft = (cornerGravity and Gravity.START) == Gravity.START
+            val atTop = (cornerGravity and Gravity.TOP) == Gravity.TOP
             var downRawX = 0f
             var downRawY = 0f
             var startLeft = 0f
@@ -910,7 +910,7 @@ class Win98YouTubeMusicWidget(
                     else -> true
                 }
             }
-            addView(handle, LayoutParams(dp(26), dp(26), gravity))
+            addView(handle, LayoutParams(dp(26), dp(26), cornerGravity))
             resizeHandles.add(handle)
         }
     }
