@@ -833,8 +833,8 @@ class Win98YouTubeMusicWidget(
             Gravity.BOTTOM or Gravity.END
         )
         handles.forEach { gravity ->
-            val atLeft = gravity and Gravity.START == Gravity.START
-            val atTop = gravity and Gravity.TOP == Gravity.TOP
+            val atLeft = (gravity and Gravity.START) == Gravity.START
+            val atTop = (gravity and Gravity.TOP) == Gravity.TOP
             var downRawX = 0f
             var downRawY = 0f
             var startLeft = 0f
