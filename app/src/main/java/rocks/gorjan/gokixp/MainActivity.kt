@@ -204,7 +204,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     private var win98DesktopWidgetShelf: LinearLayout? = null
     private var win98DesktopWidgetShelfScroll: android.widget.ScrollView? = null
     private val win98MovableClockHosts =
-        mutableMapOf<Int, MutableMap<String, Win98MovableClockHost>>()
+        mutableMapOf<Int, MutableMap<String, Win98ResizableWidgetHost>>()
     private var win98QuickWidgetContainer: LinearLayout? = null
     private var win98SecondWidgetContainer: LinearLayout? = null
     private var win98SecondWidgetScroll: android.widget.ScrollView? = null
@@ -1766,6 +1766,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         widgetId == "calendar_clock_98" ||
             widgetId == "calendar_clock_98_vertical"
 
+    private fun win98WidgetFrameKey(pageIndex: Int, widgetId: String): String =
+        if (isWin98ClockId(widgetId)) {
+            // Migrate existing clocks without losing their saved x/y position.
+            "win98_clock_${pageIndex}_${widgetId}"
+        } else {
+            "win98_widget_frame_${pageIndex}_${widgetId}"
+        }
+
     private fun syncWin98MovableClocks(pageIndex: Int, enabled: Set<String>) {
         val parent: ViewGroup = when (pageIndex) {
             0 -> win98QuickPage as? FrameLayout
@@ -1776,121 +1784,109 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         val hosts = win98MovableClockHosts.getOrPut(pageIndex) { mutableMapOf() }
         hosts.keys.toList().forEach { id ->
-            val view = hosts[id] ?: return@forEach
-            if (id !in enabled || view.parent !== parent) {
-                (view.parent as? ViewGroup)?.removeView(view)
+            val existing = hosts[id] ?: return@forEach
+            if (id !in enabled || existing.parent !== parent) {
+                (existing.parent as? ViewGroup)?.removeView(existing)
                 hosts.remove(id)
             }
         }
 
-        enabled.filter(::isWin98ClockId).forEachIndexed { index, id ->
+        val specs = Win98WidgetViews.specs.filter {
+            it.id in enabled && it.id != "youtube_music_98"
+        }
+        specs.forEachIndexed { index, spec ->
+            val id = spec.id
             if (hosts[id]?.parent === parent) return@forEachIndexed
+            hosts.remove(id)?.let { (it.parent as? ViewGroup)?.removeView(it) }
+
+            val pref = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            val key = win98WidgetFrameKey(pageIndex, id)
             val vertical = id == "calendar_clock_98_vertical"
-            val width = dp(if (vertical) 186 else 284)
-            val height = ViewGroup.LayoutParams.WRAP_CONTENT
-            val key = "win98_clock_${pageIndex}_${id}"
-            val clock = Win98MovableClockHost(this) { x, y ->
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                    .putInt("${key}_x", (x / resources.displayMetrics.density).toInt())
-                    .putInt("${key}_y", (y / resources.displayMetrics.density).toInt())
-                    .apply()
+            val clock = isWin98ClockId(id)
+            val naturalWidthDp = when {
+                vertical -> 186
+                clock -> 284
+                id == "mines" || id == "solitaire_desk" || id == "pinball" -> 300
+                id == "cyber_pet" -> 245
+                else -> 280
             }
-            clock.addView(Win98WidgetViews.create(this, id),
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+            val minWidthDp = if (clock) 128 else if (id in setOf("mines", "solitaire_desk", "pinball")) 180 else 120
+            val logicalWidth = dp(naturalWidthDp)
+            val savedWidth = if (pref.contains("${key}_w")) dp(pref.getInt("${key}_w", naturalWidthDp))
+                else logicalWidth
+            val savedHeight = if (pref.contains("${key}_h")) dp(pref.getInt("${key}_h", 160))
+                else ViewGroup.LayoutParams.WRAP_CONTENT
+            val widgetContent = if (clock) Win98WidgetViews.create(this, id)
+                else createWin98WidgetCard(spec, pageIndex)
+
+            val host = Win98ResizableWidgetHost(
+                context = this,
+                logicalWidth = logicalWidth,
+                minimumWidth = dp(minWidthDp),
+                minimumHeight = dp(if (clock) 82 else 100),
+                content = widgetContent,
+                saveGeometry = { x, y, w, h ->
+                    val density = resources.displayMetrics.density
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putInt("${key}_x", (x / density).toInt())
+                        .putInt("${key}_y", (y / density).toInt())
+                        .putInt("${key}_w", (w / density).toInt())
+                        .putInt("${key}_h", (h / density).toInt())
+                        .apply()
+                },
+                onEditing = { active ->
+                    if (active) {
+                        win98MovableClockHosts.values.forEach { pageHosts ->
+                            pageHosts.values.forEach { other ->
+                                if (other !== hosts[id]) other.finishEditing()
+                            }
+                        }
+                    }
+                }
             )
-            clock.elevation = dp(12).toFloat()
-            val params = if (parent is RelativeLayout) {
-                RelativeLayout.LayoutParams(width, height)
+            host.elevation = dp(12).toFloat()
+            host.contentDescription = "Hold to move or resize ${spec.title}"
+            val lp = if (parent is RelativeLayout) {
+                RelativeLayout.LayoutParams(savedWidth, savedHeight)
             } else {
-                FrameLayout.LayoutParams(width, height)
+                FrameLayout.LayoutParams(savedWidth, savedHeight)
             }
-            parent.addView(clock, params)
-            hosts[id] = clock
-            clock.post {
-                if (clock.parent !== parent) return@post
-                val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            parent.addView(host, lp)
+            hosts[id] = host
+            host.post {
+                if (host.parent !== parent) return@post
                 val density = resources.displayMetrics.density
-                val fallbackX = (parent.width - clock.width - dp(12)).coerceAtLeast(0)
-                val fallbackY = dp(when (pageIndex) {
-                    0 -> 218
-                    1 -> 64
-                    else -> 36
-                } + (index * 45))
-                val savedX = if (prefs.contains("${key}_x"))
-                    (prefs.getInt("${key}_x", 0) * density).toInt()
-                else fallbackX
-                val savedY = if (prefs.contains("${key}_y"))
-                    (prefs.getInt("${key}_y", 0) * density).toInt()
-                else fallbackY
-                clock.x = savedX.coerceIn(0, (parent.width - clock.width).coerceAtLeast(0)).toFloat()
-                clock.y = savedY.coerceIn(0, (parent.height - clock.height).coerceAtLeast(0)).toFloat()
+                val fallbackX = if (clock) {
+                    (parent.width - host.width - dp(12)).coerceAtLeast(0)
+                } else {
+                    dp(12 + index * 16)
+                }
+                val fallbackY = dp((if (pageIndex == 0) 185 else if (pageIndex == 1) 56 else 20) + index * 32)
+                val px = if (pref.contains("${key}_x"))
+                    (pref.getInt("${key}_x", 0) * density).toInt() else fallbackX
+                val py = if (pref.contains("${key}_y"))
+                    (pref.getInt("${key}_y", 0) * density).toInt() else fallbackY
+                host.x = px.coerceIn(0, (parent.width - host.width).coerceAtLeast(0)).toFloat()
+                host.y = py.coerceIn(0, (parent.height - host.height).coerceAtLeast(0)).toFloat()
             }
         }
     }
 
     private fun renderWin98WidgetPage(pageIndex: Int) {
         if (!themeManager.isClassicTheme()) return
-
+        // All WINSUNG page widgets now have independent position/size and touch
+        // lifecycles. Old scrolling shelves stay empty and hidden.
         val container = when (pageIndex) {
             0 -> win98QuickWidgetContainer
             1 -> win98DesktopWidgetShelf
             2 -> win98SecondWidgetContainer
             else -> null
         } ?: return
-
-        val enabled = win98WidgetIdsForPage(pageIndex)
         container.removeAllViews()
-
-        if (pageIndex in 0..2) syncWin98MovableClocks(pageIndex, enabled)
-        val shelfEnabled = if (pageIndex in 0..2)
-            enabled.filterNot(::isWin98ClockId).toSet()
-        else enabled
-
-        Win98WidgetViews.specs.filter { it.id in shelfEnabled }.forEachIndexed { index, spec ->
-            container.addView(
-                createWin98WidgetCard(spec, pageIndex),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    if (index > 0) topMargin = dp(8)
-                }
-            )
-        }
-
-        val visible = shelfEnabled.isNotEmpty()
-        container.visibility = if (visible) View.VISIBLE else View.GONE
-        when (pageIndex) {
-            1 -> win98DesktopWidgetShelfScroll?.let { scroll ->
-                // The portrait clock is shorter than this viewport and does not
-                // require scrolling. Also narrow the touch target to the clock.
-                val portraitOnly = enabled.size == 1 &&
-                    "calendar_clock_98_vertical" in shelfEnabled
-                val available = (resources.displayMetrics.widthPixels - dp(24))
-                    .coerceAtLeast(dp(180))
-                val targetWidth = minOf(available, dp(if (portraitOnly) 206 else 300))
-                (scroll.layoutParams as? RelativeLayout.LayoutParams)?.let { params ->
-                    if (params.width != targetWidth ||
-                        params.height != dp(if (portraitOnly) 312 else 330)) {
-                        params.width = targetWidth
-                        params.height = dp(if (portraitOnly) 312 else 330)
-                        scroll.layoutParams = params
-                    }
-                }
-                scroll.isVerticalScrollBarEnabled = !portraitOnly
-                scroll.overScrollMode = if (portraitOnly) {
-                    View.OVER_SCROLL_NEVER
-                } else {
-                    View.OVER_SCROLL_IF_CONTENT_SCROLLS
-                }
-                scroll.visibility = if (visible) View.VISIBLE else View.GONE
-            }
-            2 -> win98SecondWidgetScroll?.visibility =
-                if (visible) View.VISIBLE else View.GONE
-        }
+        container.visibility = View.GONE
+        win98DesktopWidgetShelfScroll?.visibility = View.GONE
+        win98SecondWidgetScroll?.visibility = View.GONE
+        syncWin98MovableClocks(pageIndex, win98WidgetIdsForPage(pageIndex))
     }
 
     private fun setupWin98PageIndicator() {
@@ -16433,7 +16429,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         ) return false
 
         if (win98MovableClockHosts[win98CurrentPage]?.values?.any {
-            isTouchInsideView(it, event)
+            isTouchInsideView(it, event) && !it.isMoveArmed()
         } == true) return true
 
         return when (win98CurrentPage) {
@@ -16468,9 +16464,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
                 val dx = event.rawX - win98WidgetSearchStartX
                 val dy = event.rawY - win98WidgetSearchStartY
-                val clockDrag = win98MovableClockHosts[win98CurrentPage]?.values
+                val widgetEditing = win98MovableClockHosts[win98CurrentPage]?.values
                     ?.any { it.isMoveArmed() } == true
-                if (!clockDrag && event.eventTime - win98WidgetSearchStartTime <= 750L &&
+                if (!widgetEditing && event.eventTime - win98WidgetSearchStartTime <= 750L &&
                     dy <= -dp(94).toFloat() &&
                     kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.35f
                 ) {
@@ -16527,6 +16523,17 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 return true // Consume the event without processing
             }
 
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                // Touch outside the edited widget dismisses the temporary resize
+                // handles; no permanent on-widget close/remove button.
+                win98MovableClockHosts.values.forEach { hosts ->
+                    hosts.values.forEach { host ->
+                        if (host.isEditing && !isTouchInsideView(host, event)) {
+                            host.finishEditing()
+                        }
+                    }
+                }
+            }
             if (handleWin98WidgetSearchSwipe(event)) return true
 
             // Reset screensaver timer on any touch event
