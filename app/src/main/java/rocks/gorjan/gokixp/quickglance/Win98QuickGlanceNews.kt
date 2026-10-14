@@ -436,8 +436,9 @@ object Win98QuickGlanceNews {
                                 "title" -> if (inItem) title = parser.nextText().trim()
                                 "link" -> if (inItem) link = parser.nextText().trim()
                                 "source" -> if (inItem) source = parser.nextText().trim()
-                                "pubdate" -> if (inItem) {
+                                "pubdate", "dc:date", "published", "updated" -> if (inItem) {
                                     publishedAtMs = parseRssDate(parser.nextText())
+                                        ?: publishedAtMs
                                 }
                                 "description", "content:encoded" -> if (inItem) {
                                     val html = parser.nextText()
@@ -474,17 +475,13 @@ object Win98QuickGlanceNews {
                         ) {
                             if (title.isNotBlank() &&
                                 (link.startsWith("https://") || link.startsWith("http://"))) {
-                                val resolvedSource = source.ifBlank {
-                                    title.substringAfterLast(" - ", defaultSource).trim()
-                                }
-                                val cleanTitle = if (
-                                    resolvedSource.isNotBlank() &&
-                                    title.endsWith(" - $resolvedSource")
-                                ) {
-                                    title.removeSuffix(" - $resolvedSource").trim()
-                                } else {
-                                    title
-                                }
+                                // Publisher feeds are not Google News-style title
+                                // aggregates. A hyphen inside a headline is not a
+                                // publisher name; preserve the complete headline.
+                                val resolvedSource = source.ifBlank { defaultSource }
+                                val cleanTitle = title.removeSuffix(
+                                    " - $resolvedSource"
+                                ).trim()
                                 items += Win98NewsItem(
                                     title = cleanTitle,
                                     source = resolvedSource.ifBlank { defaultSource },
@@ -508,7 +505,10 @@ object Win98QuickGlanceNews {
     private fun parseRssDate(value: String): Long? {
         val patterns = arrayOf(
             "EEE, dd MMM yyyy HH:mm:ss z",
-            "EEE, dd MMM yyyy HH:mm:ss Z"
+            "EEE, dd MMM yyyy HH:mm:ss Z",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ssX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSX"
         )
         for (pattern in patterns) {
             try {
