@@ -34,9 +34,10 @@ object Win98QuickGlanceNews {
     // Only free-access, direct-publisher RSS links. No paywalled Google News
     // aggregation, tracking, subscription feeds, or background fetching.
     private const val GAME_FEED = "https://www.gematsu.com/feed"
-    private const val GAME_BACKUP = "https://www.gamingonlinux.com/article_rss.php?newsonly"
-    private const val WORLD_FEED = "https://feeds.bbci.co.uk/news/world/rss.xml"
-    private const val WORLD_BACKUP = "https://rss.dw.com/xml/rss-en-world"
+    private const val GAME_BACKUP = "https://www.eurogamer.net/feed/news"
+    private const val GAME_EXTRA = "https://www.gamingonlinux.com/article_rss.php?newsonly"
+    private const val WORLD_FEED = "https://rss.dw.com/xml/rss-en-world"
+    private const val WORLD_BACKUP = "https://www.theguardian.com/world/rss"
     private const val CONFLICT_FEED = "https://www.aljazeera.com/xml/rss/all.xml"
     private const val MAX_ARTICLE_HTML_CHARS = 420_000
     private const val CACHE_TTL_MS = 10 * 60 * 1000L
@@ -44,9 +45,10 @@ object Win98QuickGlanceNews {
     private data class NewsFeed(val url: String, val source: String, val topic: String)
     private val feeds = listOf(
         NewsFeed(GAME_FEED, "Gematsu", "Gaming"),
-        NewsFeed(GAME_BACKUP, "GamingOnLinux", "Gaming"),
-        NewsFeed(WORLD_FEED, "BBC News", "World"),
-        NewsFeed(WORLD_BACKUP, "Deutsche Welle", "World"),
+        NewsFeed(GAME_BACKUP, "Eurogamer", "Gaming"),
+        NewsFeed(GAME_EXTRA, "GamingOnLinux", "Gaming"),
+        NewsFeed(WORLD_FEED, "Deutsche Welle", "World"),
+        NewsFeed(WORLD_BACKUP, "The Guardian", "World"),
         NewsFeed(CONFLICT_FEED, "Al Jazeera", "Conflicts")
     )
 
@@ -66,19 +68,24 @@ object Win98QuickGlanceNews {
         val host = runCatching { URL(item.url).host.lowercase(Locale.US) }.getOrNull()
             ?: return false
         val approved = listOf("gematsu.com", "gamingonlinux.com",
-            "bbc.com", "bbc.co.uk", "dw.com", "aljazeera.com")
+            "eurogamer.net", "dw.com", "theguardian.com", "aljazeera.com")
         if (approved.none { host == it || host.endsWith(".$it") }) return false
-        // Even on a free-access site, reject explicitly gated or member-only pieces.
+        // Reject explicitly gated articles even from ordinarily free publishers.
+        val path = runCatching { URL(item.url).path.lowercase(Locale.US) }.getOrDefault("")
+        if (listOf("/premium/", "/subscriber/", "/subscribe/", "/members/",
+            "/supporter/", "/paid/").any { it in path }) return false
         val title = item.title.lowercase(Locale.US)
         return listOf("subscribers only", "subscriber-only", "members only",
             "member-only", "premium exclusive", "subscription required",
-            "sign in to read").none { it in title }
+            "sign in to read", "premium members").none { it in title }
     }
 
     private fun rankStories(stories: List<Win98NewsItem>): List<Win98NewsItem> {
         return stories.filter(::openAccessStory)
             .distinctBy { normalizedTitle(it.title) }
             .sortedWith(compareByDescending<Win98NewsItem> {
+                it.publishedAtMs?.div(3_600_000L) ?: 0L
+            }.thenByDescending {
                 if (it.imageUrl.isNullOrBlank()) 0 else 1
             }.thenByDescending { it.publishedAtMs ?: 0L })
     }
@@ -89,8 +96,8 @@ object Win98QuickGlanceNews {
             it.topic != "Gaming" && conflictKeywords.containsMatchIn(it.title)
         }).map { it.copy(topic = "Conflicts") }
         val world = rankStories(all.filter {
-            it.topic == "World" && !conflictKeywords.containsMatchIn(it.title)
-        })
+            it.topic != "Gaming" && !conflictKeywords.containsMatchIn(it.title)
+        }).map { it.copy(topic = "World") }
         val groups = listOf(gaming, world, conflict)
         val chosen = linkedMapOf<String, Win98NewsItem>()
         // Rotate categories so the page does not become a wall of a single outlet.
@@ -281,7 +288,7 @@ object Win98QuickGlanceNews {
             .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
             .trim()
 
-    private fun extractVisualImageUrl(html: String): String? {
+    private fun extractVisualImageUrl(html: String, baseUrl: String): String? {
         val imageTags = Regex("""(?is)<img\b[^>]*>""")
             .findAll(html)
             .map { it.value }
@@ -293,7 +300,7 @@ object Win98QuickGlanceNews {
                 attributeValue(tag, attribute)
             }
             for (raw in directCandidates) {
-                normalizeImageUrl(raw)?.let { if (looksLikeUsableImage(it)) return it }
+                normalizeImageUrl(raw, baseUrl)?.let { if (looksLikeUsableImage(it)) return it }
             }
 
             val srcset = attributeValue(tag, "srcset")
@@ -302,7 +309,7 @@ object Win98QuickGlanceNews {
                     .asReversed()
                     .map { it.trim().substringBefore(' ') }
                     .forEach { raw ->
-                        normalizeImageUrl(raw)?.let {
+                        normalizeImageUrl(raw, baseUrl)?.let {
                             if (looksLikeUsableImage(it)) return it
                         }
                     }
@@ -316,21 +323,15 @@ object Win98QuickGlanceNews {
             .toList()
             .asReversed()
         for (raw in background) {
-            normalizeImageUrl(raw)?.let { if (looksLikeUsableImage(it)) return it }
+            normalizeImageUrl(raw, baseUrl)?.let { if (looksLikeUsableImage(it)) return it }
         }
         return null
     }
 
-    private fun normalizeImageUrl(raw: String): String? {
+    private fun normalizeImageUrl(raw: String, baseUrl: String): String? {
         val value = decodeHtml(raw).trim()
         if (value.isBlank() || value.startsWith("data:", ignoreCase = true)) return null
-        return when {
-            value.startsWith("https://") || value.startsWith("http://") -> value
-            value.startsWith("//") -> "https:$value"
-            value.startsWith("./") -> "https://news.google.com/" + value.removePrefix("./")
-            value.startsWith("/") -> "https://news.google.com$value"
-            else -> null
-        }
+        return resolveUrl(baseUrl, value)
     }
 
     private fun resolveUrl(baseUrl: String, raw: String): String? {
@@ -441,7 +442,9 @@ object Win98QuickGlanceNews {
                                 "description", "content:encoded" -> if (inItem) {
                                     val html = parser.nextText()
                                     if (imageUrl.isNullOrBlank()) {
-                                        imageUrl = extractVisualImageUrl(html)
+                                        imageUrl = extractVisualImageUrl(
+                                            html, link.ifBlank { feedUrl }
+                                        )
                                     }
                                 }
                                 "media:content", "media:thumbnail", "enclosure",
@@ -457,7 +460,7 @@ object Win98QuickGlanceNews {
                                         looksLikeUsableImage(candidate)
                                     ) {
                                         // Prefer the thumbnail over a surrounding media
-                                        // enclosure. BBC uses media:thumbnail per article.
+                                        // enclosure. Publisher feeds frequently supply media:thumbnail per article.
                                         if (imageUrl == null || tag.endsWith("thumbnail")) {
                                             imageUrl = candidate
                                         }
