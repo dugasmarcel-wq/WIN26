@@ -12871,7 +12871,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             setPadding(0, dp(1), 0, 0)
         }
         sources.addView(createTinyNewsSource("Gaming", "https://www.gematsu.com/"))
-        sources.addView(createTinyNewsSource("Eurogamer", "https://www.eurogamer.net/"))
+        sources.addView(createTinyNewsSource("France 24", "https://www.france24.com/en/"))
         sources.addView(createTinyNewsSource("DW", "https://www.dw.com/en/top-stories/s-9097"))
         sources.addView(createTinyNewsSource("Al Jazeera", "https://www.aljazeera.com/"))
         content.addView(sources, LinearLayout.LayoutParams(

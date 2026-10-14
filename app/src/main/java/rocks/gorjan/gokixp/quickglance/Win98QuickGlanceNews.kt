@@ -37,7 +37,7 @@ object Win98QuickGlanceNews {
     private const val GAME_BACKUP = "https://www.eurogamer.net/feed/news"
     private const val GAME_EXTRA = "https://www.gamingonlinux.com/article_rss.php?newsonly"
     private const val WORLD_FEED = "https://rss.dw.com/xml/rss-en-world"
-    private const val WORLD_BACKUP = "https://www.theguardian.com/world/rss"
+    private const val WORLD_BACKUP = "https://www.france24.com/en/rss"
     private const val CONFLICT_FEED = "https://www.aljazeera.com/xml/rss/all.xml"
     private const val MAX_ARTICLE_HTML_CHARS = 420_000
     private const val CACHE_TTL_MS = 10 * 60 * 1000L
@@ -48,7 +48,7 @@ object Win98QuickGlanceNews {
         NewsFeed(GAME_BACKUP, "Eurogamer", "Gaming"),
         NewsFeed(GAME_EXTRA, "GamingOnLinux", "Gaming"),
         NewsFeed(WORLD_FEED, "Deutsche Welle", "World"),
-        NewsFeed(WORLD_BACKUP, "The Guardian", "World"),
+        NewsFeed(WORLD_BACKUP, "France 24", "World"),
         NewsFeed(CONFLICT_FEED, "Al Jazeera", "Conflicts")
     )
 
@@ -68,7 +68,7 @@ object Win98QuickGlanceNews {
         val host = runCatching { URL(item.url).host.lowercase(Locale.US) }.getOrNull()
             ?: return false
         val approved = listOf("gematsu.com", "gamingonlinux.com",
-            "eurogamer.net", "dw.com", "theguardian.com", "aljazeera.com")
+            "eurogamer.net", "dw.com", "france24.com", "aljazeera.com")
         if (approved.none { host == it || host.endsWith(".$it") }) return false
         // Reject explicitly gated articles even from ordinarily free publishers.
         val path = runCatching { URL(item.url).path.lowercase(Locale.US) }.getOrDefault("")
