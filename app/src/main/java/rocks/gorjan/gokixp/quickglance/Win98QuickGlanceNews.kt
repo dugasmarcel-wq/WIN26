@@ -19,7 +19,8 @@ data class Win98NewsItem(
     val url: String,
     val imageUrl: String? = null,
     val publishedAtMs: Long? = null,
-    val publishedLabel: String? = null
+    val publishedLabel: String? = null,
+    val topic: String = "World"
 )
 
 /**
@@ -30,68 +31,106 @@ data class Win98NewsItem(
  * finally the Google News visual page. This keeps headlines fast without accepting blank cards.
  */
 object Win98QuickGlanceNews {
-    private const val HOME_URL =
-        "https://news.google.com/home?hl=en-US&gl=US&ceid=US:en"
-    private const val FEED_URL =
-        "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-    // The Google RSS feed rarely provides any media URLs. BBC publishes
-    // first-party per-story media:thumbnail URLs in its public RSS feed, so
-    // prefer those photographed stories and keep Google as a fallback.
-    private const val PHOTO_FEED_URL = "https://feeds.bbci.co.uk/news/rss.xml"
-    private const val PHOTO_FALLBACK_URL = "https://feeds.bbci.co.uk/news/world/rss.xml"
-    private const val MAX_HOME_HTML_CHARS = 1_500_000
+    // Only free-access, direct-publisher RSS links. No paywalled Google News
+    // aggregation, tracking, subscription feeds, or background fetching.
+    private const val GAME_FEED = "https://www.gematsu.com/feed"
+    private const val GAME_BACKUP = "https://www.gamingonlinux.com/article_rss.php?newsonly"
+    private const val WORLD_FEED = "https://feeds.bbci.co.uk/news/world/rss.xml"
+    private const val WORLD_BACKUP = "https://rss.dw.com/xml/rss-en-world"
+    private const val CONFLICT_FEED = "https://www.aljazeera.com/xml/rss/all.xml"
     private const val MAX_ARTICLE_HTML_CHARS = 420_000
     private const val CACHE_TTL_MS = 10 * 60 * 1000L
 
+    private data class NewsFeed(val url: String, val source: String, val topic: String)
+    private val feeds = listOf(
+        NewsFeed(GAME_FEED, "Gematsu", "Gaming"),
+        NewsFeed(GAME_BACKUP, "GamingOnLinux", "Gaming"),
+        NewsFeed(WORLD_FEED, "BBC News", "World"),
+        NewsFeed(WORLD_BACKUP, "Deutsche Welle", "World"),
+        NewsFeed(CONFLICT_FEED, "Al Jazeera", "Conflicts")
+    )
+
+    private val conflictKeywords = Regex(
+        """(?i)\\b(war|wars|warfare|conflict|military|troops|invasion|airstrike|missile|"""
+        + """shelling|frontline|offensive|ceasefire|peace talks|hostage|gaza|ukraine|"""
+        + """russia|israel|iran|sudan|yemen|attack|drone strike|sanctions|"""
+        + """peace deal|armed forces|border clash|occupation|insurgent)\\b"""
+    )
+
     @Volatile
     private var cachedHeadlines: List<Win98NewsItem> = emptyList()
-
     @Volatile
     private var cachedAtMs: Long = 0L
 
+    private fun openAccessStory(item: Win98NewsItem): Boolean {
+        val host = runCatching { URL(item.url).host.lowercase(Locale.US) }.getOrNull()
+            ?: return false
+        val approved = listOf("gematsu.com", "gamingonlinux.com",
+            "bbc.com", "bbc.co.uk", "dw.com", "aljazeera.com")
+        if (approved.none { host == it || host.endsWith(".$it") }) return false
+        // Even on a free-access site, reject explicitly gated or member-only pieces.
+        val title = item.title.lowercase(Locale.US)
+        return listOf("subscribers only", "subscriber-only", "members only",
+            "member-only", "premium exclusive", "subscription required",
+            "sign in to read").none { it in title }
+    }
+
+    private fun rankStories(stories: List<Win98NewsItem>): List<Win98NewsItem> {
+        return stories.filter(::openAccessStory)
+            .distinctBy { normalizedTitle(it.title) }
+            .sortedWith(compareByDescending<Win98NewsItem> {
+                if (it.imageUrl.isNullOrBlank()) 0 else 1
+            }.thenByDescending { it.publishedAtMs ?: 0L })
+    }
+
+    private fun pickCuratedStories(all: List<Win98NewsItem>, limit: Int): List<Win98NewsItem> {
+        val gaming = rankStories(all.filter { it.topic == "Gaming" })
+        val conflict = rankStories(all.filter {
+            it.topic == "Conflicts" || conflictKeywords.containsMatchIn(it.title)
+        }).map { it.copy(topic = "Conflicts") }
+        val world = rankStories(all.filter { it.topic == "World" })
+        val groups = listOf(gaming, world, conflict)
+        val chosen = linkedMapOf<String, Win98NewsItem>()
+        // Rotate categories so the page does not become a wall of a single outlet.
+        for (index in 0 until maxOf(gaming.size, world.size, conflict.size)) {
+            for (group in groups) {
+                group.getOrNull(index)?.let { chosen.putIfAbsent(normalizedTitle(it.title), it) }
+                if (chosen.size >= limit) return chosen.values.toList()
+            }
+        }
+        return chosen.values.toList().take(limit)
+    }
+
     suspend fun fetchHeadlines(
-        limit: Int = 7,
+        limit: Int = 9,
         forceRefresh: Boolean = false
     ): Result<List<Win98NewsItem>> = withContext(Dispatchers.IO) {
         runCatching {
             val now = System.currentTimeMillis()
-            val cached = cachedHeadlines
-            if (!forceRefresh && cached.isNotEmpty() && now - cachedAtMs < CACHE_TTL_MS) {
-                return@runCatching cached.take(limit)
-            }
+            if (!forceRefresh && cachedHeadlines.isNotEmpty() &&
+                now - cachedAtMs < CACHE_TTL_MS
+            ) return@runCatching cachedHeadlines.take(limit)
 
-            val firstPhotoFeed = runCatching {
-                loadRssHeadlines(limit + 5, PHOTO_FEED_URL, "BBC News")
-                    .filter { !it.imageUrl.isNullOrBlank() && looksLikeUsableImage(it.imageUrl) }
-                    .take(limit)
-            }.getOrDefault(emptyList())
-            // Try the dedicated World feed only when the main image feed cannot
-            // supply enough photographed stories. No polling or prewarm fetches.
-            val photographed = if (firstPhotoFeed.size >= minOf(limit, 3)) firstPhotoFeed
-                else {
-                    val world = runCatching {
-                        loadRssHeadlines(limit + 5, PHOTO_FALLBACK_URL, "BBC News")
-                            .filter { !it.imageUrl.isNullOrBlank() && looksLikeUsableImage(it.imageUrl) }
-                    }.getOrDefault(emptyList())
-                    (firstPhotoFeed + world)
-                        .distinctBy { it.url }
-                        .take(limit)
+            // These requests run only after entering Quick Glance or pressing Refresh,
+            // never during page prewarming or in a persistent background service.
+            val result = coroutineScope {
+                val requests = feeds.map { feed ->
+                    async {
+                        runCatching {
+                            loadRssHeadlines(16, feed.url, feed.source)
+                                .map { it.copy(topic = feed.topic) }
+                        }.getOrDefault(emptyList())
+                    }
                 }
-            // Never claim a source has photos unless it actually provided
-            // media URLs. A brief publisher outage must not break Top Stories.
-            val result = if (photographed.size >= minOf(limit, 3)) {
-                photographed
-            } else {
-                val google = runCatching {
-                    loadRssHeadlines(limit, FEED_URL, "Google News")
-                }.getOrDefault(emptyList())
-                if (google.isNotEmpty()) google else
-                    if (photographed.isNotEmpty()) photographed else
-                        loadVisualHeadlines(limit)
+                pickCuratedStories(requests.awaitAll().flatten(), limit)
             }
-            cachedHeadlines = result
-            cachedAtMs = now
-            result
+            if (result.isNotEmpty()) {
+                cachedHeadlines = result
+                cachedAtMs = now
+            }
+            result.ifEmpty {
+                cachedHeadlines.takeIf { it.isNotEmpty() } ?: emptyList()
+            }
         }
     }
 
@@ -99,44 +138,20 @@ object Win98QuickGlanceNews {
         headlines: List<Win98NewsItem>
     ): Result<Map<String, String>> = withContext(Dispatchers.IO) {
         runCatching {
-            if (headlines.isEmpty()) return@runCatching emptyMap()
-
             coroutineScope {
-                // Publisher metadata requests run in parallel, so one slow publisher does not
-                // serialize seven 2-3 second waits.
-                val publisherImagesDeferred = headlines.take(7).map { item ->
-                    async {
-                        item.url to (
-                            item.imageUrl?.takeIf(::looksLikeUsableImage)
-                                ?: findPublisherImage(item.url)
-                        )
-                    }
-                }
-
-                // Google visual cards are only a fallback and run at the same time.
-                val visualDeferred = async {
-                    loadVisualHeadlines(maxOf(headlines.size, 12))
-                }
-
-                val publisherImages = publisherImagesDeferred.awaitAll().toMap()
-                val visual = visualDeferred.await()
-
-                val images = linkedMapOf<String, String>()
-                headlines.forEach { headline ->
-                    val image = publisherImages[headline.url]
-                        ?: findVisualMatch(headline, visual)?.imageUrl
-                    if (!image.isNullOrBlank() && looksLikeUsableImage(image)) {
-                        images[headline.url] = image
-                    }
-                }
-
-                if (images.isNotEmpty()) {
+                val candidates = headlines.filter { it.imageUrl.isNullOrBlank() }.take(5)
+                val result = candidates.map { item ->
+                    async { item.url to findPublisherImage(item.url) }
+                }.awaitAll()
+                    .mapNotNull { (url, photo) ->
+                        photo?.takeIf(::looksLikeUsableImage)?.let { url to it }
+                    }.toMap()
+                if (result.isNotEmpty()) {
                     cachedHeadlines = headlines.map { item ->
-                        item.copy(imageUrl = images[item.url] ?: item.imageUrl)
+                        item.copy(imageUrl = result[item.url] ?: item.imageUrl)
                     }
-                    cachedAtMs = System.currentTimeMillis()
                 }
-                images
+                result
             }
         }
     }
@@ -258,113 +273,11 @@ object Win98QuickGlanceNews {
         return links.toList()
     }
 
-    private fun loadVisualHeadlines(limit: Int): List<Win98NewsItem> {
-        val page = fetchHtml(HOME_URL, 4_000, MAX_HOME_HTML_CHARS) ?: return emptyList()
-        return parseVisualCards(page.html, limit)
-    }
-
-    private fun parseVisualCards(html: String, limit: Int): List<Win98NewsItem> {
-        if (html.isBlank()) return emptyList()
-
-        val items = mutableListOf<Win98NewsItem>()
-        var cursor = 0
-        var previousArticleEnd = 0
-
-        while (items.size < limit && cursor < html.length) {
-            val articleStart = html.indexOf("<article", cursor, ignoreCase = true)
-            if (articleStart < 0) break
-            val articleEndTag = html.indexOf("</article>", articleStart, ignoreCase = true)
-            if (articleEndTag < 0) break
-            val articleEnd = articleEndTag + "</article>".length
-            val article = html.substring(articleStart, articleEnd)
-
-            val headingHtml = firstMatch(
-                article,
-                listOf(
-                    Regex("""(?is)<h3\b[^>]*>(.*?)</h3>"""),
-                    Regex("""(?is)<h4\b[^>]*>(.*?)</h4>""")
-                )
-            )
-            val title = headingHtml?.let(::cleanHtmlText).orEmpty()
-
-            if (title.length >= 12) {
-                val href = headingHtml?.let {
-                    Regex("""(?is)href\s*=\s*["']([^"']+)["']""")
-                        .find(it)?.groupValues?.getOrNull(1)
-                } ?: Regex("""(?is)href\s*=\s*["']([^"']+)["']""")
-                    .find(article)?.groupValues?.getOrNull(1)
-
-                val storyUrl = href?.let(::normalizeGoogleNewsUrl)
-                if (storyUrl != null) {
-                    val sourceHtml = Regex(
-                        """(?is)<a\b[^>]*data-n-tid[^>]*>(.*?)</a>"""
-                    ).find(article)?.groupValues?.getOrNull(1)
-                    val source = sourceHtml?.let(::cleanHtmlText)
-                        ?.takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) }
-                        ?: "Google News"
-
-                    val publishedLabel = Regex(
-                        """(?is)<time\b[^>]*>(.*?)</time>"""
-                    ).find(article)?.groupValues?.getOrNull(1)
-                        ?.let(::cleanHtmlText)
-                        ?.takeIf { it.isNotBlank() }
-
-                    val imageContextStart = maxOf(previousArticleEnd, articleStart - 7000)
-                    val imageContextEnd = minOf(html.length, articleEnd + 3000)
-                    val imageContext = html.substring(imageContextStart, imageContextEnd)
-                    val imageUrl = extractVisualImageUrl(imageContext)
-
-                    items += Win98NewsItem(
-                        title = title,
-                        source = source,
-                        url = storyUrl,
-                        imageUrl = imageUrl,
-                        publishedLabel = publishedLabel
-                    )
-                }
-            }
-
-            previousArticleEnd = articleEnd
-            cursor = articleEnd
-        }
-
-        return items.distinctBy { normalizedTitle(it.title) }
-    }
-
     private fun normalizedTitle(value: String): String =
         cleanHtmlText(value)
             .lowercase(Locale.US)
             .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
             .trim()
-
-    private fun findVisualMatch(
-        headline: Win98NewsItem,
-        visual: List<Win98NewsItem>
-    ): Win98NewsItem? {
-        val target = normalizedTitle(headline.title)
-        visual.firstOrNull { normalizedTitle(it.title) == target }?.let { return it }
-
-        val targetTokens = titleTokens(headline.title)
-        if (targetTokens.isEmpty()) return null
-
-        return visual
-            .map { item ->
-                val candidate = titleTokens(item.title)
-                val intersection = targetTokens.intersect(candidate).size.toFloat()
-                val union = targetTokens.union(candidate).size.toFloat().coerceAtLeast(1f)
-                item to (intersection / union)
-            }
-            .filter { (_, score) -> score >= 0.55f }
-            .maxByOrNull { it.second }
-            ?.first
-    }
-
-    private fun titleTokens(value: String): Set<String> =
-        normalizedTitle(value)
-            .split(' ')
-            .filter { it.length >= 3 }
-            .take(14)
-            .toSet()
 
     private fun extractVisualImageUrl(html: String): String? {
         val imageTags = Regex("""(?is)<img\b[^>]*>""")
@@ -480,7 +393,7 @@ object Win98QuickGlanceNews {
     ): List<Win98NewsItem> {
         val connection = openConnection(
             feedUrl,
-            3_500,
+            4_000,
             "application/rss+xml,application/xml,text/xml"
         )
         try {
@@ -523,10 +436,10 @@ object Win98QuickGlanceNews {
                                 "pubdate" -> if (inItem) {
                                     publishedAtMs = parseRssDate(parser.nextText())
                                 }
-                                "description" -> if (inItem) {
-                                    val description = parser.nextText()
+                                "description", "content:encoded" -> if (inItem) {
+                                    val html = parser.nextText()
                                     if (imageUrl.isNullOrBlank()) {
-                                        imageUrl = extractVisualImageUrl(description)
+                                        imageUrl = extractVisualImageUrl(html)
                                     }
                                 }
                                 "media:content", "media:thumbnail", "enclosure",
@@ -554,7 +467,8 @@ object Win98QuickGlanceNews {
                         XmlPullParser.END_TAG -> if (
                             parser.name.equals("item", ignoreCase = true) && inItem
                         ) {
-                            if (title.isNotBlank() && link.startsWith("https://")) {
+                            if (title.isNotBlank() &&
+                                (link.startsWith("https://") || link.startsWith("http://"))) {
                                 val resolvedSource = source.ifBlank {
                                     title.substringAfterLast(" - ", defaultSource).trim()
                                 }

@@ -12790,7 +12790,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         ))
 
         storiesHeader.addView(TextView(this).apply {
-            text = "Top stories"
+            text = "Gaming  |  World  |  Conflicts"
             setTextColor(Color.WHITE)
             textSize = 17f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -12867,10 +12867,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             gravity = Gravity.CENTER
             setPadding(0, dp(1), 0, 0)
         }
-        sources.addView(createTinyNewsSource("BBC", "https://www.bbc.com/news"))
-        sources.addView(createTinyNewsSource("Google News", "https://news.google.com"))
-        sources.addView(createTinyNewsSource("Reuters", "https://www.reuters.com"))
-        sources.addView(createTinyNewsSource("AP", "https://apnews.com"))
+        sources.addView(createTinyNewsSource("Gaming", "https://www.gematsu.com/"))
+        sources.addView(createTinyNewsSource("BBC", "https://www.bbc.com/news/world"))
+        sources.addView(createTinyNewsSource("DW", "https://www.dw.com/en/top-stories/s-9097"))
+        sources.addView(createTinyNewsSource("Al Jazeera", "https://www.aljazeera.com/"))
         content.addView(sources, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -13815,8 +13815,11 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         // AOL pages are non-scrollable; swipe up anywhere on them.
                         // Quick Glance and Page 2 have scrollable content, so keep
                         // the lower gesture zone to avoid stealing ordinary scroll.
-                        val startsInSearchStrip = pageIndex == 3 || pageIndex == 4 ||
-                            win98PagerDownY >= win98SideSearchStartY(page)
+                        // Quick Glance is a dedicated, vertically scrollable news page:
+                        // never interpret an upward/downward swipe as launcher search.
+                        val startsInSearchStrip = pageIndex != 0 &&
+                            (pageIndex == 3 || pageIndex == 4 ||
+                                win98PagerDownY >= win98SideSearchStartY(page))
 
                         if (startsInSearchStrip && dy < 0f) {
                             // Do not steal a normal vertical touch immediately. Only capture
@@ -14241,7 +14244,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         })
 
         lifecycleScope.launch {
-            val result = Win98QuickGlanceNews.fetchHeadlines(7, forceRefresh)
+            val result = Win98QuickGlanceNews.fetchHeadlines(9, forceRefresh)
             if (
                 requestSerial != win98NewsRequestSerial ||
                 win98QuickPage == null ||
@@ -14418,7 +14421,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 else -> "${elapsed / 86_400_000L}d ago"
             }
         }
-        return if (age != null) "${item.source}  ·  $age" else item.source
+        val section = item.topic.ifBlank { "World" }.uppercase(Locale.US)
+        return if (age != null) "$section  ·  ${item.source}  ·  $age"
+            else "$section  ·  ${item.source}"
     }
 
     private fun loadQuickGlanceImage(view: ImageView, url: String?) {
@@ -16428,7 +16433,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
      * without hijacking taps, horizontal pager swipes or clock long-press dragging.
      */
     private fun win98SearchStartsOnWidget(event: MotionEvent): Boolean {
-        if (!themeManager.isClassicTheme() || win98CurrentPage !in 0..4 ||
+        if (!themeManager.isClassicTheme() || win98CurrentPage !in 1..4 ||
             defaultAppsGate != null || isStartMenuVisible ||
             (::contextMenu.isInitialized && contextMenu.visibility == View.VISIBLE) ||
             isTouchOnEditableEditText(event) || isTouchInFloatingWindow(event)
@@ -16439,7 +16444,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         } == true) return true
 
         return when (win98CurrentPage) {
-            0 -> win98QuickWidgetContainer?.let { isTouchInsideView(it, event) } == true
             1 -> (win98DesktopWidgetShelfScroll?.let {
                     isTouchInsideView(it, event)
                 } == true) ||
