@@ -5137,6 +5137,9 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
             
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                // Quick Glance/news uses vertical swipes exclusively for its own
+                // scrolling: no launcher search or notification-shade gesture.
+                if (themeManager.isClassicTheme() && win98CurrentPage == 0) return false
                 if (e1 != null) {
                     val deltaY = e2.y - e1.y
                     val deltaX = e2.x - e1.x
