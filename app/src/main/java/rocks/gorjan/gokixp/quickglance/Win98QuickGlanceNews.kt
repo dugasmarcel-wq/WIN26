@@ -24,11 +24,11 @@ data class Win98NewsItem(
 )
 
 /**
- * User-triggered Quick Glance news loader.
+ * On-demand Quick Glance news: gaming, world affairs and conflict reporting.
  *
- * Headlines come from the small Google News RSS feed first. Images are discovered separately
- * from RSS media fields, the resolved publisher page's og:image/twitter:image metadata, and
- * finally the Google News visual page. This keeps headlines fast without accepting blank cards.
+ * Pulls only direct RSS from a short allowlist of free-to-read publishers. Each
+ * story keeps its publisher attribution and URL; no Google News paywall aggregation
+ * or background refresh. Images prefer RSS media, then publisher OG metadata.
  */
 object Win98QuickGlanceNews {
     // Only free-access, direct-publisher RSS links. No paywalled Google News
@@ -51,10 +51,10 @@ object Win98QuickGlanceNews {
     )
 
     private val conflictKeywords = Regex(
-        """(?i)\\b(war|wars|warfare|conflict|military|troops|invasion|airstrike|missile|"""
+        """(?i)\b(war|wars|warfare|conflict|military|troops|invasion|airstrike|missile|"""
         + """shelling|frontline|offensive|ceasefire|peace talks|hostage|gaza|ukraine|"""
         + """russia|israel|iran|sudan|yemen|attack|drone strike|sanctions|"""
-        + """peace deal|armed forces|border clash|occupation|insurgent)\\b"""
+        + """peace deal|armed forces|border clash|occupation|insurgent)\b"""
     )
 
     @Volatile
@@ -86,9 +86,11 @@ object Win98QuickGlanceNews {
     private fun pickCuratedStories(all: List<Win98NewsItem>, limit: Int): List<Win98NewsItem> {
         val gaming = rankStories(all.filter { it.topic == "Gaming" })
         val conflict = rankStories(all.filter {
-            it.topic == "Conflicts" || conflictKeywords.containsMatchIn(it.title)
+            it.topic != "Gaming" && conflictKeywords.containsMatchIn(it.title)
         }).map { it.copy(topic = "Conflicts") }
-        val world = rankStories(all.filter { it.topic == "World" })
+        val world = rankStories(all.filter {
+            it.topic == "World" && !conflictKeywords.containsMatchIn(it.title)
+        })
         val groups = listOf(gaming, world, conflict)
         val chosen = linkedMapOf<String, Win98NewsItem>()
         // Rotate categories so the page does not become a wall of a single outlet.
