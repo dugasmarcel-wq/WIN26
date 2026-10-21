@@ -1758,7 +1758,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             dp(27)
         ))
         card.addView(
-            Win98WidgetViews.create(this, spec.id),
+            Win98WidgetViews.create(this, spec.id, pageIndex),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1813,6 +1813,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 clock -> 284
                 id == "mines" || id == "solitaire_desk" || id == "pinball" -> 300
                 id == "cyber_pet" -> 245
+                id == "notepad_98" -> 300
                 else -> 280
             }
             val minWidthDp = if (clock) 128 else if (id in setOf("mines", "solitaire_desk", "pinball")) 180 else 120

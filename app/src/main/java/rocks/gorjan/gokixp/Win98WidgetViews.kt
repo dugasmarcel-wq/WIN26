@@ -86,6 +86,11 @@ object Win98WidgetViews {
             "A touch drawing pad with an old Paint-like white canvas and local Clear button."
         ),
         Win98WidgetSpec(
+            "notepad_98",
+            "Notepad",
+            "Pin an editable, autosaved Notepad note to a Classic page. Select, create or open notes."
+        ),
+        Win98WidgetSpec(
             "calendar_clock_98",
             "Calendar + Clock 98",
             "Working horizontal calendar with live analog and digital clock."
@@ -102,7 +107,7 @@ object Win98WidgetViews {
         )
     )
 
-    fun create(activity: MainActivity, id: String): View {
+    fun create(activity: MainActivity, id: String, pageIndex: Int = 1): View {
         return when (id) {
             "desktop_pet" -> DesktopPetView(activity)
             "pipes" -> PipesView(activity)
@@ -113,6 +118,7 @@ object Win98WidgetViews {
             "farm_colony" -> Win98FarmColonyWidget.create(activity)
             "solitaire_desk" -> createEmbeddedSolitaire(activity)
             "doodle" -> createDoodlePad(activity)
+            "notepad_98" -> Win98NotepadWidget.create(activity, pageIndex)
             "calendar_clock_98" -> Win98CalendarClockWidget.create(activity)
             "calendar_clock_98_vertical" -> Win98CalendarClockWidget.create(activity, portrait = true)
             else -> TextView(activity).apply {
