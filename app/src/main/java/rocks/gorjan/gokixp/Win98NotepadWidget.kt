@@ -39,6 +39,7 @@ object Win98NotepadWidget {
         private var currentId: String? = null
         private var updating = false
         private var editArmed = false
+        private var editingTouchDown = false
         private val sidebar = LinearLayout(activity).apply { orientation = VERTICAL }
         private val title = TextView(activity).apply { textSize = 12f; setTextColor(Color.BLACK); typeface = Typeface.DEFAULT_BOLD }
         private val editor = EditText(activity).apply {
@@ -100,17 +101,26 @@ object Win98NotepadWidget {
             addView(body)
             addView(status, LayoutParams(-1, dp(21)))
             editor.setOnTouchListener { _, event ->
-                if (event.actionMasked == MotionEvent.ACTION_DOWN && !editArmed) {
-                    editArmed = true
-                    status.text = "Tap again to type. Swipe outside Notepad to change page."
-                    true
-                } else if (event.actionMasked == MotionEvent.ACTION_UP && editArmed && !editor.showSoftInputOnFocus) {
-                    editor.showSoftInputOnFocus = true
-                    editor.requestFocus()
-                    (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                        .showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
-                    false
-                } else false
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        editingTouchDown = editArmed
+                        if (!editArmed) {
+                            editArmed = true
+                            status.text = "Tap again to type. Swipe outside Notepad to change page."
+                            true
+                        } else false
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (editingTouchDown && !editor.showSoftInputOnFocus) {
+                            editor.showSoftInputOnFocus = true
+                            editor.requestFocus()
+                            (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                                .showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+                        }
+                        false
+                    }
+                    else -> false
+                }
             }
             editor.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -148,7 +158,7 @@ object Win98NotepadWidget {
         }
         private fun reload() {
             val data = all() ?: return
-            val filtered = data.filter { !it.isArchived && it.category == category }
+            val filtered = data.filter { !it.isArchived && (if (it.category == "long_term") "long_term" else "day_to_day") == category }
             val savedId = prefs.getString(pinPrefix + category, null)
             val selected = filtered.firstOrNull { it.id == currentId }
                 ?: filtered.firstOrNull { it.id == savedId } ?: filtered.firstOrNull()
@@ -175,7 +185,7 @@ object Win98NotepadWidget {
             editor.isEnabled = selected != null
             editor.showSoftInputOnFocus = false
             updating = false
-            status.text = if (selected?.reminderAt ?: 0L > System.currentTimeMillis()) "Reminder set" else "Tap twice to type"
+            status.text = if ((selected?.reminderAt ?: 0L) > System.currentTimeMillis()) "Reminder set" else "Tap twice to type"
         }
         private fun saveText(text: String) {
             val id = currentId ?: return

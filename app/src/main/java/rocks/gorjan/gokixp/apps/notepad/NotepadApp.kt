@@ -200,7 +200,7 @@ class NotepadApp(
         currentNote = if (lastNoteId != null) {
             val lastNote = notes.find { it.id == lastNoteId }
             // Only use last note if it's not archived
-            if (lastNote != null && !lastNote.isArchived && lastNote.category == activeCategory) {
+            if (lastNote != null && !lastNote.isArchived && (if (lastNote.category == "long_term") "long_term" else "day_to_day") == activeCategory) {
                 lastNote
             } else {
                 getFilteredNotes().firstOrNull()
@@ -386,7 +386,7 @@ class NotepadApp(
      * Get filtered notes based on current view (active or archived)
      */
     private fun getFilteredNotes(): List<Note> {
-        return notes.filter { it.isArchived == showingArchivedNotes && it.category == activeCategory }
+        return notes.filter { it.isArchived == showingArchivedNotes && (if (it.category == "long_term") "long_term" else "day_to_day") == activeCategory }
     }
 
     private fun updateCategoryTabs() {
