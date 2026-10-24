@@ -3,240 +3,255 @@ package rocks.gorjan.gokixp
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.text.Editable
-import android.text.InputType
 import android.text.TextWatcher
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import rocks.gorjan.gokixp.apps.notepad.Note
 import java.util.Calendar
 import java.util.UUID
 
-/** Persistent, Classic page-resident two-tap Notepad sharing the full app database. */
+/**
+ * Reuses the actual program_notepad.xml shell (Win98 fonts, menu strip,
+ * scrollbars, list, editor, bottom resize chrome) instead of drawing a
+ * second unrelated imitation. The existing movable host pins this view.
+ */
 object Win98NotepadWidget {
-    fun create(activity: MainActivity, pageIndex: Int): View = PinnedNotepad(activity, pageIndex)
+    fun create(activity: MainActivity, pageIndex: Int): View =
+        EmbeddedNotepad(activity, pageIndex)
 
-    private class PinnedNotepad(private val activity: MainActivity, page: Int) : LinearLayout(activity) {
+    private class EmbeddedNotepad(private val activity: MainActivity, page: Int) :
+        LinearLayout(activity) {
         private val prefs = activity.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
         private val gson = Gson()
         private val type = object : TypeToken<MutableList<Note>>() {}.type
-        private val pinPrefix = "win98_notepad_widget_note_${page}_"
+        private val pageKey = "win98_notepad_widget_note_${page}_"
         private val categoryKey = "win98_notepad_widget_category_${page}"
-        private val sideKey = "win98_notepad_widget_sidebar_${page}"
+        private val sidebarKey = "win98_notepad_widget_sidebar_${page}"
         private var category = prefs.getString(categoryKey, "day_to_day") ?: "day_to_day"
-        private var currentId: String? = null
-        private var updating = false
-        private var editArmed = false
-        private var editingTouchDown = false
-        private val sidebar = LinearLayout(activity).apply { orientation = VERTICAL }
-        private val title = TextView(activity).apply { textSize = 12f; setTextColor(Color.BLACK); typeface = Typeface.DEFAULT_BOLD }
-        private val editor = EditText(activity).apply {
-            setTextColor(Color.BLACK)
-            setTextSize(13f)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            gravity = Gravity.TOP or Gravity.START
-            setPadding(dp(5), dp(6), dp(5), dp(6))
-            setBackgroundColor(Color.WHITE)
-            isFocusableInTouchMode = true
-            showSoftInputOnFocus = false
-            hint = "Tap twice to edit"
-        }
-        private val day = button("Day-to-Day") { changeCategory("day_to_day") }
-        private val long = button("Long-Term") { changeCategory("long_term") }
-        private val sidebarToggle = button("<") { toggleSidebar() }
-        private val list = LinearLayout(activity).apply { orientation = VERTICAL }
-        private val status = TextView(activity).apply { textSize = 10f; setTextColor(Color.DKGRAY); gravity = Gravity.CENTER_VERTICAL }
-        private fun dp(x: Int) = (resources.displayMetrics.density * x + .5f).toInt()
-        private fun button(label: String, click: () -> Unit) = TextView(activity).apply {
-            text = label
-            textSize = 11f
-            setTextColor(Color.BLACK)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                setColor(0xFFD3CEC7.toInt())
-                setStroke(dp(1), 0xFF737373.toInt())
+        private var noteId: String? = null
+        private var rebinding = false
+        private var armed = false
+        private var firstTap = false
+        private var downX = 0f
+        private var downY = 0f
+        private val shell = activity.layoutInflater.inflate(R.layout.program_notepad, this, false)
+        private val editor = shell.findViewById<EditText>(R.id.notes)
+        private val noteList = shell.findViewById<RecyclerView>(R.id.notes_list)
+        private val sidebar = shell.findViewById<LinearLayout>(R.id.notes_list_container)
+        private val toggle = shell.findViewById<TextView>(R.id.expand_button)
+        private val day = shell.findViewById<TextView>(R.id.notepad_day_tab)
+        private val long = shell.findViewById<TextView>(R.id.notepad_long_tab)
+        private var visibleNotes = listOf<Note>()
+
+        private val adapter = object : RecyclerView.Adapter<NoteHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NoteHolder {
+                val label = TextView(activity).apply {
+                    setTextColor(android.graphics.Color.BLACK)
+                    textSize = 12f
+                    setPadding(dp(7), dp(6), dp(2), dp(6))
+                }
+                return NoteHolder(label)
             }
-            setOnClickListener { click() }
-            isClickable = true
+            override fun getItemCount() = visibleNotes.size
+            override fun onBindViewHolder(holder: NoteHolder, position: Int) {
+                val note = visibleNotes[position]
+                holder.label.text = note.title
+                holder.label.setBackgroundColor(
+                    if (note.id == noteId) android.graphics.Color.WHITE
+                    else android.graphics.Color.TRANSPARENT
+                )
+                holder.label.setOnClickListener {
+                    noteId = note.id
+                    disarm()
+                    reload()
+                }
+            }
         }
-        private fun row() = LinearLayout(activity).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        private fun LinearLayout.slot(child: View, weight: Float = 1f, height: Int = 30) {
-            addView(child, LayoutParams(0, dp(height), weight).apply { marginEnd = dp(2) })
-        }
+        private class NoteHolder(val label: TextView) : RecyclerView.ViewHolder(label)
+        private fun dp(n: Int) = (n * resources.displayMetrics.density + 0.5f).toInt()
+
         init {
             orientation = VERTICAL
-            setBackgroundColor(0xFFD3CEC7.toInt())
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            val tabs = row().apply { slot(day); slot(long) }
-            addView(tabs)
-            val commands = row().apply {
-                slot(sidebarToggle, .6f)
-                slot(button("New") { createNote() })
-                slot(button("Remind") { remind() })
-                slot(button("Open") { openFull() })
+            // Use the original layout's layout-weight editor, not a separately
+            // fixed white rectangle. The host can still resize the entire widget.
+            addView(shell, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(470)))
+            noteList.layoutManager = LinearLayoutManager(activity)
+            noteList.adapter = adapter
+            day.setOnClickListener { switchTab("day_to_day") }
+            long.setOnClickListener { switchTab("long_term") }
+            shell.findViewById<TextView>(R.id.add_note_button).setOnClickListener { addNote() }
+            toggle.visibility = VISIBLE
+            toggle.setOnClickListener {
+                val expanded = sidebar.visibility != VISIBLE
+                sidebar.visibility = if (expanded) VISIBLE else GONE
+                toggle.text = if (expanded) "<" else ">"
+                prefs.edit().putBoolean(sidebarKey, expanded).apply()
             }
-            addView(commands, LayoutParams(-1, dp(34)))
-            val body = row().apply { gravity = Gravity.TOP }
-            sidebar.setBackgroundColor(0xFFD3CEC7.toInt())
-            val scroll = ScrollView(activity)
-            scroll.addView(list)
-            sidebar.addView(scroll, LayoutParams(-1, dp(430)))
-            body.addView(sidebar, LayoutParams(dp(104), dp(430)))
-            val right = LinearLayout(activity).apply { orientation = VERTICAL }
-            right.addView(title, LayoutParams(-1, dp(24)))
-            right.addView(editor, LayoutParams(-1, dp(400)))
-            body.addView(right, LayoutParams(0, dp(430), 1f))
-            addView(body)
-            addView(status, LayoutParams(-1, dp(21)))
+            val expanded = prefs.getBoolean(sidebarKey, true)
+            sidebar.visibility = if (expanded) VISIBLE else GONE
+            toggle.text = if (expanded) "<" else ">"
+            shell.findViewById<TextView>(R.id.notepad_archive_button).apply {
+                text = "Remind"
+                setOnClickListener { reminderDialog() }
+            }
+            shell.findViewById<TextView>(R.id.notepad_add_image).apply {
+                text = "Open Full"
+                setOnClickListener {
+                    noteId?.let { prefs.edit().putString("notepad_last_note_id", it).apply() }
+                    prefs.edit().putString("notepad_active_category", category).apply()
+                    activity.launchSystemApp("system.notepad")
+                }
+            }
+            // First stationary tap only arms the editor; second enables keyboard.
+            // Dragging on the editor before it is armed does not open the IME.
+            editor.showSoftInputOnFocus = false
             editor.setOnTouchListener { _, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        editingTouchDown = editArmed
-                        if (!editArmed) {
-                            editArmed = true
-                            status.text = "Tap again to type. Swipe outside Notepad to change page."
-                            true
-                        } else false
+                        firstTap = !armed
+                        downX = event.rawX
+                        downY = event.rawY
+                        if (firstTap) true else false
                     }
                     MotionEvent.ACTION_UP -> {
-                        if (editingTouchDown && !editor.showSoftInputOnFocus) {
-                            editor.showSoftInputOnFocus = true
-                            editor.requestFocus()
-                            (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                                .showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+                        if (firstTap) {
+                            val movement = kotlin.math.abs(event.rawX - downX) +
+                                kotlin.math.abs(event.rawY - downY)
+                            if (movement < dp(12)) armed = true
+                            firstTap = false
+                            true
+                        } else {
+                            if (armed && !editor.showSoftInputOnFocus) {
+                                editor.showSoftInputOnFocus = true
+                                editor.requestFocus()
+                                (activity.getSystemService(Context.INPUT_METHOD_SERVICE)
+                                    as InputMethodManager).showSoftInput(
+                                    editor, InputMethodManager.SHOW_IMPLICIT
+                                )
+                            }
+                            false
                         }
-                        false
                     }
-                    else -> false
+                    MotionEvent.ACTION_CANCEL -> { firstTap = false; false }
+                    else -> firstTap
                 }
             }
             editor.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun afterTextChanged(s: Editable?) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    if (!updating) saveText(s?.toString().orEmpty())
+                    if (!rebinding) saveText(s?.toString().orEmpty())
                 }
             })
-            sidebar.visibility = if (prefs.getBoolean(sideKey, true)) VISIBLE else GONE
-            sidebarToggle.text = if (sidebar.visibility == VISIBLE) "<" else ">"
             reload()
         }
-        private fun notes(): MutableList<Note>? = try {
-            val json = prefs.getString("notepad_notes", null)
-            if (json.isNullOrEmpty()) mutableListOf()
-            else gson.fromJson<MutableList<Note>>(json, type) ?: mutableListOf()
+
+        private fun disarm() {
+            armed = false
+            firstTap = false
+            editor.showSoftInputOnFocus = false
+            editor.clearFocus()
+            (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                .hideSoftInputFromWindow(editor.windowToken, 0)
+        }
+
+        private fun getNotes(): MutableList<Note>? = try {
+            val data = prefs.getString("notepad_notes", null)
+            if (data.isNullOrBlank()) mutableListOf()
+            else gson.fromJson<MutableList<Note>>(data, type) ?: mutableListOf()
         } catch (_: Exception) { null }
-        private fun all(): MutableList<Note>? {
-            val data = notes() ?: return null
-            if (data.isEmpty()) {
-                data.add(Note(UUID.randomUUID().toString(), "Note 1",
+
+        private fun allNotes(): MutableList<Note>? {
+            val notes = getNotes() ?: return null
+            if (notes.isEmpty()) {
+                notes.add(Note(UUID.randomUUID().toString(), "Note 1",
                     prefs.getString("notepad_content", "").orEmpty()))
-                prefs.edit().putString("notepad_notes", gson.toJson(data))
+                prefs.edit().putString("notepad_notes", gson.toJson(notes))
                     .remove("notepad_content").apply()
             }
-            return data
+            return notes
         }
-        private fun changeCategory(c: String) {
-            category = c
-            prefs.edit().putString(categoryKey, c).apply()
-            currentId = null
-            editArmed = false
-            editor.showSoftInputOnFocus = false
-            reload()
-        }
+
         private fun reload() {
-            val data = all() ?: return
-            val filtered = data.filter { !it.isArchived && (if (it.category == "long_term") "long_term" else "day_to_day") == category }
-            val savedId = prefs.getString(pinPrefix + category, null)
-            val selected = filtered.firstOrNull { it.id == currentId }
-                ?: filtered.firstOrNull { it.id == savedId } ?: filtered.firstOrNull()
-            currentId = selected?.id
-            if (selected != null) prefs.edit().putString(pinPrefix + category, selected.id).apply()
-            day.setBackgroundColor(if (category == "day_to_day") Color.WHITE else 0xFFD3CEC7.toInt())
-            long.setBackgroundColor(if (category == "long_term") Color.WHITE else 0xFFD3CEC7.toInt())
-            list.removeAllViews()
-            filtered.forEach { note ->
-                val entry = button(note.title.ifBlank { "Untitled" }) {
-                    currentId = note.id
-                    editArmed = false
-                    editor.showSoftInputOnFocus = false
-                    reload()
-                }
-                entry.gravity = Gravity.CENTER_VERTICAL or Gravity.START
-                entry.setPadding(dp(5), 0, dp(2), 0)
-                entry.setBackgroundColor(if (selected?.id == note.id) Color.WHITE else 0xFFD3CEC7.toInt())
-                list.addView(entry, LayoutParams(-1, dp(39)))
+            val notes = allNotes() ?: return
+            visibleNotes = notes.filter {
+                !it.isArchived &&
+                    (if (it.category == "long_term") "long_term" else "day_to_day") == category
             }
-            updating = true
-            title.text = selected?.title ?: "No notes in this tab"
+            val selected = visibleNotes.firstOrNull { it.id == noteId }
+                ?: visibleNotes.firstOrNull {
+                    it.id == prefs.getString(pageKey + category, null)
+                } ?: visibleNotes.firstOrNull()
+            noteId = selected?.id
+            selected?.let { prefs.edit().putString(pageKey + category, it.id).apply() }
+            day.setBackgroundColor(if (category == "day_to_day")
+                android.graphics.Color.WHITE else 0xFFD3CEC7.toInt())
+            long.setBackgroundColor(if (category == "long_term")
+                android.graphics.Color.WHITE else 0xFFD3CEC7.toInt())
+            adapter.notifyDataSetChanged()
+            rebinding = true
             editor.setText(selected?.content.orEmpty())
             editor.isEnabled = selected != null
-            editor.showSoftInputOnFocus = false
-            updating = false
-            status.text = if ((selected?.reminderAt ?: 0L) > System.currentTimeMillis()) "Reminder set" else "Tap twice to type"
+            editor.hint = if (selected == null) "Add a note" else ""
+            rebinding = false
         }
-        private fun saveText(text: String) {
-            val id = currentId ?: return
-            val data = notes() ?: return
-            val item = data.firstOrNull { it.id == id && !it.isArchived } ?: return
-            if (item.content != text) {
-                item.content = text
-                prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
-            }
-        }
-        private fun createNote() {
-            val data = all() ?: return
-            val note = Note(UUID.randomUUID().toString(), "Note ${data.size + 1}", "", category = category)
-            data.add(note)
+
+        private fun saveText(value: String) {
+            val id = noteId ?: return
+            val data = getNotes() ?: return
+            val note = data.firstOrNull { it.id == id && !it.isArchived } ?: return
+            if (note.content == value) return
+            note.content = value
             prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
-            currentId = note.id
+        }
+
+        private fun switchTab(value: String) {
+            if (value == category) return
+            disarm()
+            category = value
+            noteId = null
+            prefs.edit().putString(categoryKey, value).apply()
             reload()
         }
-        private fun toggleSidebar() {
-            val expanded = sidebar.visibility != VISIBLE
-            sidebar.visibility = if (expanded) VISIBLE else GONE
-            sidebarToggle.text = if (expanded) "<" else ">"
-            prefs.edit().putBoolean(sideKey, expanded).apply()
+
+        private fun addNote() {
+            val data = allNotes() ?: return
+            val note = Note(UUID.randomUUID().toString(), "Note ${data.size + 1}",
+                "", category = category)
+            data.add(note)
+            prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
+            noteId = note.id
+            disarm()
+            reload()
         }
-        private fun remind() {
-            val id = currentId ?: return
-            val cal = Calendar.getInstance()
+
+        private fun reminderDialog() {
+            val id = noteId ?: return
+            val now = Calendar.getInstance()
             DatePickerDialog(activity, { _, year, month, day ->
-                val time = Calendar.getInstance().apply { set(year, month, day) }
                 TimePickerDialog(activity, { _, hour, minute ->
-                    time.set(Calendar.HOUR_OF_DAY, hour)
-                    time.set(Calendar.MINUTE, minute)
-                    time.set(Calendar.SECOND, 0)
-                    val at = time.timeInMillis
-                    if (at <= System.currentTimeMillis()) {
-                        status.text = "Choose a future date and time"
-                        return@TimePickerDialog
-                    }
-                    val data = notes() ?: return@TimePickerDialog
+                    val whenAt = Calendar.getInstance().apply {
+                        set(year, month, day, hour, minute, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                    if (whenAt <= System.currentTimeMillis()) return@TimePickerDialog
+                    val data = getNotes() ?: return@TimePickerDialog
                     val note = data.firstOrNull { it.id == id } ?: return@TimePickerDialog
-                    note.reminderAt = at
+                    note.reminderAt = whenAt
                     prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
-                    Win98NoteReminderReceiver.schedule(activity, id, note.title, at)
-                    status.text = "Reminder scheduled"
-                }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), false).show()
-            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
-        }
-        private fun openFull() {
-            currentId?.let { prefs.edit().putString("notepad_last_note_id", it).apply() }
-            prefs.edit().putString("notepad_active_category", category).apply()
-            activity.launchSystemApp("system.notepad")
+                    Win98NoteReminderReceiver.schedule(activity, id, note.title, whenAt)
+                }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
+            }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
         }
     }
 }
