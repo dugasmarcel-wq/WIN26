@@ -67,6 +67,10 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".Win98NoteReminderReceiver"
+            android:exported="false" />
+
         <!-- Notification Listener Service for notification dots -->
         <service
             android:name=".NotificationListenerService"

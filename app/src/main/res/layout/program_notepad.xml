@@ -5,6 +5,21 @@
     android:orientation="vertical"
     android:background="?windowBackgroundColor">
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="31dp"
+        android:orientation="horizontal"
+        android:background="#D3CEC7">
+        <TextView android:id="@+id/notepad_day_tab"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="match_parent" android:gravity="center"
+            android:text="Day-to-Day" android:textColor="#000000" android:clickable="true"/>
+        <TextView android:id="@+id/notepad_long_tab"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="match_parent" android:gravity="center"
+            android:text="Long-Term" android:textColor="#000000" android:clickable="true"/>
+    </LinearLayout>
+
     <!-- Menu Bar-->
     <LinearLayout
         android:layout_width="match_parent"
@@ -104,7 +119,7 @@
             android:clickable="true"
             android:focusable="true"
             android:layout_marginTop="-3dp"
-            android:visibility="gone"/>
+            android:visibility="visible"/>
 
         <LinearLayout
             android:layout_width="match_parent"

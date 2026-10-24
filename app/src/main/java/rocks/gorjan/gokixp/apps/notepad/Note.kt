@@ -5,5 +5,7 @@ data class Note(
     var title: String,
     var content: String,
     var imageUris: MutableList<String> = mutableListOf(),  // List of permanent URI strings
-    var isArchived: Boolean = false  // Archive status
+    var isArchived: Boolean = false, // Archive status
+    var category: String = "day_to_day",
+    var reminderAt: Long = 0L
 )

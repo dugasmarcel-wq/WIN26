@@ -1813,7 +1813,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 clock -> 284
                 id == "mines" || id == "solitaire_desk" || id == "pinball" -> 300
                 id == "cyber_pet" -> 245
-                id == "notepad_98" -> 300
+                id == "notepad_98" -> 330
                 else -> 280
             }
             val minWidthDp = if (clock) 128 else if (id in setOf("mines", "solitaire_desk", "pinball")) 180 else 120

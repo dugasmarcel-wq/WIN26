@@ -59,6 +59,9 @@ class NotepadApp(
     private var isProgrammaticChange = false
     private var noteInMoveMode: Note? = null
     private var showingArchivedNotes = false  // Track if we're viewing archived notes
+    private var activeCategory = "day_to_day"
+    private var dayTab: TextView? = null
+    private var longTab: TextView? = null
 
     // UI references
     private var notesEditText: EditText? = null
@@ -84,6 +87,27 @@ class NotepadApp(
         addNoteButton = contentView.findViewById(R.id.add_note_button)
         archiveButton = contentView.findViewById(R.id.notepad_archive_button)
         imageGallery = contentView.findViewById(R.id.image_gallery)
+        dayTab = contentView.findViewById(R.id.notepad_day_tab)
+        longTab = contentView.findViewById(R.id.notepad_long_tab)
+        activeCategory = prefs.getString("notepad_active_category", "day_to_day") ?: "day_to_day"
+        fun switchCategory(category: String) {
+            currentNote?.content = notesEditText?.text.toString()
+            saveNotes()
+            activeCategory = category
+            prefs.edit().putString("notepad_active_category", category).apply()
+            currentNote = getFilteredNotes().firstOrNull()
+            saveLastNoteId()
+            isProgrammaticChange = true
+            notesEditText?.setText(currentNote?.content.orEmpty())
+            isProgrammaticChange = false
+            currentNote?.let { loadNoteImages(it) } ?: run { imageGallery?.visibility = View.GONE }
+            updateWindowTitle()
+            refreshNotesList()
+            updateCategoryTabs()
+        }
+        dayTab?.setOnClickListener { switchCategory("day_to_day") }
+        longTab?.setOnClickListener { switchCategory("long_term") }
+        updateCategoryTabs()
 
         // Setup Notes RecyclerView
         notesAdapter = NotesAdapter()
@@ -176,7 +200,7 @@ class NotepadApp(
         currentNote = if (lastNoteId != null) {
             val lastNote = notes.find { it.id == lastNoteId }
             // Only use last note if it's not archived
-            if (lastNote != null && !lastNote.isArchived) {
+            if (lastNote != null && !lastNote.isArchived && lastNote.category == activeCategory) {
                 lastNote
             } else {
                 getFilteredNotes().firstOrNull()
@@ -199,10 +223,16 @@ class NotepadApp(
         // Initial list refresh
         refreshNotesList()
 
+        // The restore handle remains visible while the list retracts.
+        expandButton?.visibility = View.VISIBLE
+        isListExpanded = prefs.getBoolean("notepad_sidebar_expanded", true)
+        notesListContainer?.visibility = if (isListExpanded) View.VISIBLE else View.GONE
+        expandButton?.text = if (isListExpanded) "<" else ">"
         // Expand/collapse button
         expandButton?.setOnClickListener {
             onSoundPlay("click")
             isListExpanded = !isListExpanded
+            prefs.edit().putBoolean("notepad_sidebar_expanded", isListExpanded).apply()
             if (isListExpanded) {
                 notesListContainer?.visibility = View.VISIBLE
                 expandButton?.text = "<"
@@ -227,7 +257,8 @@ class NotepadApp(
                 title = "Note ${notes.size + 1}",
                 content = "",
                 imageUris = mutableListOf(),
-                isArchived = showingArchivedNotes  // Match current view
+                isArchived = showingArchivedNotes, // Match current view
+                category = activeCategory
             )
             notes.add(newNote)
             saveNotes()
@@ -355,7 +386,12 @@ class NotepadApp(
      * Get filtered notes based on current view (active or archived)
      */
     private fun getFilteredNotes(): List<Note> {
-        return notes.filter { it.isArchived == showingArchivedNotes }
+        return notes.filter { it.isArchived == showingArchivedNotes && it.category == activeCategory }
+    }
+
+    private fun updateCategoryTabs() {
+        dayTab?.setBackgroundColor(if (activeCategory == "day_to_day") Color.WHITE else 0xFFD3CEC7.toInt())
+        longTab?.setBackgroundColor(if (activeCategory == "long_term") Color.WHITE else 0xFFD3CEC7.toInt())
     }
 
     /**
@@ -748,7 +784,7 @@ class NotepadApp(
 
             // Update positions in main notes list
             // Remove all filtered notes from main list, then re-add in new order
-            val otherNotes = notes.filter { it.isArchived != showingArchivedNotes }
+            val otherNotes = notes.filter { it.isArchived != showingArchivedNotes || it.category != activeCategory }
             notes.clear()
             notes.addAll(otherNotes)
             notes.addAll(filteredNotes)
