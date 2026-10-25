@@ -1744,6 +1744,12 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 intArrayOf(Color.rgb(0, 0, 128), Color.rgb(0, 96, 192))
             )
         }
+        if (spec.id == "notepad_98") {
+            header.addView(ImageView(this).apply {
+                setImageDrawable(AppCompatResources.getDrawable(this@MainActivity, themeManager.getNotepadIcon()))
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }, LinearLayout.LayoutParams(dp(19), dp(19)).apply { marginEnd = dp(5) })
+        }
         header.addView(TextView(this).apply {
             text = spec.title
             setTextColor(Color.WHITE)

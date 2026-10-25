@@ -58,6 +58,7 @@ object Win98NotepadWidget {
                 val label = TextView(activity).apply {
                     setTextColor(android.graphics.Color.BLACK)
                     textSize = 12f
+                    typeface = activity.getThemePrimaryFont()
                     setPadding(dp(7), dp(6), dp(2), dp(6))
                 }
                 return NoteHolder(label)
@@ -105,7 +106,7 @@ object Win98NotepadWidget {
                 setOnClickListener { reminderDialog() }
             }
             shell.findViewById<TextView>(R.id.notepad_add_image).apply {
-                text = "Open Full"
+                text = "Open"
                 setOnClickListener {
                     noteId?.let { prefs.edit().putString("notepad_last_note_id", it).apply() }
                     prefs.edit().putString("notepad_active_category", category).apply()
