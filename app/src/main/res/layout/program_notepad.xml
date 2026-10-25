@@ -50,8 +50,8 @@
             android:text="Help"/>
         <TextView
             android:id="@+id/expand_button"
-            android:layout_width="24dp"
-            android:layout_height="17dp"
+            android:layout_width="40dp"
+            android:layout_height="30dp"
             android:text=">"
             android:textColor="@color/black"
             android:textSize="9sp"
@@ -98,13 +98,13 @@
 
         <LinearLayout
             android:id="@+id/notes_list_container"
-            android:layout_width="100dp"
+            android:layout_width="84dp"
             android:layout_height="match_parent"
             android:orientation="vertical">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/notes_list"
-                android:layout_width="100dp"
+                android:layout_width="84dp"
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@android:color/transparent" />
@@ -113,7 +113,7 @@
             <TextView
                 android:id="@+id/add_note_button"
                 style="?winButtonStyle"
-                android:layout_width="94dp"
+                android:layout_width="78dp"
                 android:layout_height="25dp"
                 android:layout_marginLeft="3dp"
                 android:layout_marginBottom="3dp"

@@ -18,6 +18,9 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import rocks.gorjan.gokixp.apps.notepad.Note
 import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -57,7 +60,7 @@ object Win98NotepadWidget {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NoteHolder {
                 val label = TextView(activity).apply {
                     setTextColor(android.graphics.Color.BLACK)
-                    textSize = 12f
+                    textSize = 10.5f
                     typeface = activity.getThemePrimaryFont()
                     setPadding(dp(7), dp(6), dp(2), dp(6))
                 }
@@ -71,6 +74,10 @@ object Win98NotepadWidget {
                     if (note.id == noteId) android.graphics.Color.WHITE
                     else android.graphics.Color.TRANSPARENT
                 )
+                holder.label.setOnLongClickListener {
+                    renameNote(note)
+                    true
+                }
                 holder.label.setOnClickListener {
                     noteId = note.id
                     disarm()
@@ -208,12 +215,47 @@ object Win98NotepadWidget {
         }
 
         private fun saveText(value: String) {
+            if (category == "day_to_day" && value.isNotBlank()) {
+                val today = SimpleDateFormat("yyyy MMM d", Locale.ENGLISH).format(Date())
+                val key = "win98_notepad_daily_created_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                val notesToday = getNotes() ?: return
+                val existing = prefs.getString(key, null)
+                if (existing == null) {
+                    val current = notesToday.firstOrNull { it.id == noteId }
+                    if (current != null && current.content.isBlank()) {
+                        current.title = today
+                        prefs.edit().putString(key, current.id).apply()
+                        prefs.edit().putString("notepad_notes", gson.toJson(notesToday)).apply()
+                        adapter.notifyDataSetChanged()
+                    } else {
+                        val fresh = Note(UUID.randomUUID().toString(), today, value, category = "day_to_day")
+                        notesToday.add(fresh)
+                        prefs.edit().putString(key, fresh.id).putString("notepad_notes", gson.toJson(notesToday)).apply()
+                        noteId = fresh.id
+                        reload()
+                        return
+                    }
+                }
+            }
             val id = noteId ?: return
             val data = getNotes() ?: return
             val note = data.firstOrNull { it.id == id && !it.isArchived } ?: return
             if (note.content == value) return
             note.content = value
             prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
+        }
+
+        private fun renameNote(note: Note) {
+            val input = EditText(activity).apply { setSingleLine(true); setText(note.title); selectAll() }
+            Win98Dialogs.showCustom(activity, "Rename Note", input, "Save", onPositive = {
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    val notes = getNotes() ?: return@showCustom
+                    notes.firstOrNull { it.id == note.id }?.title = name
+                    prefs.edit().putString("notepad_notes", gson.toJson(notes)).apply()
+                    reload()
+                }
+            })
         }
 
         private fun switchTab(value: String) {

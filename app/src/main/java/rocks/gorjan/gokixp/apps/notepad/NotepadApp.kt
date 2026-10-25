@@ -9,6 +9,9 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.text.Editable
 import android.util.Log
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -356,6 +359,19 @@ class NotepadApp(
 
             override fun afterTextChanged(s: android.text.Editable?) {
                 // Auto-save current note content
+                if (activeCategory == "day_to_day" && !s.isNullOrBlank()) {
+                    val todayKey = "win98_notepad_daily_created_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                    if (!prefs.contains(todayKey)) {
+                        val dateName = SimpleDateFormat("yyyy MMM d", Locale.ENGLISH).format(Date())
+                        val current = currentNote
+                        if (current != null && current.content.isBlank()) {
+                            current.title = dateName
+                            prefs.edit().putString(todayKey, current.id).apply()
+                            refreshNotesList()
+                            updateWindowTitle()
+                        }
+                    }
+                }
                 currentNote?.content = s.toString()
                 saveNotes()
             }
