@@ -358,7 +358,8 @@ class NotepadApp(
             }
 
             override fun afterTextChanged(s: android.text.Editable?) {
-                // Auto-save current note content
+                if (isProgrammaticChange) return
+                // Create the dated note only when the user actually writes.
                 if (activeCategory == "day_to_day" && !s.isNullOrBlank()) {
                     val todayKey = "win98_notepad_daily_created_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
                     if (!prefs.contains(todayKey)) {
@@ -369,6 +370,30 @@ class NotepadApp(
                             prefs.edit().putString(todayKey, current.id).apply()
                             refreshNotesList()
                             updateWindowTitle()
+                        } else if (current != null) {
+                            // Keep older note text intact; move only newly typed text
+                            // into today's entry instead of copying yesterday's note.
+                            val old = current.content
+                            val text = s.toString()
+                            val prefix = old.commonPrefixWith(text).length
+                            val a = old.substring(prefix)
+                            val b = text.substring(prefix)
+                            val suffix = a.reversed().commonPrefixWith(b.reversed()).length
+                            val inserted = b.dropLast(suffix)
+                            if (inserted.isNotEmpty()) {
+                                val dated = Note(java.util.UUID.randomUUID().toString(),
+                                    dateName, inserted, category = "day_to_day")
+                                notes.add(dated)
+                                currentNote = dated
+                                prefs.edit().putString(todayKey, dated.id).apply()
+                                saveLastNoteId()
+                                isProgrammaticChange = true
+                                notesEditText?.setText(inserted)
+                                notesEditText?.setSelection(inserted.length)
+                                isProgrammaticChange = false
+                                refreshNotesList()
+                                updateWindowTitle()
+                            }
                         }
                     }
                 }

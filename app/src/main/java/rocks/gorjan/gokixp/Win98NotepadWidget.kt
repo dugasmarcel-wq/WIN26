@@ -108,6 +108,13 @@ object Win98NotepadWidget {
             val expanded = prefs.getBoolean(sidebarKey, true)
             sidebar.visibility = if (expanded) VISIBLE else GONE
             toggle.text = if (expanded) "<" else ">"
+            shell.findViewById<TextView>(R.id.notepad_rename_action).apply {
+                text = "Rename"
+                setOnClickListener {
+                    val selected = getNotes()?.firstOrNull { it.id == noteId }
+                    if (selected != null) renameNote(selected)
+                }
+            }
             shell.findViewById<TextView>(R.id.notepad_archive_button).apply {
                 text = "Remind"
                 setOnClickListener { reminderDialog() }
@@ -228,7 +235,14 @@ object Win98NotepadWidget {
                         prefs.edit().putString("notepad_notes", gson.toJson(notesToday)).apply()
                         adapter.notifyDataSetChanged()
                     } else {
-                        val fresh = Note(UUID.randomUUID().toString(), today, value, category = "day_to_day")
+                        val old = current?.content.orEmpty()
+                        val prefix = old.commonPrefixWith(value).length
+                        val restOld = old.substring(prefix)
+                        val restNew = value.substring(prefix)
+                        val suffix = restOld.reversed().commonPrefixWith(restNew.reversed()).length
+                        val insertion = restNew.dropLast(suffix)
+                        val fresh = Note(UUID.randomUUID().toString(), today,
+                            insertion.ifBlank { value }, category = "day_to_day")
                         notesToday.add(fresh)
                         prefs.edit().putString(key, fresh.id).putString("notepad_notes", gson.toJson(notesToday)).apply()
                         noteId = fresh.id
