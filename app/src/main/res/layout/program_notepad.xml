@@ -5,90 +5,53 @@
     android:orientation="vertical"
     android:background="?windowBackgroundColor">
 
-    <!-- Menu Bar-->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="20dp"
-        android:src="?menuBarBackground"
-        android:orientation="horizontal"
-        android:paddingTop="3dp"
-        android:paddingStart="8dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            style="@style/MenuBarItemDisabled"
-            android:text="File"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            style="@style/MenuBarItemDisabled"
-            android:text="Edit"/>
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            style="@style/MenuBarItemDisabled"
-            android:text="Tools"/>
-
-        <TextView
-            android:id="@+id/notepad_add_image"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            style="@style/MenuBarItem"
-            android:text="Add Image"/>
-        <TextView
-            android:id="@+id/notepad_archive_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            style="@style/MenuBarItem"
-            android:text="Archived Notes"/>
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:id="@+id/notepad_rename_action"
-            style="@style/MenuBarItemDisabled"
-            android:text="Help"/>
-        <TextView
-            android:id="@+id/expand_button"
-            android:layout_width="40dp"
-            android:layout_height="30dp"
-            android:text=">"
-            android:textColor="@color/black"
-            android:textSize="9sp"
-            android:fontFamily="@font/micross_block"
-            android:gravity="center"
-            android:background="@drawable/win98_start_menu_border"
-            android:backgroundTint="@null"
-            android:clickable="true"
-            android:focusable="true"
-            android:layout_marginStart="4dp"
-            android:visibility="visible"/>
-
-
-
+    <!-- Shared Classic shell: compact menu and accessible actions on separate rows. -->
+    <LinearLayout android:layout_width="match_parent" android:layout_height="24dp"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:paddingStart="5dp" android:background="#D3CEC7">
+        <TextView android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:gravity="center_vertical" android:text="File" style="@style/MenuBarItemDisabled"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:gravity="center_vertical" android:text="Edit" style="@style/MenuBarItemDisabled"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:gravity="center_vertical" android:text="Tools" style="@style/MenuBarItemDisabled"/>
     </LinearLayout>
-
-    <!-- Classic compact category strip, below the original menu bar. -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="24dp"
-        android:orientation="horizontal"
-        android:background="#D3CEC7"
-        android:paddingStart="3dp"
-        android:paddingEnd="3dp">
-        <TextView android:id="@+id/notepad_day_tab"
-            android:layout_width="0dp" android:layout_weight="1"
+    <LinearLayout android:layout_width="match_parent" android:layout_height="30dp"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:paddingStart="3dp" android:paddingEnd="3dp" android:background="#D3CEC7">
+        <TextView android:id="@+id/notepad_add_image" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_height="match_parent"
+            android:gravity="center" android:text="Add Image" android:textColor="#000000"
+            android:textSize="10sp" android:clickable="true"/>
+        <TextView android:id="@+id/notepad_archive_button" android:layout_width="0dp"
+            android:layout_weight="1.3" android:layout_height="match_parent"
+            android:gravity="center" android:text="Archived Notes" android:textColor="#000000"
+            android:textSize="10sp" android:clickable="true"/>
+        <TextView android:id="@+id/notepad_rename_action" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_height="match_parent"
+            android:gravity="center" android:text="Rename" android:textColor="#000000"
+            android:textSize="10sp" android:clickable="true"/>
+        <TextView android:id="@+id/expand_button" android:layout_width="42dp"
             android:layout_height="match_parent" android:gravity="center"
-            android:text="Day-to-Day" android:textColor="#000000"
-            android:textSize="11sp" android:fontFamily="?primaryFontFamily"
-            android:clickable="true" />
-        <TextView android:id="@+id/notepad_long_tab"
-            android:layout_width="0dp" android:layout_weight="1"
-            android:layout_height="match_parent" android:gravity="center"
-            android:text="Long-Term" android:textColor="#000000"
-            android:textSize="11sp" android:fontFamily="?primaryFontFamily"
-            android:clickable="true" />
+            android:text="&lt;" android:textColor="#000000" android:textSize="14sp"
+            android:background="@drawable/win98_start_menu_border"
+            android:clickable="true" android:focusable="true"/>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="27dp"
+        android:orientation="horizontal" android:background="#D3CEC7"
+        android:paddingStart="3dp" android:paddingEnd="3dp">
+        <TextView android:id="@+id/notepad_day_tab" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_height="match_parent"
+            android:gravity="center" android:text="Day-to-Day" android:textSize="10sp"
+            android:fontFamily="?primaryFontFamily" android:textColor="#000000" android:clickable="true"/>
+        <TextView android:id="@+id/notepad_long_tab" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_height="match_parent"
+            android:gravity="center" android:text="Long-Term" android:textSize="10sp"
+            android:fontFamily="?primaryFontFamily" android:textColor="#000000" android:clickable="true"/>
+        <TextView android:id="@+id/notepad_reminder_tab" android:layout_width="0dp"
+            android:layout_weight="1.4" android:layout_height="match_parent"
+            android:gravity="center" android:text="Reminder Notes" android:textSize="9sp"
+            android:fontFamily="?primaryFontFamily" android:textColor="#000000" android:clickable="true"/>
     </LinearLayout>
 
     <LinearLayout
@@ -99,13 +62,13 @@
 
         <LinearLayout
             android:id="@+id/notes_list_container"
-            android:layout_width="84dp"
+            android:layout_width="91dp"
             android:layout_height="match_parent"
             android:orientation="vertical">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/notes_list"
-                android:layout_width="84dp"
+                android:layout_width="91dp"
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@android:color/transparent" />
@@ -114,7 +77,7 @@
             <TextView
                 android:id="@+id/add_note_button"
                 style="?winButtonStyle"
-                android:layout_width="78dp"
+                android:layout_width="85dp"
                 android:layout_height="25dp"
                 android:layout_marginLeft="3dp"
                 android:layout_marginBottom="3dp"

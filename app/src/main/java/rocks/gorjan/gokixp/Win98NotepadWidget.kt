@@ -54,6 +54,7 @@ object Win98NotepadWidget {
         private val toggle = shell.findViewById<TextView>(R.id.expand_button)
         private val day = shell.findViewById<TextView>(R.id.notepad_day_tab)
         private val long = shell.findViewById<TextView>(R.id.notepad_long_tab)
+        private val reminders = shell.findViewById<TextView>(R.id.notepad_reminder_tab)
         private var visibleNotes = listOf<Note>()
 
         private val adapter = object : RecyclerView.Adapter<NoteHolder>() {
@@ -97,6 +98,7 @@ object Win98NotepadWidget {
             noteList.adapter = adapter
             day.setOnClickListener { switchTab("day_to_day") }
             long.setOnClickListener { switchTab("long_term") }
+            reminders.setOnClickListener { switchTab("reminder_notes") }
             shell.findViewById<TextView>(R.id.add_note_button).setOnClickListener { addNote() }
             toggle.visibility = VISIBLE
             toggle.setOnClickListener {
@@ -201,9 +203,11 @@ object Win98NotepadWidget {
             val notes = allNotes() ?: return
             visibleNotes = notes.filter {
                 !it.isArchived &&
-                    (if (it.category == "long_term") "long_term" else "day_to_day") == category
+                    (if (it.category == "long_term") "long_term" else if (it.category == "reminder_notes") "reminder_notes" else "day_to_day") == category
             }
-            val selected = visibleNotes.firstOrNull { it.id == noteId }
+            val todayId = if (category == "day_to_day") prefs.getString("win98_notepad_daily_created_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date()), null) else null
+            val selected = visibleNotes.firstOrNull { it.id == todayId }
+                ?: visibleNotes.firstOrNull { it.id == noteId }
                 ?: visibleNotes.firstOrNull {
                     it.id == prefs.getString(pageKey + category, null)
                 } ?: visibleNotes.firstOrNull()
@@ -213,11 +217,13 @@ object Win98NotepadWidget {
                 android.graphics.Color.WHITE else 0xFFD3CEC7.toInt())
             long.setBackgroundColor(if (category == "long_term")
                 android.graphics.Color.WHITE else 0xFFD3CEC7.toInt())
+            reminders.setBackgroundColor(if (category == "reminder_notes")
+                android.graphics.Color.WHITE else 0xFFD3CEC7.toInt())
             adapter.notifyDataSetChanged()
             rebinding = true
             editor.setText(selected?.content.orEmpty())
             editor.isEnabled = selected != null
-            editor.hint = if (selected == null) "Add a note" else ""
+            editor.hint = if (selected == null) "Tap Add to create a note" else ""
             rebinding = false
         }
 
@@ -293,7 +299,21 @@ object Win98NotepadWidget {
         }
 
         private fun reminderDialog() {
+            if (category != "reminder_notes") { switchTab("reminder_notes"); return }
             val id = noteId ?: return
+            val subjectInput = EditText(activity).apply {
+                setSingleLine(true)
+                hint = "Notification subject"
+                setText(getNotes()?.firstOrNull { it.id == id }?.reminderSubject.orEmpty())
+            }
+            Win98Dialogs.showCustom(activity, "Reminder Subject", subjectInput, "Choose Date & Time",
+                onPositive = {
+                    val subject = subjectInput.text.toString().trim()
+                    if (subject.isNotEmpty()) chooseReminderDate(id, subject)
+                })
+        }
+
+        private fun chooseReminderDate(id: String, subject: String) {
             val now = Calendar.getInstance()
             DatePickerDialog(activity, { _, year, month, day ->
                 TimePickerDialog(activity, { _, hour, minute ->
@@ -305,8 +325,9 @@ object Win98NotepadWidget {
                     val data = getNotes() ?: return@TimePickerDialog
                     val note = data.firstOrNull { it.id == id } ?: return@TimePickerDialog
                     note.reminderAt = whenAt
+                    note.reminderSubject = subject
                     prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
-                    Win98NoteReminderReceiver.schedule(activity, id, note.title, whenAt)
+                    Win98NoteReminderReceiver.schedule(activity, id, subject, whenAt)
                 }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
             }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
         }

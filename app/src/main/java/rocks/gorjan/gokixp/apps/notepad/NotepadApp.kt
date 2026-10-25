@@ -65,6 +65,7 @@ class NotepadApp(
     private var activeCategory = "day_to_day"
     private var dayTab: TextView? = null
     private var longTab: TextView? = null
+    private var reminderTab: TextView? = null
 
     // UI references
     private var notesEditText: EditText? = null
@@ -92,6 +93,7 @@ class NotepadApp(
         imageGallery = contentView.findViewById(R.id.image_gallery)
         dayTab = contentView.findViewById(R.id.notepad_day_tab)
         longTab = contentView.findViewById(R.id.notepad_long_tab)
+        reminderTab = contentView.findViewById(R.id.notepad_reminder_tab)
         activeCategory = prefs.getString("notepad_active_category", "day_to_day") ?: "day_to_day"
         fun switchCategory(category: String) {
             currentNote?.content = notesEditText?.text.toString()
@@ -110,6 +112,7 @@ class NotepadApp(
         }
         dayTab?.setOnClickListener { switchCategory("day_to_day") }
         longTab?.setOnClickListener { switchCategory("long_term") }
+        reminderTab?.setOnClickListener { switchCategory("reminder_notes") }
         updateCategoryTabs()
 
         // Setup Notes RecyclerView
@@ -203,7 +206,7 @@ class NotepadApp(
         currentNote = if (lastNoteId != null) {
             val lastNote = notes.find { it.id == lastNoteId }
             // Only use last note if it's not archived
-            if (lastNote != null && !lastNote.isArchived && (if (lastNote.category == "long_term") "long_term" else "day_to_day") == activeCategory) {
+            if (lastNote != null && !lastNote.isArchived && (if (lastNote.category == "long_term") "long_term" else if (lastNote.category == "reminder_notes") "reminder_notes" else "day_to_day") == activeCategory) {
                 lastNote
             } else {
                 getFilteredNotes().firstOrNull()
@@ -427,12 +430,13 @@ class NotepadApp(
      * Get filtered notes based on current view (active or archived)
      */
     private fun getFilteredNotes(): List<Note> {
-        return notes.filter { it.isArchived == showingArchivedNotes && (if (it.category == "long_term") "long_term" else "day_to_day") == activeCategory }
+        return notes.filter { it.isArchived == showingArchivedNotes && (if (it.category == "long_term") "long_term" else if (it.category == "reminder_notes") "reminder_notes" else "day_to_day") == activeCategory }
     }
 
     private fun updateCategoryTabs() {
         dayTab?.setBackgroundColor(if (activeCategory == "day_to_day") Color.WHITE else 0xFFD3CEC7.toInt())
         longTab?.setBackgroundColor(if (activeCategory == "long_term") Color.WHITE else 0xFFD3CEC7.toInt())
+        reminderTab?.setBackgroundColor(if (activeCategory == "reminder_notes") Color.WHITE else 0xFFD3CEC7.toInt())
     }
 
     /**
