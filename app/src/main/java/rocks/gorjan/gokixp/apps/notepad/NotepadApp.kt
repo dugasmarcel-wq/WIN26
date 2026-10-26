@@ -16,7 +16,6 @@ import android.provider.MediaStore
 import android.text.Editable
 import android.util.Log
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import android.view.LayoutInflater
 import android.view.View
