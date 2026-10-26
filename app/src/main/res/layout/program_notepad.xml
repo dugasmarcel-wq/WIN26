@@ -3,6 +3,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:paddingStart="7dp"
+    android:paddingEnd="7dp"
+    android:clipToPadding="true"
     android:background="?windowBackgroundColor">
 
     <!-- Shared Classic shell: compact menu and accessible actions on separate rows. -->
