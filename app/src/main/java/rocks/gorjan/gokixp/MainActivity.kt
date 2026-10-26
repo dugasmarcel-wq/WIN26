@@ -1824,9 +1824,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
             val minWidthDp = if (clock) 128 else if (id in setOf("mines", "solitaire_desk", "pinball")) 180 else 120
             val logicalWidth = dp(naturalWidthDp)
-            val savedWidth = if (pref.contains("${key}_w")) dp(pref.getInt("${key}_w", naturalWidthDp))
+            val notepadFixed = id == "notepad_98"
+            val notepadLarge = notepadFixed && pref.getBoolean("${key}_large", false)
+            // Ignore old arbitrary Notepad geometry and migrate to fixed presets.
+            val savedWidth = if (notepadFixed) dp(if (notepadLarge) 350 else 300)
+                else if (pref.contains("${key}_w")) dp(pref.getInt("${key}_w", naturalWidthDp))
                 else logicalWidth
-            val savedHeight = if (pref.contains("${key}_h")) dp(pref.getInt("${key}_h", 160))
+            val savedHeight = if (notepadFixed) dp(if (notepadLarge) 527 else 452)
+                else if (pref.contains("${key}_h")) dp(pref.getInt("${key}_h", 160))
                 else ViewGroup.LayoutParams.WRAP_CONTENT
             val widgetContent = if (clock) Win98WidgetViews.create(this, id)
                 else createWin98WidgetCard(spec, pageIndex)
@@ -1845,7 +1850,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         .putInt("${key}_w", (w / density).toInt())
                         .putInt("${key}_h", (h / density).toInt())
                         .apply()
+                    if (notepadFixed) {
+                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                            .putBoolean("${key}_large", w > dp(325))
+                            .apply()
+                    }
                 },
+                fixedSizes = if (notepadFixed) Pair(
+                    Pair(dp(300), dp(452)), Pair(dp(350), dp(527))
+                ) else null,
                 onEditing = { active ->
                     if (active) {
                         win98MovableClockHosts.values.forEach { pageHosts ->
@@ -1857,7 +1870,24 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
             )
             host.elevation = dp(12).toFloat()
-            host.contentDescription = "Hold to move or resize ${spec.title}"
+            if (notepadFixed) {
+                val headerRow = (widgetContent as? LinearLayout)
+                    ?.getChildAt(0) as? LinearLayout
+                headerRow?.addView(TextView(this).apply {
+                    text = "Size"
+                    textSize = 12f
+                    setTextColor(Color.WHITE)
+                    setPadding(dp(9), 0, dp(9), 0)
+                    isClickable = true
+                    setOnClickListener { host.toggleFixedSize() }
+                    contentDescription = "Switch Notepad between standard and large size"
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, dp(25)
+                ))
+            }
+            host.contentDescription = if (notepadFixed)
+                "Pinned Notepad, Size switches standard and large"
+                else "Hold to move or resize ${spec.title}"
             val lp = if (parent is RelativeLayout) {
                 RelativeLayout.LayoutParams(savedWidth, savedHeight)
             } else {

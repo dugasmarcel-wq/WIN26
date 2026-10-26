@@ -28,7 +28,8 @@ class Win98ResizableWidgetHost(
     private val minimumHeight: Int,
     private val content: View,
     private val saveGeometry: (Int, Int, Int, Int) -> Unit,
-    private val onEditing: (Boolean) -> Unit
+    private val onEditing: (Boolean) -> Unit,
+    private val fixedSizes: Pair<Pair<Int, Int>, Pair<Int, Int>>? = null
 ) : FrameLayout(context) {
     private val handler = Handler(Looper.getMainLooper())
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -63,6 +64,29 @@ class Win98ResizableWidgetHost(
     }
 
     private fun dp(value: Int) = (resources.displayMetrics.density * value + 0.5f).toInt()
+
+    /**
+     * Notepad uses just two persistent preset sizes. Its shell is never freely
+     * dragged or stretched; no incremental layout changes while typing.
+     */
+    fun toggleFixedSize() {
+        val presets = fixedSizes ?: return
+        val standard = presets.first
+        val large = presets.second
+        val isLarge = width > (standard.first + large.first) / 2
+        val desired = if (isLarge) standard else large
+        val owner = parent as? ViewGroup ?: return
+        val availableWidth = owner.width.coerceAtLeast(1)
+        val availableHeight = owner.height.coerceAtLeast(1)
+        val factor = minOf(1f, availableWidth.toFloat() / desired.first,
+            availableHeight.toFloat() / desired.second)
+        val w = (desired.first * factor).toInt().coerceAtLeast(1)
+        val h = (desired.second * factor).toInt().coerceAtLeast(1)
+        layoutParams = layoutParams.apply { width = w; height = h }
+        x = x.coerceIn(0f, (owner.width - w).coerceAtLeast(0).toFloat())
+        y = y.coerceIn(0f, (owner.height - h).coerceAtLeast(0).toFloat())
+        saveGeometry(x.toInt(), y.toInt(), w, h)
+    }
 
     fun isMoveArmed(): Boolean = editingArmed || isEditing
 
@@ -146,6 +170,9 @@ class Win98ResizableWidgetHost(
     // can disallow ancestor interception, but a genuine held finger must still
     // activate resizing without breaking the short-tap gameplay path.
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // Fixed-size Notepad sends all gestures to its actual editor and tabs.
+        // It cannot unexpectedly enter drag/resize mode while typing.
+        if (fixedSizes != null) return super.dispatchTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 stopPending()
