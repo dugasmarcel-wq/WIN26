@@ -7,6 +7,7 @@ import java.util.Calendar
 import java.util.Date
 import java.text.DateFormat
 import rocks.gorjan.gokixp.Win98NoteReminderReceiver
+import rocks.gorjan.gokixp.Win98ReminderTimeDialog
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -474,22 +475,13 @@ class NotepadApp(
         val note = currentNote ?: return
         val subject = reminderSubject?.text?.toString()?.trim().orEmpty()
         if (subject.isEmpty()) { reminderSubject?.error = "Enter a subject"; return }
-        val now = Calendar.getInstance()
-        DatePickerDialog(context, { _, year, month, day ->
-            TimePickerDialog(context, { _, hour, minute ->
-                val at = Calendar.getInstance().apply {
-                    set(year, month, day, hour, minute, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }.timeInMillis
-                if (at > System.currentTimeMillis()) {
-                    note.reminderAt = at
-                    note.reminderSubject = subject
-                    saveNotes()
-                    Win98NoteReminderReceiver.schedule(context, note.id, subject, at)
-                    updateReminderFields()
-                }
-            }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
-        }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
+        Win98ReminderTimeDialog.show(context, note.reminderAt) { at ->
+            note.reminderAt = at
+            note.reminderSubject = subject
+            saveNotes()
+            Win98NoteReminderReceiver.schedule(context, note.id, subject, at)
+            updateReminderFields()
+        }
     }
 
     private fun updateCategoryTabs() {

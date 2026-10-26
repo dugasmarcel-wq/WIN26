@@ -333,23 +333,16 @@ object Win98NotepadWidget {
         }
 
         private fun chooseReminderDate(id: String, subject: String) {
-            val now = Calendar.getInstance()
-            DatePickerDialog(activity, { _, year, month, day ->
-                TimePickerDialog(activity, { _, hour, minute ->
-                    val whenAt = Calendar.getInstance().apply {
-                        set(year, month, day, hour, minute, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }.timeInMillis
-                    if (whenAt <= System.currentTimeMillis()) return@TimePickerDialog
-                    val data = getNotes() ?: return@TimePickerDialog
-                    val note = data.firstOrNull { it.id == id } ?: return@TimePickerDialog
-                    note.reminderAt = whenAt
-                    note.reminderSubject = subject
-                    prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
-                    Win98NoteReminderReceiver.schedule(activity, id, subject, whenAt)
-                    reload()
-                }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
-            }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
+            val existing = getNotes()?.firstOrNull { it.id == id }?.reminderAt ?: 0L
+            Win98ReminderTimeDialog.show(activity, existing) { at ->
+                val data = getNotes() ?: return@show
+                val note = data.firstOrNull { it.id == id } ?: return@show
+                note.reminderAt = at
+                note.reminderSubject = subject
+                prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
+                Win98NoteReminderReceiver.schedule(activity, id, subject, at)
+                reload()
+            }
         }
     }
 }
