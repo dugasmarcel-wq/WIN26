@@ -1,6 +1,12 @@
 package rocks.gorjan.gokixp.apps.notepad
 
 import android.app.Activity
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import java.util.Calendar
+import java.util.Date
+import java.text.DateFormat
+import rocks.gorjan.gokixp.Win98NoteReminderReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -66,6 +72,9 @@ class NotepadApp(
     private var dayTab: TextView? = null
     private var longTab: TextView? = null
     private var reminderTab: TextView? = null
+    private var reminderPanel: View? = null
+    private var reminderSubject: EditText? = null
+    private var reminderWhen: TextView? = null
 
     // UI references
     private var notesEditText: EditText? = null
@@ -94,6 +103,20 @@ class NotepadApp(
         dayTab = contentView.findViewById(R.id.notepad_day_tab)
         longTab = contentView.findViewById(R.id.notepad_long_tab)
         reminderTab = contentView.findViewById(R.id.notepad_reminder_tab)
+        reminderPanel = contentView.findViewById(R.id.notepad_reminder_panel)
+        reminderSubject = contentView.findViewById(R.id.notepad_reminder_subject)
+        reminderWhen = contentView.findViewById(R.id.notepad_reminder_when)
+        contentView.findViewById<TextView>(R.id.notepad_reminder_set)?.setOnClickListener { scheduleCurrentReminder() }
+        reminderSubject?.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (!isProgrammaticChange && activeCategory == "reminder_notes") {
+                    currentNote?.reminderSubject = s?.toString().orEmpty()
+                    saveNotes()
+                }
+            }
+        })
         activeCategory = prefs.getString("notepad_active_category", "day_to_day") ?: "day_to_day"
         fun switchCategory(category: String) {
             currentNote?.content = notesEditText?.text.toString()
@@ -109,11 +132,13 @@ class NotepadApp(
             updateWindowTitle()
             refreshNotesList()
             updateCategoryTabs()
+            updateReminderFields()
         }
         dayTab?.setOnClickListener { switchCategory("day_to_day") }
         longTab?.setOnClickListener { switchCategory("long_term") }
         reminderTab?.setOnClickListener { switchCategory("reminder_notes") }
         updateCategoryTabs()
+        updateReminderFields()
 
         // Setup Notes RecyclerView
         notesAdapter = NotesAdapter()
@@ -278,6 +303,7 @@ class NotepadApp(
             imageGallery?.visibility = View.GONE
             updateWindowTitle()
             refreshNotesList()
+            updateReminderFields()
         }
 
         // Add Image button
@@ -431,6 +457,40 @@ class NotepadApp(
      */
     private fun getFilteredNotes(): List<Note> {
         return notes.filter { it.isArchived == showingArchivedNotes && (if (it.category == "long_term") "long_term" else if (it.category == "reminder_notes") "reminder_notes" else "day_to_day") == activeCategory }
+    }
+
+    private fun updateReminderFields() {
+        reminderPanel?.visibility = if (activeCategory == "reminder_notes") View.VISIBLE else View.GONE
+        isProgrammaticChange = true
+        reminderSubject?.setText(currentNote?.reminderSubject.orEmpty())
+        reminderSubject?.isEnabled = currentNote != null
+        isProgrammaticChange = false
+        reminderWhen?.text = currentNote?.reminderAt?.takeIf { it > 0L }?.let {
+            DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))
+        } ?: "No date or time set"
+    }
+
+    private fun scheduleCurrentReminder() {
+        if (activeCategory != "reminder_notes") return
+        val note = currentNote ?: return
+        val subject = reminderSubject?.text?.toString()?.trim().orEmpty()
+        if (subject.isEmpty()) { reminderSubject?.error = "Enter a subject"; return }
+        val now = Calendar.getInstance()
+        DatePickerDialog(context, { _, year, month, day ->
+            TimePickerDialog(context, { _, hour, minute ->
+                val at = Calendar.getInstance().apply {
+                    set(year, month, day, hour, minute, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                if (at > System.currentTimeMillis()) {
+                    note.reminderAt = at
+                    note.reminderSubject = subject
+                    saveNotes()
+                    Win98NoteReminderReceiver.schedule(context, note.id, subject, at)
+                    updateReminderFields()
+                }
+            }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
+        }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
     }
 
     private fun updateCategoryTabs() {
@@ -801,6 +861,7 @@ class NotepadApp(
                     updateWindowTitle()
                     loadNoteImages(note)
                     notifyDataSetChanged()
+                    updateReminderFields()
                 }
 
                 // Long press for context menu

@@ -55,6 +55,9 @@ object Win98NotepadWidget {
         private val day = shell.findViewById<TextView>(R.id.notepad_day_tab)
         private val long = shell.findViewById<TextView>(R.id.notepad_long_tab)
         private val reminders = shell.findViewById<TextView>(R.id.notepad_reminder_tab)
+        private val reminderPanel = shell.findViewById<View>(R.id.notepad_reminder_panel)
+        private val subjectField = shell.findViewById<EditText>(R.id.notepad_reminder_subject)
+        private val whenLabel = shell.findViewById<TextView>(R.id.notepad_reminder_when)
         private var visibleNotes = listOf<Note>()
 
         private val adapter = object : RecyclerView.Adapter<NoteHolder>() {
@@ -117,10 +120,9 @@ object Win98NotepadWidget {
                     if (selected != null) renameNote(selected)
                 }
             }
-            shell.findViewById<TextView>(R.id.notepad_archive_button).apply {
-                text = "Remind"
-                setOnClickListener { reminderDialog() }
-            }
+            // Reminders live inside their notes, never as a second toolbar action.
+            shell.findViewById<TextView>(R.id.notepad_archive_button).visibility = GONE
+            shell.findViewById<TextView>(R.id.notepad_reminder_set).setOnClickListener { reminderDialog() }
             shell.findViewById<TextView>(R.id.notepad_add_image).apply {
                 text = "Open"
                 setOnClickListener {
@@ -163,6 +165,19 @@ object Win98NotepadWidget {
                     else -> firstTap
                 }
             }
+            subjectField.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun afterTextChanged(s: Editable?) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    if (!rebinding && category == "reminder_notes") {
+                        val data = getNotes() ?: return
+                        data.firstOrNull { it.id == noteId }?.let {
+                            it.reminderSubject = s?.toString().orEmpty()
+                            prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
+                        }
+                    }
+                }
+            })
             editor.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun afterTextChanged(s: Editable?) {}
@@ -221,6 +236,12 @@ object Win98NotepadWidget {
                 android.graphics.Color.WHITE else 0xFFD3CEC7.toInt())
             adapter.notifyDataSetChanged()
             rebinding = true
+            reminderPanel.visibility = if (category == "reminder_notes") VISIBLE else GONE
+            subjectField.setText(selected?.reminderSubject.orEmpty())
+            subjectField.isEnabled = selected != null
+            whenLabel.text = if ((selected?.reminderAt ?: 0L) > 0L)
+                java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(selected!!.reminderAt))
+                else "No date or time set"
             editor.setText(selected?.content.orEmpty())
             editor.isEnabled = selected != null
             editor.hint = if (selected == null) "Tap Add to create a note" else ""
@@ -296,21 +317,19 @@ object Win98NotepadWidget {
             noteId = note.id
             disarm()
             reload()
+            if (category == "reminder_notes") subjectField.requestFocus()
         }
 
         private fun reminderDialog() {
-            if (category != "reminder_notes") { switchTab("reminder_notes"); return }
+            if (category != "reminder_notes") return
             val id = noteId ?: return
-            val subjectInput = EditText(activity).apply {
-                setSingleLine(true)
-                hint = "Notification subject"
-                setText(getNotes()?.firstOrNull { it.id == id }?.reminderSubject.orEmpty())
+            val subject = subjectField.text.toString().trim()
+            if (subject.isEmpty()) {
+                subjectField.error = "Enter a notification subject"
+                subjectField.requestFocus()
+                return
             }
-            Win98Dialogs.showCustom(activity, "Reminder Subject", subjectInput, "Choose Date & Time",
-                onPositive = {
-                    val subject = subjectInput.text.toString().trim()
-                    if (subject.isNotEmpty()) chooseReminderDate(id, subject)
-                })
+            chooseReminderDate(id, subject)
         }
 
         private fun chooseReminderDate(id: String, subject: String) {
@@ -328,6 +347,7 @@ object Win98NotepadWidget {
                     note.reminderSubject = subject
                     prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()
                     Win98NoteReminderReceiver.schedule(activity, id, subject, whenAt)
+                    reload()
                 }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
             }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
         }

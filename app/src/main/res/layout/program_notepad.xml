@@ -54,6 +54,31 @@
             android:fontFamily="?primaryFontFamily" android:textColor="#000000" android:clickable="true"/>
     </LinearLayout>
 
+    <!-- One built-in reminder editor, visible only for Reminder Notes. -->
+    <LinearLayout android:id="@+id/notepad_reminder_panel"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="4dp"
+        android:background="#D3CEC7" android:visibility="gone">
+        <EditText android:id="@+id/notepad_reminder_subject"
+            android:layout_width="match_parent" android:layout_height="35dp"
+            android:singleLine="true" android:hint="Notification subject"
+            android:textColor="#000000" android:textSize="12sp"
+            android:paddingStart="6dp" android:background="@android:color/white"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="34dp"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/notepad_reminder_when"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="match_parent" android:gravity="center_vertical"
+                android:text="No date or time set" android:textColor="#000000" android:textSize="11sp"/>
+            <TextView android:id="@+id/notepad_reminder_set"
+                android:layout_width="112dp" android:layout_height="32dp"
+                android:gravity="center" android:text="Set Date / Time"
+                android:textColor="#000000" android:textSize="11sp"
+                android:background="@drawable/win98_start_menu_border"
+                android:clickable="true" android:focusable="true"/>
+        </LinearLayout>
+    </LinearLayout>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
