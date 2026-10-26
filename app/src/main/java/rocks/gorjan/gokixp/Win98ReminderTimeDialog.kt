@@ -136,6 +136,7 @@ object Win98ReminderTimeDialog {
             value = initial.get(Calendar.HOUR_OF_DAY)
             descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
             setBackgroundColor(Color.WHITE)
+            if (android.os.Build.VERSION.SDK_INT >= 29) setTextColor(Color.BLACK)
             setFormatter { String.format(Locale.US, "%02d", it) }
         }
         val minutes = NumberPicker(context).apply {
@@ -143,6 +144,7 @@ object Win98ReminderTimeDialog {
             value = initial.get(Calendar.MINUTE)
             descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
             setBackgroundColor(Color.WHITE)
+            if (android.os.Build.VERSION.SDK_INT >= 29) setTextColor(Color.BLACK)
             setFormatter { String.format(Locale.US, "%02d", it) }
         }
         row.addView(hours, LinearLayout.LayoutParams(dp(84), dp(96)))
