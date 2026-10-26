@@ -39,7 +39,8 @@
     </LinearLayout>
     <LinearLayout android:layout_width="match_parent" android:layout_height="27dp"
         android:orientation="horizontal" android:background="#D3CEC7"
-        android:paddingStart="3dp" android:paddingEnd="3dp">
+        android:paddingStart="3dp" android:paddingEnd="3dp"
+        android:paddingTop="1dp">
         <TextView android:id="@+id/notepad_day_tab" android:layout_width="0dp"
             android:layout_weight="1" android:layout_height="match_parent"
             android:gravity="center" android:text="Day-to-Day" android:textSize="10sp"
@@ -83,17 +84,22 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:background="#777777"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp">
 
         <LinearLayout
             android:id="@+id/notes_list_container"
-            android:layout_width="91dp"
+            android:layout_width="99dp"
             android:layout_height="match_parent"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:background="#D3CEC7"
+            android:paddingEnd="2dp">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/notes_list"
-                android:layout_width="91dp"
+                android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@android:color/transparent" />
@@ -102,9 +108,10 @@
             <TextView
                 android:id="@+id/add_note_button"
                 style="?winButtonStyle"
-                android:layout_width="85dp"
-                android:layout_height="25dp"
+                android:layout_width="match_parent"
+                android:layout_height="28dp"
                 android:layout_marginLeft="3dp"
+                android:layout_marginRight="3dp"
                 android:layout_marginBottom="3dp"
                 android:text="Add"
                 android:textColor="@color/black"
@@ -122,6 +129,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
+            android:layout_marginStart="2dp"
             android:background="@android:color/white">
 
             <!-- Image Gallery -->

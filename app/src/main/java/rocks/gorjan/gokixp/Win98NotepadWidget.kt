@@ -310,7 +310,8 @@ object Win98NotepadWidget {
 
         private fun addNote() {
             val data = allNotes() ?: return
-            val note = Note(UUID.randomUUID().toString(), "Note ${data.size + 1}",
+            val note = Note(UUID.randomUUID().toString(),
+                SimpleDateFormat("yyyyMMMd", Locale.ENGLISH).format(Date()),
                 "", category = category)
             data.add(note)
             prefs.edit().putString("notepad_notes", gson.toJson(data)).apply()

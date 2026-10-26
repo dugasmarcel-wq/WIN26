@@ -2,69 +2,84 @@ package rocks.gorjan.gokixp
 
 import android.content.Context
 import android.graphics.Color
-import android.text.InputType
 import android.view.Gravity
-import android.widget.EditText
+import android.widget.CalendarView
 import android.widget.LinearLayout
+import android.widget.NumberPicker
 import android.widget.TextView
+import java.util.Calendar
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
-/** Small Classic dialog; never launches the full-screen Android calendar/time picker. */
+/** Compact clickable calendar and exact hour/minute controls in Classic chrome. */
 object Win98ReminderTimeDialog {
     fun show(context: Context, existing: Long = 0L, onSave: (Long) -> Unit) {
         val density = context.resources.displayMetrics.density
         fun dp(n: Int) = (n * density + 0.5f).toInt()
-        val initial = if (existing > System.currentTimeMillis()) existing
-            else System.currentTimeMillis() + 3600000L
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
-        val dateTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { isLenient = false }
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.US).apply { isLenient = false }
+        val initial = Calendar.getInstance().apply {
+            timeInMillis = if (existing > System.currentTimeMillis()) existing
+                else System.currentTimeMillis() + 3600000L
+        }
+        val chosen = (initial.clone() as Calendar)
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(4))
+            setPadding(dp(8), dp(5), dp(8), dp(6))
         }
-        fun field(label: String, value: String, hint: String): EditText {
-            body.addView(TextView(context).apply {
-                text = label
-                textSize = 12f
-                setTextColor(Color.BLACK)
-                setPadding(0, dp(5), 0, dp(2))
-            })
-            return EditText(context).apply {
-                setSingleLine(true)
-                inputType = InputType.TYPE_CLASS_DATETIME or InputType.TYPE_DATETIME_VARIATION_NORMAL
-                setText(value)
-                setSelectAllOnFocus(true)
-                this.hint = hint
-                setTextColor(Color.BLACK)
-                textSize = 16f
-                setBackgroundColor(Color.WHITE)
-                setPadding(dp(8), 0, dp(8), 0)
-                body.addView(this, LinearLayout.LayoutParams(-1, dp(43)))
+        val calendar = CalendarView(context).apply {
+            firstDayOfWeek = Calendar.SUNDAY
+            date = initial.timeInMillis
+            minDate = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            setOnDateChangeListener { _, year, month, day ->
+                chosen.set(Calendar.YEAR, year)
+                chosen.set(Calendar.MONTH, month)
+                chosen.set(Calendar.DAY_OF_MONTH, day)
             }
         }
-        val date = field("Date (YYYY-MM-DD)", dateFormat.format(Date(initial)), "2026-10-26")
-        val time = field("Time (24-hour HH:mm)", timeFormat.format(Date(initial)), "14:30")
-        val error = TextView(context).apply {
-            textSize = 11f
-            setTextColor(Color.rgb(150, 0, 0))
-            gravity = Gravity.CENTER_VERTICAL
-            minHeight = dp(24)
+        body.addView(calendar, LinearLayout.LayoutParams(-1, dp(270)))
+        body.addView(TextView(context).apply {
+            text = "Reminder time (24-hour)"
+            textSize = 12f
+            setTextColor(Color.BLACK)
+            setPadding(dp(4), dp(5), 0, 0)
+        })
+        val timeRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
         }
-        body.addView(error)
-        val handle = Win98Dialogs.showCustom(context, "Set Reminder Date & Time",
-            body, "Save Reminder", "Cancel", onPositive = {
-                val at = try {
-                    dateTimeFormat.parse(date.text.toString().trim() + " " + time.text.toString().trim())?.time
-                } catch (_: Exception) { null }
-                if (at != null && at > System.currentTimeMillis()) onSave(at)
-                else {
-                    // A valid date and a future clock time are required.
+        val hours = NumberPicker(context).apply {
+            minValue = 0; maxValue = 23
+            value = initial.get(Calendar.HOUR_OF_DAY)
+            wrapSelectorWheel = true
+        }
+        val minutes = NumberPicker(context).apply {
+            minValue = 0; maxValue = 59
+            value = initial.get(Calendar.MINUTE)
+            wrapSelectorWheel = true
+            setFormatter { "%02d".format(Locale.US, it) }
+        }
+        timeRow.addView(hours, LinearLayout.LayoutParams(dp(84), dp(106)))
+        timeRow.addView(TextView(context).apply {
+            text = ":"
+            textSize = 20f
+            setTextColor(Color.BLACK)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(dp(24), dp(106)))
+        timeRow.addView(minutes, LinearLayout.LayoutParams(dp(84), dp(106)))
+        body.addView(timeRow)
+        Win98Dialogs.showCustom(context, "Reminder Date & Time", body,
+            "Save Reminder", "Cancel", onPositive = {
+                chosen.set(Calendar.HOUR_OF_DAY, hours.value)
+                chosen.set(Calendar.MINUTE, minutes.value)
+                chosen.set(Calendar.SECOND, 0)
+                chosen.set(Calendar.MILLISECOND, 0)
+                if (chosen.timeInMillis > System.currentTimeMillis()) {
+                    onSave(chosen.timeInMillis)
+                } else {
                     android.widget.Toast.makeText(context,
-                        "Enter a valid future date and time (YYYY-MM-DD, HH:mm)",
-                        android.widget.Toast.LENGTH_LONG).show()
+                        "Select a future date and time", android.widget.Toast.LENGTH_LONG).show()
                 }
             })
     }

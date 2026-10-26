@@ -285,7 +285,7 @@ class NotepadApp(
             // Create new note with current archive status matching the view
             val newNote = Note(
                 id = java.util.UUID.randomUUID().toString(),
-                title = "Note ${notes.size + 1}",
+                title = SimpleDateFormat("yyyyMMMd", Locale.ENGLISH).format(Date()),
                 content = "",
                 imageUris = mutableListOf(),
                 isArchived = showingArchivedNotes, // Match current view
