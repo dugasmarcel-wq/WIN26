@@ -134,10 +134,15 @@ object Win98ReminderTimeDialog {
         val hours = NumberPicker(context).apply {
             minValue = 0; maxValue = 23
             value = initial.get(Calendar.HOUR_OF_DAY)
+            descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
+            setBackgroundColor(Color.WHITE)
+            setFormatter { String.format(Locale.US, "%02d", it) }
         }
         val minutes = NumberPicker(context).apply {
             minValue = 0; maxValue = 59
             value = initial.get(Calendar.MINUTE)
+            descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
+            setBackgroundColor(Color.WHITE)
             setFormatter { String.format(Locale.US, "%02d", it) }
         }
         row.addView(hours, LinearLayout.LayoutParams(dp(84), dp(96)))
