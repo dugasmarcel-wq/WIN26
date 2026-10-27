@@ -1853,7 +1853,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         .putInt("${key}_h", (h / density).toInt())
                         .apply()
                 },
-                pinnedSize = if (notepadFixed) Pair(dp(420), dp(440)) else null,
+                pinnedSize = if (notepadFixed) Pair((resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220)), dp(440)) else null,
                 onEditing = { active ->
                     if (active) {
                         win98MovableClockHosts.values.forEach { pageHosts ->
@@ -1873,14 +1873,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     if (notepadFixed) {
                         addRule(RelativeLayout.CENTER_HORIZONTAL)
                         addRule(RelativeLayout.ALIGN_PARENT_TOP)
-                        setMargins(dp(7), dp(if (pageIndex == 1) 56 else 20), dp(7), dp(12))
+                        setMargins(dp(12), dp(if (pageIndex == 1) 56 else 20), dp(12), dp(12))
                     }
                 }
             } else {
                 FrameLayout.LayoutParams(savedWidth, savedHeight).apply {
                     if (notepadFixed) {
                         gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                        setMargins(dp(7), dp(if (pageIndex == 1) 56 else 20), dp(7), dp(12))
+                        setMargins(dp(12), dp(if (pageIndex == 1) 56 else 20), dp(12), dp(12))
                     }
                 }
             }
