@@ -94,7 +94,7 @@
 
         <LinearLayout
             android:id="@+id/notes_list_container"
-            android:layout_width="99dp"
+            android:layout_width="86dp"
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:background="#D3CEC7"
@@ -152,7 +152,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="2dp"
+                android:layout_marginEnd="0dp"
                 android:gravity="top|start"
                 android:background="@android:color/white"
                 android:textColor="@android:color/black"
@@ -161,10 +161,10 @@
                 android:text="Test test"
                 android:paddingStart="8dp"
                 android:paddingTop="6dp"
-                android:paddingEnd="20dp"
+                android:paddingEnd="9dp"
                 android:paddingBottom="6dp"
                 android:scrollbars="vertical"
-                android:scrollbarStyle="outsideOverlay"
+                android:scrollbarStyle="insideInset"
                 android:scrollbarAlwaysDrawVerticalTrack="true"
                 android:scrollbarSize="16dp"
                 android:scrollbarFadeDuration="0"
@@ -173,6 +173,8 @@
                 android:scrollbarTrackVertical="?scrollbarTrackDrawable"
                 android:scrollbarThumbVertical="?scrollbarThumbDrawable"
                 android:inputType="textMultiLine|textNoSuggestions"
+                android:scrollHorizontally="false"
+                android:breakStrategy="high_quality"
                 android:lineSpacingMultiplier="1.0"
                 android:lineSpacingExtra="0dp">
             </EditText>

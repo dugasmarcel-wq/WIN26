@@ -56,10 +56,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            notepad_test_result=0
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=rocks.gorjan.gokixp.NotepadRegressionTest || notepad_test_result=$?
-            adb pull /sdcard/Android/data/com.win26.launcher/files/notepad-layout-checks app/build/notepad-layout-checks || true
-            exit "$notepad_test_result"
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=rocks.gorjan.gokixp.NotepadRegressionTest
       - name: Upload Notepad verification results and rendered layouts
         if: always()
         uses: actions/upload-artifact@v4

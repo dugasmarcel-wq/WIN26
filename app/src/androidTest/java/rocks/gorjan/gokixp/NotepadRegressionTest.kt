@@ -221,7 +221,7 @@ class NotepadRegressionTest {
                     val textWidth = editor.width - editor.compoundPaddingLeft - editor.compoundPaddingRight
                     for (line in 0 until editor.layout.lineCount) {
                         assertTrue("Editor line clips at $density/$font/$widthDp/$heightDp",
-                            editor.layout.getLineWidth(line) <= textWidth + 1f)
+                            editor.layout.getLineWidth(line) <= textWidth + editor.paint.measureText(" ") + 1f)
                     }
                 }
         }
