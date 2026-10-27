@@ -357,35 +357,61 @@ class NotepadApp(
     private fun setupEmbeddedEditing() {
         val editor = notesEditText ?: return
         editor.showSoftInputOnFocus = false
-        var firstTap = false
+        var lastTapTime = 0L
+        var lastTapX = 0f
+        var lastTapY = 0f
         var downX = 0f
         var downY = 0f
+        var dragged = false
+        val threshold = 24.dpToPx()
         editor.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
-                    firstTap = !editorArmed
-                    downX = event.rawX; downY = event.rawY
-                    firstTap
+                    downX = event.x
+                    downY = event.y
+                    dragged = false
+                    // Keep the first touch inside the editor; the launcher can still
+                    // intercept a genuine horizontal MOVE for page navigation.
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (kotlin.math.abs(event.x - downX) > threshold ||
+                        kotlin.math.abs(event.y - downY) > threshold) {
+                        dragged = true
+                        lastTapTime = 0L
+                    }
+                    !dragged
                 }
                 android.view.MotionEvent.ACTION_UP -> {
-                    if (firstTap) {
-                        if (kotlin.math.abs(event.rawX - downX) + kotlin.math.abs(event.rawY - downY) < 12.dpToPx()) {
+                    if (!dragged) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        val doubleTap = now - lastTapTime in 40L..350L &&
+                            kotlin.math.abs(event.x - lastTapX) < threshold &&
+                            kotlin.math.abs(event.y - lastTapY) < threshold
+                        if (doubleTap) {
+                            lastTapTime = 0L
                             editorArmed = true
-                        }
-                        firstTap = false
-                        true
-                    } else {
-                        if (editorArmed) {
                             editor.showSoftInputOnFocus = true
                             editor.requestFocus()
-                            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
-                                .showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                            editor.post {
+                                (context.getSystemService(Context.INPUT_METHOD_SERVICE) as
+                                    android.view.inputmethod.InputMethodManager)
+                                    .showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                            }
+                        } else {
+                            lastTapTime = now
+                            lastTapX = event.x
+                            lastTapY = event.y
                         }
-                        false
                     }
+                    true
                 }
-                android.view.MotionEvent.ACTION_CANCEL -> { firstTap = false; false }
-                else -> firstTap
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    lastTapTime = 0L
+                    dragged = false
+                    true
+                }
+                else -> true
             }
         }
     }
