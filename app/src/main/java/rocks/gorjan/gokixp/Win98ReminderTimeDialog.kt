@@ -75,6 +75,8 @@ object Win98ReminderTimeDialog {
                 val view = cells[index]
                 if (day in 1..days) {
                     view.text = day.toString()
+                    view.contentDescription = String.format(Locale.US, "Select %04d-%02d-%02d",
+                        displayed.get(Calendar.YEAR), displayed.get(Calendar.MONTH) + 1, day)
                     view.isEnabled = true
                     view.setTextColor(Color.BLACK)
                     val isSelected = day == selected.get(Calendar.DAY_OF_MONTH) &&
@@ -89,6 +91,9 @@ object Win98ReminderTimeDialog {
                     }
                     view.setTextColor(if (isSelected) Color.WHITE else Color.BLACK)
                     view.setOnClickListener {
+                        // Reset the day before changing months (31 -> February
+                        // must not silently roll into March).
+                        selected.set(Calendar.DAY_OF_MONTH, 1)
                         selected.set(Calendar.YEAR, displayed.get(Calendar.YEAR))
                         selected.set(Calendar.MONTH, displayed.get(Calendar.MONTH))
                         selected.set(Calendar.DAY_OF_MONTH, day)
@@ -132,6 +137,7 @@ object Win98ReminderTimeDialog {
             gravity = Gravity.CENTER
         }
         val hours = NumberPicker(context).apply {
+            contentDescription = "Hour (24-hour)"
             minValue = 0; maxValue = 23
             value = initial.get(Calendar.HOUR_OF_DAY)
             descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
@@ -140,6 +146,7 @@ object Win98ReminderTimeDialog {
             setFormatter { String.format(Locale.US, "%02d", it) }
         }
         val minutes = NumberPicker(context).apply {
+            contentDescription = "Minute"
             minValue = 0; maxValue = 59
             value = initial.get(Calendar.MINUTE)
             descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
@@ -151,7 +158,19 @@ object Win98ReminderTimeDialog {
         row.addView(label(":", 19f, true), LinearLayout.LayoutParams(dp(22), dp(96)))
         row.addView(minutes, LinearLayout.LayoutParams(dp(84), dp(96)))
         body.addView(row)
-        Win98Dialogs.showCustom(context, "Reminder Date & Time", body,
+        val scroll = object : android.widget.ScrollView(context) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val cap = (resources.displayMetrics.heightPixels * 0.60f).toInt()
+                val available = if (android.view.View.MeasureSpec.getMode(heightMeasureSpec) == android.view.View.MeasureSpec.UNSPECIFIED)
+                    cap else minOf(cap, android.view.View.MeasureSpec.getSize(heightMeasureSpec))
+                super.onMeasure(widthMeasureSpec, android.view.View.MeasureSpec.makeMeasureSpec(
+                    available, android.view.View.MeasureSpec.AT_MOST))
+            }
+        }.apply {
+            isFillViewport = false
+            addView(body)
+        }
+        Win98Dialogs.showCustom(context, "Reminder Date & Time", scroll,
             "Save Reminder", "Cancel", onPositive = {
                 selected.set(Calendar.HOUR_OF_DAY, hours.value)
                 selected.set(Calendar.MINUTE, minutes.value)
@@ -166,3 +185,4 @@ object Win98ReminderTimeDialog {
             })
     }
 }
+

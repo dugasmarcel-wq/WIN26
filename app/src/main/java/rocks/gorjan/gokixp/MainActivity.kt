@@ -293,6 +293,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
     // Notepad image pickers
     private var currentNotepadApp: NotepadApp? = null
+    private var fullNotepadApp: NotepadApp? = null
+    private var fullNotepadWindow: WindowsDialog? = null
 
     private val notepadGalleryPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         currentNotepadApp?.onImageSelected(uri)
@@ -1157,6 +1159,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         // Handle a URL shared into the launcher on cold start
         handleSharedUrlIntent(intent)
+        handleNoteReminderIntent(intent)
 
         // Initialize app detection
         initializeAppDetection()
@@ -1825,15 +1828,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val minWidthDp = if (clock) 128 else if (id in setOf("mines", "solitaire_desk", "pinball")) 180 else 120
             val logicalWidth = dp(naturalWidthDp)
             val notepadFixed = id == "notepad_98"
-            val notepadLarge = notepadFixed && pref.getBoolean("${key}_large", false)
-            // Ignore old arbitrary Notepad geometry and migrate to fixed presets.
-            val savedWidth = if (notepadFixed) dp(if (notepadLarge) 350 else 300)
+            // One native layout size; historical widget geometry never alters the editor.
+            val savedWidth = if (notepadFixed) ViewGroup.LayoutParams.WRAP_CONTENT
                 else if (pref.contains("${key}_w")) dp(pref.getInt("${key}_w", naturalWidthDp))
                 else logicalWidth
-            val savedHeight = if (notepadFixed) dp(if (notepadLarge) 527 else 452)
+            val savedHeight = if (notepadFixed) ViewGroup.LayoutParams.WRAP_CONTENT
                 else if (pref.contains("${key}_h")) dp(pref.getInt("${key}_h", 160))
                 else ViewGroup.LayoutParams.WRAP_CONTENT
-            val widgetContent = if (clock) Win98WidgetViews.create(this, id)
+            val widgetContent = if (clock || notepadFixed) Win98WidgetViews.create(this, id, pageIndex)
                 else createWin98WidgetCard(spec, pageIndex)
 
             val host = Win98ResizableWidgetHost(
@@ -1850,15 +1852,8 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         .putInt("${key}_w", (w / density).toInt())
                         .putInt("${key}_h", (h / density).toInt())
                         .apply()
-                    if (notepadFixed) {
-                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                            .putBoolean("${key}_large", w > dp(325))
-                            .apply()
-                    }
                 },
-                fixedSizes = if (notepadFixed) Pair(
-                    Pair(dp(300), dp(452)), Pair(dp(350), dp(527))
-                ) else null,
+                pinnedSize = if (notepadFixed) Pair(dp(320), dp(440)) else null,
                 onEditing = { active ->
                     if (active) {
                         win98MovableClockHosts.values.forEach { pageHosts ->
@@ -1870,33 +1865,29 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                 }
             )
             host.elevation = dp(12).toFloat()
-            if (notepadFixed) {
-                val headerRow = (widgetContent as? LinearLayout)
-                    ?.getChildAt(0) as? LinearLayout
-                headerRow?.addView(TextView(this).apply {
-                    text = "Size"
-                    textSize = 12f
-                    setTextColor(Color.WHITE)
-                    setPadding(dp(9), 0, dp(9), 0)
-                    isClickable = true
-                    setOnClickListener { host.toggleFixedSize() }
-                    contentDescription = "Switch Notepad between standard and large size"
-                }, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, dp(25)
-                ))
-            }
             host.contentDescription = if (notepadFixed)
-                "Pinned Notepad, Size switches standard and large"
+                "Pinned Notepad; expand opens the full app"
                 else "Hold to move or resize ${spec.title}"
             val lp = if (parent is RelativeLayout) {
-                RelativeLayout.LayoutParams(savedWidth, savedHeight)
+                RelativeLayout.LayoutParams(savedWidth, savedHeight).apply {
+                    if (notepadFixed) {
+                        addRule(RelativeLayout.CENTER_HORIZONTAL)
+                        addRule(RelativeLayout.ALIGN_PARENT_TOP)
+                        setMargins(dp(12), dp(if (pageIndex == 1) 56 else 20), dp(12), dp(12))
+                    }
+                }
             } else {
-                FrameLayout.LayoutParams(savedWidth, savedHeight)
+                FrameLayout.LayoutParams(savedWidth, savedHeight).apply {
+                    if (notepadFixed) {
+                        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        setMargins(dp(12), dp(if (pageIndex == 1) 56 else 20), dp(12), dp(12))
+                    }
+                }
             }
             parent.addView(host, lp)
             hosts[id] = host
             host.post {
-                if (host.parent !== parent) return@post
+                if (host.parent !== parent || notepadFixed) return@post
                 val density = resources.displayMetrics.density
                 val fallbackX = if (clock) {
                     (parent.width - host.width - dp(12)).coerceAtLeast(0)
@@ -8961,6 +8952,65 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         }, 100) // Small delay to ensure window is fully rendered
     }
 
+    fun createNotepadController(onTitleChanged: (String) -> Unit, embeddedPage: Int? = null): NotepadApp {
+        return NotepadApp(
+            context = this,
+            onSoundPlay = { soundType ->
+                when (soundType) {
+                    "click" -> playClickSound()
+                    else -> playClickSound()
+                }
+            },
+            onShowContextMenu = { menuItems, x, y ->
+                if (::contextMenu.isInitialized) {
+                    contextMenu.showMenu(menuItems, x, y)
+                }
+            },
+            onShowRenameDialog = { title, initialText, hint, onOk ->
+                showRenameDialog(title, initialText, hint, onOk)
+            },
+            onUpdateWindowTitle = onTitleChanged,
+            galleryPickerLauncher = notepadGalleryPickerLauncher,
+            onCameraCapture = { uri ->
+                pendingCameraUri = uri
+                notepadCameraPickerLauncher.launch(uri)
+            },
+            onShowFullscreenImage = { uri ->
+                showFullscreenImage(uri)
+            },
+            getCursorPosition = {
+                Pair(cursorEffect.x, cursorEffect.y)
+            },
+            embeddedPage = embeddedPage,
+            onActivate = { currentNotepadApp = it }
+        )
+
+    }
+
+    fun openNotepad(noteId: String?, category: String?) {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        prefs.edit().apply {
+            if (noteId != null) putString("notepad_last_note_id", noteId)
+            if (category != null) putString("notepad_active_category", category)
+        }.apply()
+        if (fullNotepadApp != null && floatingWindowManager.findAndFocusWindow("system.notepad")) {
+            fullNotepadApp?.openNote(noteId, category)
+            if (themeManager.isClassicTheme()) fullNotepadWindow?.maximizeWindow()
+        } else showNotepadDialog()
+    }
+
+    private fun handleNoteReminderIntent(intent: Intent?) {
+        val id = intent?.getStringExtra("win26_open_note") ?: return
+        intent.removeExtra("win26_open_note")
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val type = object : com.google.gson.reflect.TypeToken<List<rocks.gorjan.gokixp.apps.notepad.Note>>() {}.type
+        val note = try {
+            com.google.gson.Gson().fromJson<List<rocks.gorjan.gokixp.apps.notepad.Note>>(
+                prefs.getString("notepad_notes", "[]"), type)?.firstOrNull { it.id == id }
+        } catch (_: Exception) { null }
+        openNotepad(note?.id, note?.category)
+    }
+
     private fun showNotepadDialog() {
         // Set cursor to busy while loading
         setCursorBusy()
@@ -8979,43 +9029,15 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         windowsDialog.setTaskbarIcon(themeManager.getNotepadIcon())
 
         // Inflate the notepad content
-        val contentView = layoutInflater.inflate(R.layout.program_notepad, null)
+        val contentView = layoutInflater.inflate(
+            if (themeManager.isClassicTheme()) R.layout.program_notepad_classic else R.layout.program_notepad, null)
 
-        // Create Notepad app instance
-        val notepadApp = NotepadApp(
-            context = this,
-            onSoundPlay = { soundType ->
-                when (soundType) {
-                    "click" -> playClickSound()
-                    else -> playClickSound()
-                }
-            },
-            onShowContextMenu = { menuItems, x, y ->
-                if (::contextMenu.isInitialized) {
-                    contextMenu.showMenu(menuItems, x, y)
-                }
-            },
-            onShowRenameDialog = { title, initialText, hint, onOk ->
-                showRenameDialog(title, initialText, hint, onOk)
-            },
-            onUpdateWindowTitle = { title ->
-                windowsDialog.setTitle(title)
-            },
-            galleryPickerLauncher = notepadGalleryPickerLauncher,
-            onCameraCapture = { uri ->
-                pendingCameraUri = uri
-                notepadCameraPickerLauncher.launch(uri)
-            },
-            onShowFullscreenImage = { uri ->
-                showFullscreenImage(uri)
-            },
-            getCursorPosition = {
-                Pair(cursorEffect.x, cursorEffect.y)
-            }
-        )
+        val notepadApp = createNotepadController({ windowsDialog.setTitle(it) })
 
         // Store reference for launchers to call back
         currentNotepadApp = notepadApp
+        fullNotepadApp = notepadApp
+        fullNotepadWindow = windowsDialog
 
         // Setup the app
         notepadApp.setupApp(contentView)
@@ -9038,11 +9060,17 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Cleanup on close
         windowsDialog.setOnCloseListener {
             notepadApp.cleanup()
+            if (fullNotepadApp === notepadApp) {
+                fullNotepadApp = null
+                fullNotepadWindow = null
+            }
         }
 
         // Set context menu reference and show as floating window
         windowsDialog.setContextMenuView(contextMenu)
         floatingWindowManager.showWindow(windowsDialog)
+        if (themeManager.isClassicTheme()) windowsDialog.post { windowsDialog.maximizeWindow() }
+
 
         // Set cursor back to normal after window is shown and loaded
         Handler(Looper.getMainLooper()).postDelayed({
@@ -14905,6 +14933,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         // Handle a URL shared into the launcher while it's already running (the common path)
         handleSharedUrlIntent(intent)
+        handleNoteReminderIntent(intent)
     }
 
     override fun onDestroy() {
@@ -16480,6 +16509,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         ) return false
 
         if (win98MovableClockHosts[win98CurrentPage]?.values?.any {
+            it.isPinned() && isTouchInsideView(it, event)
+        } == true) return false
+
+        if (win98MovableClockHosts[win98CurrentPage]?.values?.any {
             isTouchInsideView(it, event) && !it.isMoveArmed()
         } == true) return true
 
@@ -16957,3 +16990,4 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
 }
+

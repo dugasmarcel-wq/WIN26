@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="3dp"
+    android:background="@drawable/win98_start_menu_border">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:paddingStart="4dp" android:paddingEnd="2dp" android:paddingTop="2dp" android:paddingBottom="2dp"
+        android:background="@drawable/notepad_title_background">
+        <ImageView android:layout_width="16dp" android:layout_height="16dp"
+            android:layout_marginEnd="5dp" android:src="@drawable/notepad_icon_98"
+            android:scaleType="fitCenter" android:importantForAccessibility="no"/>
+        <TextView android:id="@+id/notepad_window_title" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_height="wrap_content"
+            android:text="Notepad" android:textSize="12sp" android:textColor="#FFFFFF"
+            android:fontFamily="?primaryFontFamily" android:maxLines="1" android:ellipsize="end"/>
+        <ImageView android:id="@+id/notepad_window_expand"
+            android:layout_width="30dp" android:layout_height="28dp"
+            android:src="@drawable/win98_title_bar_maximize" android:scaleType="fitCenter"
+            android:contentDescription="Expand to full Notepad" android:clickable="true" android:focusable="true"/>
+    </LinearLayout>
+    <include android:id="@+id/notepad_classic_shell" layout="@layout/program_notepad_classic"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+</LinearLayout>

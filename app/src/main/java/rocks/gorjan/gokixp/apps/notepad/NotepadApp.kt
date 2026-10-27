@@ -52,7 +52,9 @@ class NotepadApp(
     private val galleryPickerLauncher: ActivityResultLauncher<String>,
     private val onCameraCapture: (Uri) -> Unit,
     private val onShowFullscreenImage: (Uri) -> Unit,
-    private val getCursorPosition: () -> Pair<Float, Float>
+    private val getCursorPosition: () -> Pair<Float, Float>,
+    private val embeddedPage: Int? = null,
+    private val onActivate: (NotepadApp) -> Unit = {}
 ) {
     companion object {
         private const val KEY_NOTES = "notepad_notes"
@@ -60,23 +62,38 @@ class NotepadApp(
         private const val KEY_LAST_NOTE_ID = "notepad_last_note_id"
     }
 
-    // Game state
-    private val prefs: SharedPreferences = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+    private val store = NotepadStore(prefs)
     private val notes = mutableListOf<Note>()
+    private var savedSnapshot = emptyList<Note>()
+    private var lastStoredJson: String? = null
+    private var saving = false
+    private var listening = false
+    private var databaseReady = false
     private var currentNote: Note? = null
-    private var isListExpanded = false
+    private var isListExpanded = true
     private var isProgrammaticChange = false
     private var noteInMoveMode: Note? = null
-    private var showingArchivedNotes = false  // Track if we're viewing archived notes
+    private var showingArchivedNotes = false
     private var activeCategory = "day_to_day"
+    private var classicUi = false
+    private var categoryPopup: android.widget.PopupWindow? = null
+    private var editorArmed = false
+    private val categoryKey = embeddedPage?.let { "win98_notepad_widget_category_$it" }
+        ?: "notepad_active_category"
+    private val sidebarKey = embeddedPage?.let { "win98_notepad_widget_sidebar_$it" }
+        ?: "notepad_sidebar_expanded"
+    private val storageListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == KEY_NOTES && !saving && prefs.getString(KEY_NOTES, null) != lastStoredJson) {
+            reloadExternalNotes()
+        }
+    }
     private var dayTab: TextView? = null
     private var longTab: TextView? = null
     private var reminderTab: TextView? = null
     private var reminderPanel: View? = null
     private var reminderSubject: EditText? = null
     private var reminderWhen: TextView? = null
-
-    // UI references
     private var notesEditText: EditText? = null
     private var notesListContainer: LinearLayout? = null
     private var notesList: RecyclerView? = null
@@ -88,11 +105,8 @@ class NotepadApp(
     private var imageGallery: RecyclerView? = null
     private var imageGalleryAdapter: ImageGalleryAdapter? = null
 
-    /**
-     * Initialize the app UI
-     */
     fun setupApp(contentView: View): View {
-        // Get references to views
+        classicUi = contentView.tag == "classic_notepad"
         notesEditText = contentView.findViewById(R.id.notes)
         notesListContainer = contentView.findViewById(R.id.notes_list_container)
         notesList = contentView.findViewById(R.id.notes_list)
@@ -106,10 +120,57 @@ class NotepadApp(
         reminderPanel = contentView.findViewById(R.id.notepad_reminder_panel)
         reminderSubject = contentView.findViewById(R.id.notepad_reminder_subject)
         reminderWhen = contentView.findViewById(R.id.notepad_reminder_when)
+        activeCategory = prefs.getString(categoryKey, "day_to_day") ?: "day_to_day"
+        isListExpanded = prefs.getBoolean(sidebarKey, true)
+        applySidebarVisibility()
+
+        notesAdapter = NotesAdapter()
+        notesList?.apply {
+            layoutManager = LinearLayoutManager(context)
+            adapter = notesAdapter
+        }
+        imageGallery?.layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
+        val drag = object : ItemTouchHelper.Callback() {
+            override fun getMovementFlags(view: RecyclerView, holder: RecyclerView.ViewHolder): Int =
+                makeMovementFlags(if (noteInMoveMode != null) ItemTouchHelper.UP or ItemTouchHelper.DOWN else 0, 0)
+            override fun onMove(view: RecyclerView, from: RecyclerView.ViewHolder,
+                to: RecyclerView.ViewHolder): Boolean {
+                if (from.adapterPosition < 0 || to.adapterPosition < 0) return false
+                notesAdapter?.onItemMove(from.adapterPosition, to.adapterPosition)
+                return true
+            }
+            override fun onSwiped(holder: RecyclerView.ViewHolder, direction: Int) {}
+            override fun isLongPressDragEnabled() = false
+            override fun clearView(view: RecyclerView, holder: RecyclerView.ViewHolder) {
+                super.clearView(view, holder)
+                notesAdapter?.onItemDropped()
+                noteInMoveMode = null
+                refreshNotesList()
+            }
+        }
+        itemTouchHelper = ItemTouchHelper(drag).also { it.attachToRecyclerView(notesList) }
+
+        listOf(dayTab to "day_to_day", longTab to "long_term", reminderTab to "reminder_notes")
+            .forEach { (tab, category) ->
+                tab?.setOnClickListener {
+                    switchCategory(category)
+                    if (classicUi) showCategoryMenu(tab)
+                }
+                tab?.contentDescription = when (category) {
+                    "long_term" -> "Long-Term notes menu"
+                    "reminder_notes" -> "Reminder notes menu"
+                    else -> "Day-to-Day notes menu"
+                }
+            }
+        addNoteButton?.setOnClickListener { addNote() }
+        expandButton?.setOnClickListener { toggleSidebar() }
+        archiveButton?.setOnClickListener { toggleArchiveView() }
+        contentView.findViewById<TextView>(R.id.notepad_rename_action)?.setOnClickListener { renameCurrentNote() }
+        contentView.findViewById<TextView>(R.id.notepad_add_image)?.setOnClickListener { showImageSourcePicker(it) }
         contentView.findViewById<TextView>(R.id.notepad_reminder_set)?.setOnClickListener { scheduleCurrentReminder() }
         reminderSubject?.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {}
+            override fun afterTextChanged(s: Editable?) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 if (!isProgrammaticChange && activeCategory == "reminder_notes") {
                     currentNote?.reminderSubject = s?.toString().orEmpty()
@@ -117,328 +178,241 @@ class NotepadApp(
                 }
             }
         })
-        activeCategory = prefs.getString("notepad_active_category", "day_to_day") ?: "day_to_day"
-        fun switchCategory(category: String) {
-            currentNote?.content = notesEditText?.text.toString()
-            saveNotes()
-            activeCategory = category
-            prefs.edit().putString("notepad_active_category", category).apply()
-            currentNote = getFilteredNotes().firstOrNull()
-            saveLastNoteId()
-            isProgrammaticChange = true
-            notesEditText?.setText(currentNote?.content.orEmpty())
-            isProgrammaticChange = false
-            currentNote?.let { loadNoteImages(it) } ?: run { imageGallery?.visibility = View.GONE }
-            updateWindowTitle()
-            refreshNotesList()
-            updateCategoryTabs()
-            updateReminderFields()
-        }
-        dayTab?.setOnClickListener { switchCategory("day_to_day") }
-        longTab?.setOnClickListener { switchCategory("long_term") }
-        reminderTab?.setOnClickListener { switchCategory("reminder_notes") }
-        updateCategoryTabs()
-        updateReminderFields()
-
-        // Setup Notes RecyclerView
-        notesAdapter = NotesAdapter()
-        notesList?.apply {
-            layoutManager = LinearLayoutManager(context)
-            adapter = notesAdapter
-        }
-
-        // Setup Image Gallery RecyclerView
-        imageGallery?.apply {
-            layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
-        }
-
-        // Setup ItemTouchHelper for drag-and-drop
-        val callback = object : ItemTouchHelper.Callback() {
-            override fun getMovementFlags(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ): Int {
-                // Only allow dragging if in move mode
-                val dragFlags = if (noteInMoveMode != null) ItemTouchHelper.UP or ItemTouchHelper.DOWN else 0
-                return makeMovementFlags(dragFlags, 0)
-            }
-
-            override fun onMove(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                target: RecyclerView.ViewHolder
-            ): Boolean {
-                val fromPosition = viewHolder.adapterPosition
-                val toPosition = target.adapterPosition
-                notesAdapter?.onItemMove(fromPosition, toPosition)
-                return true
-            }
-
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                // Not used
-            }
-
-            override fun isLongPressDragEnabled(): Boolean = false
-
-            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-                super.clearView(recyclerView, viewHolder)
-                // Called when dragging ends
-                notesAdapter?.onItemDropped()
-
-                // Exit move mode
-                noteInMoveMode = null
-                refreshNotesList()
-                onSoundPlay("click")
-            }
-        }
-
-        itemTouchHelper = ItemTouchHelper(callback)
-        itemTouchHelper?.attachToRecyclerView(notesList)
-
-        // Load notes from SharedPreferences
-        notes.clear()
-        notes.addAll(loadNotes())
-
-        // Migrate old single note if exists
-        val oldNote = prefs.getString(KEY_OLD_NOTE, null)
-        if (!oldNote.isNullOrEmpty() && notes.isEmpty()) {
-            val migratedNote = Note(
-                id = java.util.UUID.randomUUID().toString(),
-                title = "Note 1",
-                content = oldNote
-            )
-            notes.add(migratedNote)
-            saveNotes()
-            prefs.edit { remove(KEY_OLD_NOTE) }
-        }
-
-        // Ensure at least one note exists
-        if (notes.isEmpty()) {
-            notes.add(Note(
-                id = java.util.UUID.randomUUID().toString(),
-                title = "Note 1",
-                content = ""
-            ))
-            saveNotes()
-        }
-
-        // Always start with active (non-archived) notes view
-        showingArchivedNotes = false
-        archiveButton?.text = "Archived Notes"
-
-        // Load the last opened note if it's active, otherwise fall back to first active note
-        val lastNoteId = prefs.getString(KEY_LAST_NOTE_ID, null)
-        currentNote = if (lastNoteId != null) {
-            val lastNote = notes.find { it.id == lastNoteId }
-            // Only use last note if it's not archived
-            if (lastNote != null && !lastNote.isArchived && (if (lastNote.category == "long_term") "long_term" else if (lastNote.category == "reminder_notes") "reminder_notes" else "day_to_day") == activeCategory) {
-                lastNote
-            } else {
-                getFilteredNotes().firstOrNull()
-            }
-        } else {
-            getFilteredNotes().firstOrNull()
-        }
-
-        // Load current note content and images
-        currentNote?.let {
-            isProgrammaticChange = true
-            notesEditText?.setText(it.content)
-            isProgrammaticChange = false
-            loadNoteImages(it)
-        }
-
-        // Set initial title
-        updateWindowTitle()
-
-        // Initial list refresh
-        refreshNotesList()
-
-        // The restore handle remains visible while the list retracts.
-        expandButton?.visibility = View.VISIBLE
-        isListExpanded = prefs.getBoolean("notepad_sidebar_expanded", true)
-        notesListContainer?.visibility = if (isListExpanded) View.VISIBLE else View.GONE
-        expandButton?.text = if (isListExpanded) "<" else ">"
-        // Expand/collapse button
-        expandButton?.setOnClickListener {
-            onSoundPlay("click")
-            isListExpanded = !isListExpanded
-            prefs.edit().putBoolean("notepad_sidebar_expanded", isListExpanded).apply()
-            if (isListExpanded) {
-                notesListContainer?.visibility = View.VISIBLE
-                expandButton?.text = "<"
-            } else {
-                notesListContainer?.visibility = View.GONE
-                expandButton?.text = ">"
-            }
-        }
-
-        // Add note button
-        addNoteButton?.setOnClickListener {
-            onSoundPlay("click")
-            Helpers.performHapticFeedback(context)
-
-            // Save current note before creating new one
-            currentNote?.content = notesEditText?.text.toString()
-            saveNotes()
-
-            // Create new note with current archive status matching the view
-            val newNote = Note(
-                id = java.util.UUID.randomUUID().toString(),
-                title = SimpleDateFormat("yyyyMMMd", Locale.ENGLISH).format(Date()),
-                content = "",
-                imageUris = mutableListOf(),
-                isArchived = showingArchivedNotes, // Match current view
-                category = activeCategory
-            )
-            notes.add(newNote)
-            saveNotes()
-
-            // Switch to new note
-            currentNote = newNote
-            saveLastNoteId()
-            isProgrammaticChange = true
-            notesEditText?.setText("")
-            isProgrammaticChange = false
-            imageGallery?.visibility = View.GONE
-            updateWindowTitle()
-            refreshNotesList()
-            updateReminderFields()
-        }
-
-        // Add Image button
-        val addImageButton = contentView.findViewById<TextView>(R.id.notepad_add_image)
-        addImageButton?.setOnClickListener { view ->
-            onSoundPlay("click")
-            showImageSourcePicker(view)
-        }
-
-        // Archive button - toggle between active and archived notes
-        archiveButton?.setOnClickListener {
-            onSoundPlay("click")
-            Helpers.performHapticFeedback(context)
-
-            // Save current note before switching views
-            currentNote?.content = notesEditText?.text.toString()
-            saveNotes()
-
-            // Toggle archive view
-            showingArchivedNotes = !showingArchivedNotes
-
-            // Update button text
-            archiveButton?.text = if (showingArchivedNotes) "Active Notes" else "Archived Notes"
-
-            // Switch to first note in the new view (archived or active)
-            val filteredNotes = getFilteredNotes()
-            currentNote = filteredNotes.firstOrNull()
-            saveLastNoteId()
-
-            // Load the new current note
-            currentNote?.let {
-                isProgrammaticChange = true
-                notesEditText?.setText(it.content)
-                isProgrammaticChange = false
-                loadNoteImages(it)
-            } ?: run {
-                // No notes in this view
-                isProgrammaticChange = true
-                notesEditText?.setText("")
-                isProgrammaticChange = false
-                imageGallery?.visibility = View.GONE
-            }
-
-            updateWindowTitle()
-            refreshNotesList()
-        }
-
-        // Save notes as user types and handle automatic list continuation
         notesEditText?.addTextChangedListener(object : android.text.TextWatcher {
-            private var isAutoInserting = false
-
+            private var autoInserting = false
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                // Skip automatic list logic if this is a programmatic change (loading a note)
-                if (isProgrammaticChange) return
-
-                // Check if a newline was just added
-                if (!isAutoInserting && count > 0 && s != null && start + count > 0) {
-                    val insertedText = s.subSequence(start, start + count).toString()
-                    if (insertedText.contains('\n')) {
-                        val editText = notesEditText ?: return
-                        val text = s.toString()
-                        val newlinePos = start + insertedText.indexOf('\n')
-
-                        // Find the start of the previous line
-                        val prevLineStart = text.lastIndexOf('\n', newlinePos - 1) + 1
-                        val prevLine = text.substring(prevLineStart, newlinePos)
-
-
-                        // Check if previous line starts with "- "
-                        if (prevLine.startsWith("- ")) {
-                            // Auto-insert "- " after the newline
-                            isAutoInserting = true
-                            val cursorPos = editText.selectionStart
-                            editText.text.insert(cursorPos, "- ")
-                            isAutoInserting = false
-                        }
-                    }
+                if (isProgrammaticChange || autoInserting || s == null || count != 1 || s[start] != '\n') return
+                val previousStart = s.toString().lastIndexOf('\n', start - 1) + 1
+                if (s.subSequence(previousStart, start).startsWith("- ")) {
+                    autoInserting = true
+                    notesEditText?.text?.insert(start + 1, "- ")
+                    autoInserting = false
                 }
             }
-
-            override fun afterTextChanged(s: android.text.Editable?) {
-                if (isProgrammaticChange) return
-                // Create the dated note only when the user actually writes.
-                if (activeCategory == "day_to_day" && !s.isNullOrBlank()) {
-                    val todayKey = "win98_notepad_daily_created_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-                    if (!prefs.contains(todayKey)) {
-                        val dateName = SimpleDateFormat("yyyy MMM d", Locale.ENGLISH).format(Date())
-                        val current = currentNote
-                        if (current != null && current.content.isBlank()) {
-                            current.title = dateName
-                            prefs.edit().putString(todayKey, current.id).apply()
-                            refreshNotesList()
-                            updateWindowTitle()
-                        } else if (current != null) {
-                            // Keep older note text intact; move only newly typed text
-                            // into today's entry instead of copying yesterday's note.
-                            val old = current.content
-                            val text = s.toString()
-                            val prefix = old.commonPrefixWith(text).length
-                            val a = old.substring(prefix)
-                            val b = text.substring(prefix)
-                            val suffix = a.reversed().commonPrefixWith(b.reversed()).length
-                            val inserted = b.dropLast(suffix)
-                            if (inserted.isNotEmpty()) {
-                                val dated = Note(java.util.UUID.randomUUID().toString(),
-                                    dateName, inserted, category = "day_to_day")
-                                notes.add(dated)
-                                currentNote = dated
-                                prefs.edit().putString(todayKey, dated.id).apply()
-                                saveLastNoteId()
-                                isProgrammaticChange = true
-                                notesEditText?.setText(inserted)
-                                notesEditText?.setSelection(inserted.length)
-                                isProgrammaticChange = false
-                                refreshNotesList()
-                                updateWindowTitle()
-                            }
-                        }
-                    }
-                }
-                currentNote?.content = s.toString()
+            override fun afterTextChanged(s: Editable?) {
+                if (isProgrammaticChange || autoInserting) return
+                // Editing always belongs to the selected ID. Only Add creates notes.
+                currentNote?.content = s?.toString().orEmpty()
                 saveNotes()
             }
         })
-
+        if (embeddedPage != null) setupEmbeddedEditing()
+        resume()
         return contentView
     }
 
-    /**
-     * Save current state when window is minimized
-     */
+    fun resume() {
+        if (!listening) {
+            prefs.registerOnSharedPreferenceChangeListener(storageListener)
+            listening = true
+        }
+        reloadExternalNotes()
+    }
+
+    private fun reloadExternalNotes() {
+        try {
+            saving = true
+            applyLoadedNotes(store.load())
+            savedSnapshot = NotepadJson.snapshot(notes)
+            lastStoredJson = prefs.getString(KEY_NOTES, null)
+            databaseReady = true
+            val selectedId = currentNote?.id ?: prefs.getString(selectionKey(), null)
+            if (embeddedPage == null && currentNote == null) {
+                showingArchivedNotes = notes.firstOrNull { it.id == selectedId }?.isArchived == true
+            }
+            val available = getFilteredNotes()
+            selectNote(available.firstOrNull { it.id == selectedId } ?: available.firstOrNull())
+            addNoteButton?.isEnabled = true
+        } catch (e: Exception) {
+            databaseReady = false
+            notesEditText?.isEnabled = false
+            addNoteButton?.isEnabled = false
+            android.widget.Toast.makeText(context, "Notes could not be read. Stored data has been kept.",
+                android.widget.Toast.LENGTH_LONG).show()
+            Log.e("NotepadApp", "Cannot read notes", e)
+        } finally { saving = false }
+    }
+
+    private fun applyLoadedNotes(loaded: List<Note>) {
+        val live = notes.associateBy { it.id }
+        val selected = currentNote?.id
+        val merged = loaded.map { stored ->
+            live[stored.id]?.apply {
+                title = stored.title; content = stored.content
+                imageUris = stored.imageUris.toMutableList(); isArchived = stored.isArchived
+                category = stored.category; reminderAt = stored.reminderAt
+                reminderSubject = stored.reminderSubject
+            } ?: stored
+        }
+        notes.clear(); notes.addAll(merged)
+        currentNote = notes.firstOrNull { it.id == selected }
+    }
+
+    private fun selectionKey(): String = embeddedPage?.let {
+        "win98_notepad_widget_note_${it}_$activeCategory"
+    } ?: KEY_LAST_NOTE_ID
+
+    private fun selectNote(note: Note?) {
+        currentNote = note
+        saveLastNoteId()
+        isProgrammaticChange = true
+        val value = note?.content.orEmpty()
+        if (notesEditText?.text?.toString() != value) notesEditText?.setText(value)
+        notesEditText?.isEnabled = note != null && databaseReady
+        notesEditText?.hint = if (note == null) "Use Add to create a note" else ""
+        isProgrammaticChange = false
+        note?.let { loadNoteImages(it) } ?: run { imageGallery?.visibility = View.GONE }
+        updateWindowTitle()
+        refreshNotesList()
+        updateCategoryTabs()
+        updateReminderFields()
+    }
+
+    private fun switchCategory(category: String) {
+        if (activeCategory == category) return
+        disarmEmbeddedEditor()
+        activeCategory = category
+        showingArchivedNotes = false
+        prefs.edit().putString(categoryKey, category).apply()
+        val available = getFilteredNotes()
+        val id = prefs.getString(selectionKey(), null)
+        selectNote(available.firstOrNull { it.id == id } ?: available.firstOrNull())
+    }
+
+    private fun addNote() {
+        if (!databaseReady) return
+        val note = NotepadJson.newNote(activeCategory, showingArchivedNotes)
+        notes.add(note)
+        saveNotes()
+        disarmEmbeddedEditor()
+        selectNote(notes.firstOrNull { it.id == note.id })
+    }
+
+    private fun renameCurrentNote() {
+        val id = currentNote?.id ?: return
+        onShowRenameDialog("Rename Note", currentNote?.title.orEmpty(), "Note name") { title ->
+            if (title.isNotBlank()) {
+                notes.firstOrNull { it.id == id }?.title = title.trim()
+                saveNotes(); updateWindowTitle(); refreshNotesList()
+            }
+        }
+    }
+
+    private fun applySidebarVisibility() {
+        notesListContainer?.visibility = if (isListExpanded) View.VISIBLE else View.GONE
+        expandButton?.visibility = View.VISIBLE
+        expandButton?.text = if (isListExpanded) "<" else ">"
+    }
+
+    private fun toggleSidebar() {
+        isListExpanded = !isListExpanded
+        prefs.edit().putBoolean(sidebarKey, isListExpanded).apply()
+        applySidebarVisibility()
+    }
+
+    private fun toggleArchiveView() {
+        showingArchivedNotes = !showingArchivedNotes
+        archiveButton?.text = if (showingArchivedNotes) "Active Notes" else "Archived Notes"
+        disarmEmbeddedEditor()
+        selectNote(getFilteredNotes().firstOrNull())
+    }
+
+    private fun showCategoryMenu(anchor: View) {
+        categoryPopup?.dismiss()
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(3.dpToPx(), 3.dpToPx(), 3.dpToPx(), 3.dpToPx())
+            setBackgroundResource(R.drawable.win98_start_menu_border)
+        }
+        val popup = android.widget.PopupWindow(column, 194.dpToPx(), ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        popup.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        popup.isOutsideTouchable = true
+        fun item(label: String, enabled: Boolean = true, action: () -> Unit) {
+            column.addView(TextView(context).apply {
+                text = label; textSize = 12f; setTextColor(if (enabled) Color.BLACK else Color.DKGRAY)
+                typeface = MainActivity.getInstance()?.getThemePrimaryFont()
+                minHeight = 36.dpToPx()
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(10.dpToPx(), 5.dpToPx(), 10.dpToPx(), 5.dpToPx())
+                isEnabled = enabled
+                setOnClickListener { popup.dismiss(); action() }
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+        item("Add note", databaseReady) { addNote() }
+        item("Rename note", currentNote != null) { renameCurrentNote() }
+        item(if (isListExpanded) "Hide notes sidebar" else "Show notes sidebar") { toggleSidebar() }
+        item(if (showingArchivedNotes) "Show active notes" else "Archived notes") { toggleArchiveView() }
+        item("Add image", currentNote != null) { showImageSourcePicker(anchor) }
+        if (activeCategory == "reminder_notes" && (currentNote?.reminderAt ?: 0L) > 0L) {
+            item("Cancel reminder") {
+                currentNote?.let { it.reminderAt = 0L; Win98NoteReminderReceiver.cancel(context, it.id) }
+                saveNotes(); updateReminderFields()
+            }
+        }
+        categoryPopup = popup
+        popup.showAsDropDown(anchor)
+    }
+
+    private fun setupEmbeddedEditing() {
+        val editor = notesEditText ?: return
+        editor.showSoftInputOnFocus = false
+        var firstTap = false
+        var downX = 0f
+        var downY = 0f
+        editor.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    firstTap = !editorArmed
+                    downX = event.rawX; downY = event.rawY
+                    firstTap
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    if (firstTap) {
+                        if (kotlin.math.abs(event.rawX - downX) + kotlin.math.abs(event.rawY - downY) < 12.dpToPx()) {
+                            editorArmed = true
+                        }
+                        firstTap = false
+                        true
+                    } else {
+                        if (editorArmed) {
+                            editor.showSoftInputOnFocus = true
+                            editor.requestFocus()
+                            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                                .showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                        }
+                        false
+                    }
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> { firstTap = false; false }
+                else -> firstTap
+            }
+        }
+    }
+
+    private fun disarmEmbeddedEditor() {
+        if (embeddedPage == null) return
+        editorArmed = false
+        notesEditText?.showSoftInputOnFocus = false
+        notesEditText?.clearFocus()
+    }
+
+    fun openNote(id: String?, category: String?) {
+        if (category != null) activeCategory = category
+        showingArchivedNotes = false
+        prefs.edit().putString(categoryKey, activeCategory).apply()
+        reloadExternalNotes()
+        val target = notes.firstOrNull { it.id == id }
+        showingArchivedNotes = target?.isArchived == true
+        selectNote(target ?: getFilteredNotes().firstOrNull())
+    }
+
+    fun openFullNotepad() {
+        onMinimize()
+        (context as? MainActivity)?.openNotepad(currentNote?.id, activeCategory)
+    }
+
     fun onMinimize() {
-        currentNote?.content = notesEditText?.text.toString()
         saveNotes()
         saveLastNoteId()
     }
@@ -461,6 +435,7 @@ class NotepadApp(
 
     private fun updateReminderFields() {
         reminderPanel?.visibility = if (activeCategory == "reminder_notes") View.VISIBLE else View.GONE
+        notesEditText?.isEnabled = databaseReady && currentNote != null
         isProgrammaticChange = true
         reminderSubject?.setText(currentNote?.reminderSubject.orEmpty())
         reminderSubject?.isEnabled = currentNote != null
@@ -475,11 +450,20 @@ class NotepadApp(
         val note = currentNote ?: return
         val subject = reminderSubject?.text?.toString()?.trim().orEmpty()
         if (subject.isEmpty()) { reminderSubject?.error = "Enter a subject"; return }
+        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+            .hideSoftInputFromWindow(notesEditText?.windowToken, 0)
+        notesEditText?.clearFocus()
         Win98ReminderTimeDialog.show(context, note.reminderAt) { at ->
             note.reminderAt = at
             note.reminderSubject = subject
             saveNotes()
-            Win98NoteReminderReceiver.schedule(context, note.id, subject, at)
+            if (databaseReady) {
+                Win98NoteReminderReceiver.schedule(context, note.id, subject, at)
+                if (android.os.Build.VERSION.SDK_INT >= 33 && context is Activity &&
+                    context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    context.requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 2601)
+                }
+            }
             updateReminderFields()
         }
     }
@@ -518,6 +502,7 @@ class NotepadApp(
      * Show image source picker dialog (Gallery or Camera)
      */
     private fun showImageSourcePicker(anchorView: View) {
+        onActivate(this)
         val menuItems = listOf(
             ContextMenuItem(
                 title = "From Gallery",
@@ -678,12 +663,13 @@ class NotepadApp(
             action = {
                 onSoundPlay("click")
 
+                val wasSelected = note.id == currentNote?.id
                 // Toggle archive status
                 note.isArchived = !note.isArchived
                 saveNotes()
 
                 // If we archived/unarchived the current note, switch to first available note in current view
-                if (note.id == currentNote?.id) {
+                if (wasSelected) {
                     val remainingNotes = getFilteredNotes()
                     currentNote = remainingNotes.firstOrNull()
                     saveLastNoteId()
@@ -704,7 +690,11 @@ class NotepadApp(
                     updateWindowTitle()
                 }
 
-                refreshNotesList()
+                Win98NoteReminderReceiver.cancel(context, note.id)
+                if (!note.isArchived && note.reminderAt > 0L) {
+                    Win98NoteReminderReceiver.schedule(context, note.id, note.reminderSubject, note.reminderAt)
+                }
+                selectNote(currentNote)
             }
         ))
 
@@ -718,10 +708,11 @@ class NotepadApp(
                     val index = notes.indexOfFirst { it.id == note.id }
                     if (index != -1) {
                         notes.removeAt(index)
+                        Win98NoteReminderReceiver.cancel(context, note.id)
                         saveNotes()
 
                         // Switch to first remaining note
-                        val newCurrentNote = notes.firstOrNull()
+                        val newCurrentNote = getFilteredNotes().firstOrNull()
                         currentNote = newCurrentNote
                         saveLastNoteId()
                         newCurrentNote?.let {
@@ -730,8 +721,7 @@ class NotepadApp(
                             isProgrammaticChange = false
                         }
 
-                        updateWindowTitle()
-                        refreshNotesList()
+                        selectNote(newCurrentNote)
                     }
                 }
             ))
@@ -744,24 +734,20 @@ class NotepadApp(
     /**
      * Load notes from SharedPreferences
      */
-    private fun loadNotes(): MutableList<Note> {
-        val notesJson = prefs.getString(KEY_NOTES, null)
-        return if (notesJson != null) {
-            val type = object : TypeToken<MutableList<Note>>() {}.type
-            Gson().fromJson(notesJson, type) ?: mutableListOf()
-        } else {
-            mutableListOf()
-        }
-    }
-
-    /**
-     * Save notes to SharedPreferences
-     */
     private fun saveNotes() {
-        val notesJson = Gson().toJson(notes)
-        prefs.edit {
-            putString(KEY_NOTES, notesJson)
-        }
+        if (!databaseReady || saving) return
+        try {
+            saving = true
+            applyLoadedNotes(store.save(savedSnapshot, notes))
+            savedSnapshot = NotepadJson.snapshot(notes)
+            lastStoredJson = prefs.getString(KEY_NOTES, null)
+        } catch (e: Exception) {
+            databaseReady = false
+            notesEditText?.isEnabled = false
+            android.widget.Toast.makeText(context, "Notes could not be saved. Stored data has been kept.",
+                android.widget.Toast.LENGTH_LONG).show()
+            Log.e("NotepadApp", "Cannot save notes", e)
+        } finally { saving = false }
     }
 
     /**
@@ -770,7 +756,7 @@ class NotepadApp(
     private fun saveLastNoteId() {
         currentNote?.let { note ->
             prefs.edit {
-                putString(KEY_LAST_NOTE_ID, note.id)
+                putString(selectionKey(), note.id)
             }
         }
     }
@@ -779,10 +765,11 @@ class NotepadApp(
      * Cleanup when app is closed
      */
     fun cleanup() {
-        // Save final state
-        currentNote?.content = notesEditText?.text.toString()
+        categoryPopup?.dismiss()
         saveNotes()
         saveLastNoteId()
+        prefs.unregisterOnSharedPreferenceChangeListener(storageListener)
+        listening = false
     }
 
     /**
@@ -811,7 +798,8 @@ class NotepadApp(
                 // Use theme's primary font
                 typeface = MainActivity.getInstance()?.getThemePrimaryFont()
                 val currentTheme = ThemeManager(context).getSelectedTheme()
-                textSize = if (currentTheme == AppTheme.WindowsClassic) 12f else 11f
+                textSize = if (currentTheme == AppTheme.WindowsClassic) 10.5f else 11f
+                minHeight = 32.dpToPx()
             }
             return NoteViewHolder(textView)
         }
@@ -839,20 +827,8 @@ class NotepadApp(
             // Click listener (only if not in move mode)
             if (note.id != noteInMoveMode?.id) {
                 textView.setOnClickListener {
-                    // Save current note before switching
-                    currentNote?.content = notesEditText?.text.toString()
-                    saveNotes()
-
-                    // Switch to selected note
-                    currentNote = note
-                    saveLastNoteId()
-                    isProgrammaticChange = true
-                    notesEditText?.setText(note.content)
-                    isProgrammaticChange = false
-                    updateWindowTitle()
-                    loadNoteImages(note)
-                    notifyDataSetChanged()
-                    updateReminderFields()
+                    disarmEmbeddedEditor()
+                    selectNote(notes.firstOrNull { it.id == note.id })
                 }
 
                 // Long press for context menu
@@ -881,7 +857,8 @@ class NotepadApp(
 
             // Update positions in main notes list
             // Remove all filtered notes from main list, then re-add in new order
-            val otherNotes = notes.filter { it.isArchived != showingArchivedNotes || it.category != activeCategory }
+            val visibleIds = filteredNotes.map { it.id }.toSet()
+            val otherNotes = notes.filter { it.id !in visibleIds }
             notes.clear()
             notes.addAll(otherNotes)
             notes.addAll(filteredNotes)
@@ -1034,3 +1011,4 @@ class NotepadApp(
         }
     }
 }
+

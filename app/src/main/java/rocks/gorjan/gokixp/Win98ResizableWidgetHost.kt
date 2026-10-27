@@ -29,7 +29,7 @@ class Win98ResizableWidgetHost(
     private val content: View,
     private val saveGeometry: (Int, Int, Int, Int) -> Unit,
     private val onEditing: (Boolean) -> Unit,
-    private val fixedSizes: Pair<Pair<Int, Int>, Pair<Int, Int>>? = null
+    private val pinnedSize: Pair<Int, Int>? = null
 ) : FrameLayout(context) {
     private val handler = Handler(Looper.getMainLooper())
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -65,30 +65,9 @@ class Win98ResizableWidgetHost(
 
     private fun dp(value: Int) = (resources.displayMetrics.density * value + 0.5f).toInt()
 
-    /**
-     * Notepad uses just two persistent preset sizes. Its shell is never freely
-     * dragged or stretched; no incremental layout changes while typing.
-     */
-    fun toggleFixedSize() {
-        val presets = fixedSizes ?: return
-        val standard = presets.first
-        val large = presets.second
-        val isLarge = width > (standard.first + large.first) / 2
-        val desired = if (isLarge) standard else large
-        val owner = parent as? ViewGroup ?: return
-        val availableWidth = owner.width.coerceAtLeast(1)
-        val availableHeight = owner.height.coerceAtLeast(1)
-        val factor = minOf(1f, availableWidth.toFloat() / desired.first,
-            availableHeight.toFloat() / desired.second)
-        val w = (desired.first * factor).toInt().coerceAtLeast(1)
-        val h = (desired.second * factor).toInt().coerceAtLeast(1)
-        layoutParams = layoutParams.apply { width = w; height = h }
-        x = x.coerceIn(0f, (owner.width - w).coerceAtLeast(0).toFloat())
-        y = y.coerceIn(0f, (owner.height - h).coerceAtLeast(0).toFloat())
-        saveGeometry(x.toInt(), y.toInt(), w, h)
-    }
-
     fun isMoveArmed(): Boolean = editingArmed || isEditing
+
+    fun isPinned(): Boolean = pinnedSize != null
 
     fun finishEditing() {
         if (!isEditing) return
@@ -105,6 +84,17 @@ class Win98ResizableWidgetHost(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        pinnedSize?.let { size ->
+            // A real layout at its final dimensions, never a transformed bitmap.
+            // WRAP_CONTENT parent specs let only the editor reflow when the IME
+            // reduces the viewport; menu, sidebar and text retain their proportions.
+            val w = resolveSize(size.first, widthMeasureSpec)
+            val h = resolveSize(size.second, heightMeasureSpec)
+            content.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+            setMeasuredDimension(w, h)
+            return
+        }
         val baseW = logicalWidth.coerceAtLeast(1)
         content.measure(
             MeasureSpec.makeMeasureSpec(baseW, MeasureSpec.EXACTLY),
@@ -122,6 +112,12 @@ class Win98ResizableWidgetHost(
     }
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        if (pinnedSize != null) {
+            content.scaleX = 1f
+            content.scaleY = 1f
+            content.layout(0, 0, width, height)
+            return
+        }
         val h = naturalHeight.coerceAtLeast(1)
         content.layout(0, 0, logicalWidth, h)
         content.pivotX = 0f
@@ -172,7 +168,7 @@ class Win98ResizableWidgetHost(
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // Fixed-size Notepad sends all gestures to its actual editor and tabs.
         // It cannot unexpectedly enter drag/resize mode while typing.
-        if (fixedSizes != null) return super.dispatchTouchEvent(event)
+        if (pinnedSize != null) return super.dispatchTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 stopPending()
@@ -283,3 +279,4 @@ class Win98ResizableWidgetHost(
         super.onDetachedFromWindow()
     }
 }
+

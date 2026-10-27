@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#D3CEC7"
+    android:tag="classic_notepad">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false"
+        android:paddingTop="1dp"
+        android:paddingBottom="1dp">
+        <TextView android:id="@+id/notepad_day_tab"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:minHeight="30dp"
+            android:gravity="center" android:text="Day-to-Day"
+            android:textColor="#000000" android:textSize="12sp"
+            android:fontFamily="?primaryFontFamily"
+            android:padding="3dp" android:clickable="true" android:focusable="true"/>
+        <TextView android:id="@+id/notepad_long_tab"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:minHeight="30dp"
+            android:gravity="center" android:text="Long-Term"
+            android:textColor="#000000" android:textSize="12sp"
+            android:fontFamily="?primaryFontFamily"
+            android:padding="3dp" android:clickable="true" android:focusable="true"/>
+        <TextView android:id="@+id/notepad_reminder_tab"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:minHeight="30dp"
+            android:gravity="center" android:text="Reminders"
+            android:textColor="#000000" android:textSize="12sp"
+            android:fontFamily="?primaryFontFamily"
+            android:padding="3dp" android:clickable="true" android:focusable="true"/>
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/notepad_reminder_panel"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="4dp" android:visibility="gone">
+        <EditText android:id="@+id/notepad_reminder_subject"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="34dp" android:singleLine="true"
+            android:hint="Notification subject" android:textColorHint="#555555"
+            android:textColor="#000000" android:textSize="12sp"
+            android:fontFamily="?primaryFontFamily" android:padding="5dp"
+            android:background="@drawable/win98_start_menu_border_inverted"/>
+        <TextView android:id="@+id/notepad_reminder_when"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="26dp" android:gravity="center_vertical"
+            android:text="No date or time set" android:textColor="#000000"
+            android:textSize="11sp" android:paddingTop="3dp" android:paddingBottom="3dp"
+            android:fontFamily="?primaryFontFamily"/>
+        <TextView android:id="@+id/notepad_reminder_set"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="30dp" android:padding="4dp" android:gravity="center"
+            android:text="Set Date / Time" android:textColor="#000000" android:textSize="12sp"
+            android:fontFamily="?primaryFontFamily"
+            android:background="@drawable/win98_start_menu_border"
+            android:clickable="true" android:focusable="true"/>
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:orientation="horizontal"
+        android:baselineAligned="false"
+        android:background="@drawable/win98_start_menu_border_inverted" android:padding="2dp">
+        <LinearLayout android:id="@+id/notes_list_container"
+            android:layout_width="90dp" android:layout_height="match_parent"
+            android:orientation="vertical" android:background="#D3CEC7">
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/notes_list"
+                android:layout_width="match_parent" android:layout_height="0dp"
+                android:layout_weight="1"/>
+            <TextView android:id="@+id/add_note_button"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="32dp" android:layout_margin="3dp"
+                android:gravity="center" android:padding="4dp"
+                android:text="Add" android:textColor="#000000" android:textSize="12sp"
+                android:fontFamily="?primaryFontFamily"
+                android:background="@drawable/win98_start_menu_border"
+                android:clickable="true" android:focusable="true"/>
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="match_parent" android:orientation="vertical"
+            android:background="#FFFFFF">
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/image_gallery"
+                android:layout_width="match_parent" android:layout_height="80dp"
+                android:padding="4dp" android:visibility="gone"/>
+            <EditText android:id="@+id/notes"
+                android:layout_width="match_parent" android:layout_height="0dp"
+                android:layout_weight="1" android:gravity="top|start"
+                android:background="#FFFFFF" android:textColor="#000000"
+                android:textColorHint="#555555" android:textSize="13sp"
+                android:fontFamily="?primaryFontFamily"
+                android:paddingStart="6dp" android:paddingEnd="6dp"
+                android:paddingTop="5dp" android:paddingBottom="5dp"
+                android:scrollbars="vertical" android:scrollbarStyle="insideInset"
+                android:scrollbarSize="12dp" android:fadeScrollbars="false"
+                android:scrollbarTrackVertical="@drawable/scrollbar_track_98"
+                android:scrollbarThumbVertical="@drawable/scrollbar_thumb_98"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:lineSpacingMultiplier="1.0" android:lineSpacingExtra="0dp"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

@@ -28,19 +28,51 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Test note persistence and build debug APK
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: WIN26-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-
+  verify_notepad:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Check native layout, menus, storage and reminder notifications
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            notepad_test_result=0
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=rocks.gorjan.gokixp.NotepadRegressionTest || notepad_test_result=$?
+            adb pull /sdcard/Android/data/com.win26.launcher/files/notepad-layout-checks app/build/notepad-layout-checks || true
+            exit "$notepad_test_result"
+      - name: Upload Notepad verification results and rendered layouts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WIN26-notepad-verification
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            app/build/notepad-layout-checks/
 
   publish_update:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/stage-3-win98-daily-ui'
-    needs: build
+    needs: [build, verify_notepad]
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -129,3 +161,4 @@ jobs:
             --title "WIN26 $WIN26_VERSION_NAME" \
             --notes "Signed WIN26 self-update build." \
             --latest
+
