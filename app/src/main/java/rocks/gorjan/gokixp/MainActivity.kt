@@ -1853,7 +1853,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         .putInt("${key}_h", (h / density).toInt())
                         .apply()
                 },
-                pinnedSize = if (notepadFixed) Pair(resources.displayMetrics.widthPixels, dp(440)) else null,
+                pinnedSize = if (notepadFixed) Pair(dp(320), dp(440)) else null,
                 onEditing = { active ->
                     if (active) {
                         win98MovableClockHosts.values.forEach { pageHosts ->
@@ -1885,6 +1885,45 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             }
             parent.addView(host, lp)
             hosts[id] = host
+            if (notepadFixed) {
+                // The widget is pinned, but its *width* must track the real
+                // desktop container after insets and window layout. Display
+                // metrics and WRAP_CONTENT are not reliable proxies for that.
+                val horizontalInset = dp(12)
+                fun fitNotepadToDesktop() {
+                    if (host.parent !== parent || parent.width <= 0) return
+                    val targetWidth = (parent.width - horizontalInset * 2).coerceAtLeast(dp(120))
+                    val params = host.layoutParams
+                    if (params.width != targetWidth) {
+                        params.width = targetWidth
+                        host.layoutParams = params
+                    }
+                    // Ignore stale x coordinates and RelativeLayout centering.
+                    // This is an explicit position, not an editable geometry.
+                    if (host.x != horizontalInset.toFloat()) host.x = horizontalInset.toFloat()
+                }
+                val parentResizeListener = object : View.OnLayoutChangeListener {
+                    override fun onLayoutChange(
+                        v: View, left: Int, top: Int, right: Int, bottom: Int,
+                        oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int
+                    ) {
+                        if (host.parent !== parent) {
+                            parent.removeOnLayoutChangeListener(this)
+                            return
+                        }
+                        fitNotepadToDesktop()
+                    }
+                }
+                parent.addOnLayoutChangeListener(parentResizeListener)
+                host.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                    override fun onViewAttachedToWindow(v: View) {}
+                    override fun onViewDetachedFromWindow(v: View) {
+                        parent.removeOnLayoutChangeListener(parentResizeListener)
+                        host.removeOnAttachStateChangeListener(this)
+                    }
+                })
+                parent.post { fitNotepadToDesktop() }
+            }
             host.post {
                 if (host.parent !== parent || notepadFixed) return@post
                 val density = resources.displayMetrics.density

@@ -182,6 +182,43 @@ class NotepadRegressionTest {
         }
     }
 
+    @Test fun actualClassicLauncherNotepadMatchesDesktopWidth() {
+        // Unlike the isolated NotepadTestActivity, this exercises MainActivity's
+        // real widget creation, page container and first-layout correction.
+        val prefs = instrument.targetContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val oldTheme = prefs.getString("selected_theme", null)
+        val oldWidgets = prefs.getStringSet("win98_widget_page_1", null)?.toSet()
+        prefs.edit().putString("selected_theme", "Windows Classic")
+            .putStringSet("win98_widget_page_1", setOf("notepad_98")).commit()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                instrument.waitForIdleSync()
+                scenario.onActivity { activity ->
+                    val desktop = activity.findViewById<ViewGroup>(R.id.desktop_icons_container)
+                    val host = (0 until desktop.childCount)
+                        .map { desktop.getChildAt(it) }
+                        .filterIsInstance<Win98ResizableWidgetHost>()
+                        .firstOrNull { it.contentDescription?.toString()?.startsWith("Pinned Notepad") == true }
+                    assertNotNull("Notepad must exist in the real launcher", host)
+                    val target = host!!
+                    val inset = (12 * activity.resources.displayMetrics.density + 0.5f).toInt()
+                    assertTrue("Desktop should have a real measured width", desktop.width > inset * 4)
+                    assertEquals("Pinned width must come from desktop, not a 320dp content width",
+                        desktop.width - inset * 2, target.width)
+                    assertEquals("Widget must start at 12dp", inset.toFloat(), target.x, 1f)
+                    assertEquals("Widget must end at 12dp",
+                        inset.toFloat(), desktop.width - target.x - target.width, 1f)
+                }
+            }
+        } finally {
+            val editor = prefs.edit()
+            if (oldTheme == null) editor.remove("selected_theme") else editor.putString("selected_theme", oldTheme)
+            if (oldWidgets == null) editor.remove("win98_widget_page_1")
+            else editor.putStringSet("win98_widget_page_1", oldWidgets)
+            editor.commit()
+        }
+    }
+
     @Test fun pinnedWidgetUsesParentWidthWithTwelveDpMargins() {
         ActivityScenario.launch(NotepadTestActivity::class.java).use { scenario ->
             instrument.waitForIdleSync()
