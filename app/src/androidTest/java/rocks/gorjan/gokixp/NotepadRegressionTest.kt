@@ -201,13 +201,24 @@ class NotepadRegressionTest {
                         .firstOrNull { it.contentDescription?.toString()?.startsWith("Pinned Notepad") == true }
                     assertNotNull("Notepad must exist in the real launcher", host)
                     val target = host!!
-                    val inset = (12 * activity.resources.displayMetrics.density + 0.5f).toInt()
+                    // MainActivity.dp truncates to pixels; match that exact conversion.
+                    val inset = (12 * activity.resources.displayMetrics.density).toInt()
                     assertTrue("Desktop should have a real measured width", desktop.width > inset * 4)
                     assertEquals("Pinned width must come from desktop, not a 320dp content width",
                         desktop.width - inset * 2, target.width)
                     assertEquals("Widget must start at 12dp", inset.toFloat(), target.x, 1f)
                     assertEquals("Widget must end at 12dp",
                         inset.toFloat(), desktop.width - target.x - target.width, 1f)
+                    // Capture the actual launcher's rendered widget, not the isolated fixture.
+                    val snapshot = Bitmap.createBitmap(desktop.width, desktop.height, Bitmap.Config.ARGB_8888)
+                    desktop.draw(Canvas(snapshot))
+                    activity.getExternalFilesDir("notepad-layout-checks")?.let { folder ->
+                        folder.mkdirs()
+                        File(folder, "actual-classic-launcher.png").outputStream().use {
+                            snapshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+                        }
+                    }
+                    snapshot.recycle()
                 }
             }
         } finally {
