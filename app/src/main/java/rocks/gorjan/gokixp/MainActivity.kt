@@ -1829,7 +1829,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val logicalWidth = dp(naturalWidthDp)
             val notepadFixed = id == "notepad_98"
             // One native layout size; historical widget geometry never alters the editor.
-            val savedWidth = if (notepadFixed) ViewGroup.LayoutParams.WRAP_CONTENT
+            val savedWidth = if (notepadFixed) ViewGroup.LayoutParams.MATCH_PARENT
                 else if (pref.contains("${key}_w")) dp(pref.getInt("${key}_w", naturalWidthDp))
                 else logicalWidth
             val savedHeight = if (notepadFixed) ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1853,7 +1853,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                         .putInt("${key}_h", (h / density).toInt())
                         .apply()
                 },
-                pinnedSize = if (notepadFixed) Pair((resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220)), dp(440)) else null,
+                pinnedSize = if (notepadFixed) Pair(resources.displayMetrics.widthPixels, dp(440)) else null,
                 onEditing = { active ->
                     if (active) {
                         win98MovableClockHosts.values.forEach { pageHosts ->
