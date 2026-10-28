@@ -44,9 +44,9 @@ class NotepadTestActivity : Activity() {
         surface.findViewById<android.view.View>(R.id.notepad_window_expand).setOnClickListener { expanded = true }
         fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
         host = Win98ResizableWidgetHost(this, dp(330), dp(120), dp(100), surface,
-            { _, _, _, _ -> error("Pinned widget must not save arbitrary geometry") }, {}, dp(320) to dp(440))
+            { _, _, _, _ -> error("Pinned widget must not save arbitrary geometry") }, {}, resources.displayMetrics.widthPixels to dp(440))
         val root = FrameLayout(this).apply { setBackgroundColor(0xFF008080.toInt()) }
-        root.addView(host, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+        root.addView(host, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, -2, Gravity.TOP).apply {
             setMargins(dp(12), dp(24), dp(12), dp(12))
         })
         setContentView(root)

@@ -182,6 +182,61 @@ class NotepadRegressionTest {
         }
     }
 
+    @Test fun pinnedWidgetUsesParentWidthWithTwelveDpMargins() {
+        ActivityScenario.launch(NotepadTestActivity::class.java).use { scenario ->
+            instrument.waitForIdleSync()
+            scenario.onActivity { activity ->
+                val root = activity.host.parent as android.widget.FrameLayout
+                val margin = (12 * activity.resources.displayMetrics.density + 0.5f).toInt()
+                assertEquals("Left inset must be 12dp", margin, activity.host.left)
+                assertEquals("Right inset must be 12dp", margin, root.width - activity.host.right)
+                assertEquals(root.width - 2 * margin, activity.host.width)
+                assertEquals(1f, activity.surface.scaleX, 0f)
+                assertEquals(1f, activity.surface.scaleY, 0f)
+                capture(activity, "pinned-width")
+            }
+        }
+    }
+
+    @Test fun expandedClassicWindowKeepsTitleInBoundsAndClosesCleanly() {
+        lateinit var dialog: WindowsDialog
+        ActivityScenario.launch(NotepadTestActivity::class.java).use { scenario ->
+            instrument.waitForIdleSync()
+            scenario.onActivity { activity ->
+                val root = activity.host.parent as android.widget.FrameLayout
+                dialog = WindowsDialog(activity,
+                    initialTheme = rocks.gorjan.gokixp.theme.AppTheme.WindowsClassic)
+                dialog.windowIdentifier = "test.notepad.expanded"
+                dialog.setSaveState(false)
+                dialog.setTitle("Notepad")
+                dialog.setContentView(activity.layoutInflater.inflate(R.layout.program_notepad_classic, null))
+                dialog.setMaximizable(true)
+                dialog.setWindowSizePercentage(90f, 50f)
+                FloatingWindowManager(activity, root).showWindow(dialog)
+            }
+            instrument.waitForIdleSync()
+            scenario.onActivity { dialog.maximizeWindow() }
+            instrument.waitForIdleSync()
+            scenario.onActivity { activity ->
+                val root = activity.host.parent as android.widget.FrameLayout
+                val frame = dialog.findViewById<View>(R.id.window_frame)
+                val title = dialog.findViewById<View>(R.id.dialog_title_bar)
+                val border = dialog.findViewById<View>(R.id.window_border)
+                val editor = dialog.findViewById<EditText>(R.id.notes)
+                assertEquals(root.height, frame.height)
+                assertEquals(root.width, frame.width)
+                assertTrue("Title bar must be visible", title.height > 0 && title.top >= 0)
+                assertTrue("Content must begin below title", border.top >= title.bottom)
+                assertTrue("Editor must not extend below frame", border.bottom <= frame.height)
+                assertTrue("Editor must stay inside content", editor.width > 0 && editor.height > 0)
+                dialog.findViewById<View>(R.id.dialog_close_button).performClick()
+                assertNull("Closing Notepad must remove the overlay", dialog.parent)
+                assertSame("Pinned widget must remain", root, activity.host.parent)
+                assertTrue(activity.host.isShown)
+            }
+        }
+    }
+
     @Test fun nativeLayoutFitsNarrowScreensFontSizesAndKeyboardViewport() {
         instrument.runOnMainSync {
             for (density in listOf(160, 320, 480)) for (font in listOf(1f, 1.3f))

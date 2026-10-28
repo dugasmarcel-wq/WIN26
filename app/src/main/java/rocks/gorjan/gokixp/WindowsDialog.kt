@@ -1401,7 +1401,17 @@ class WindowsDialog @JvmOverloads constructor(
             bottomMargin = 0 // Reset margin
         }
 
-        // Make content area expand to fill
+        // The Classic frame is a vertical LinearLayout: its title bar occupies
+        // fixed height, so the border must fill ONLY the remaining space.
+        // MATCH_PARENT here pushed the editor beneath the taskbar and could hide
+        // the title when an oversized window was centered.
+        if (currentTheme is AppTheme.WindowsClassic) {
+            findViewById<FrameLayout>(R.id.window_border)
+                ?.updateLayoutParams<LinearLayout.LayoutParams> {
+                    height = 0
+                    weight = 1f
+                }
+        }
         windowBorder?.updateLayoutParams<LayoutParams> {
             height = LayoutParams.MATCH_PARENT
         }

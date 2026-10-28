@@ -1871,7 +1871,6 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             val lp = if (parent is RelativeLayout) {
                 RelativeLayout.LayoutParams(savedWidth, savedHeight).apply {
                     if (notepadFixed) {
-                        addRule(RelativeLayout.CENTER_HORIZONTAL)
                         addRule(RelativeLayout.ALIGN_PARENT_TOP)
                         setMargins(dp(12), dp(if (pageIndex == 1) 56 else 20), dp(12), dp(12))
                     }
@@ -1879,7 +1878,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             } else {
                 FrameLayout.LayoutParams(savedWidth, savedHeight).apply {
                     if (notepadFixed) {
-                        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        gravity = Gravity.TOP
                         setMargins(dp(12), dp(if (pageIndex == 1) 56 else 20), dp(12), dp(12))
                     }
                 }
@@ -5038,6 +5037,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
                     // See enforceDefaultAppRoles.
                     defaultAppsGate != null -> {
                         Log.d("MainActivity", "Back pressed (modern): held by the default-apps wall")
+                    }
+                    themeManager.isClassicTheme() && fullNotepadWindow != null &&
+                        floatingWindowManager.getAllActiveWindows().contains(fullNotepadWindow) -> {
+                        fullNotepadWindow?.closeWindow()
                     }
                     win98QuickPage?.visibility == View.VISIBLE -> {
                         Log.d("MainActivity", "Back pressed (modern): closing Quick Glance")
@@ -9046,8 +9049,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         windowsDialog.setMaximizable(true)
 
 //        windowsDialog.setWindowSize(360, 382)
-        windowsDialog.setWindowSizePercentage(if (themeManager.isClassicTheme()) 100f else 90f,
-            if (themeManager.isClassicTheme()) 100f else 50f)
+        // Classic always maximizes to the actual floating container, not screen metrics.
+        // A 100% screen-height initial window can extend above the visible title bar.
+        if (themeManager.isClassicTheme()) windowsDialog.setSaveState(false)
+        windowsDialog.setWindowSizePercentage(90f, 50f)
 
         // Set up window control handlers
         windowsDialog.setOnMinimizeListener {
@@ -9070,7 +9075,7 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         // Set context menu reference and show as floating window
         windowsDialog.setContextMenuView(contextMenu)
         floatingWindowManager.showWindow(windowsDialog)
-        if (themeManager.isClassicTheme()) windowsDialog.postDelayed({ windowsDialog.maximizeWindow() }, 150L)
+        if (themeManager.isClassicTheme()) windowsDialog.post { windowsDialog.maximizeWindow() }
 
 
         // Set cursor back to normal after window is shown and loaded
@@ -14736,6 +14741,10 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
             // The default-apps wall owns back before anything else does, as above.
             defaultAppsGate != null -> {
                 Log.d("MainActivity", "Back pressed (legacy): held by the default-apps wall")
+            }
+            themeManager.isClassicTheme() && fullNotepadWindow != null &&
+                floatingWindowManager.getAllActiveWindows().contains(fullNotepadWindow) -> {
+                fullNotepadWindow?.closeWindow()
             }
             win98QuickPage?.visibility == View.VISIBLE -> {
                 Log.d("MainActivity", "Back pressed (legacy): closing Quick Glance")
