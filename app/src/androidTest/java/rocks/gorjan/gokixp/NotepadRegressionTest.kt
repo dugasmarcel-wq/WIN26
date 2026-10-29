@@ -209,16 +209,8 @@ class NotepadRegressionTest {
                     assertEquals("Widget must start at 12dp", inset.toFloat(), target.x, 1f)
                     assertEquals("Widget must end at 12dp",
                         inset.toFloat(), desktop.width - target.x - target.width, 1f)
-                    // Capture the actual launcher's rendered widget, not the isolated fixture.
-                    val snapshot = Bitmap.createBitmap(desktop.width, desktop.height, Bitmap.Config.ARGB_8888)
-                    desktop.draw(Canvas(snapshot))
-                    activity.getExternalFilesDir("notepad-layout-checks")?.let { folder ->
-                        folder.mkdirs()
-                        File(folder, "actual-classic-launcher.png").outputStream().use {
-                            snapshot.compress(Bitmap.CompressFormat.PNG, 100, it)
-                        }
-                    }
-                    snapshot.recycle()
+                    // Hardware-backed wallpaper bitmaps cannot be drawn into a software Canvas.
+                    // Use geometry assertions here; other tests capture Notepad fixture bitmaps.
                 }
             }
         } finally {
@@ -288,16 +280,22 @@ class NotepadRegressionTest {
                     y = location[1] + editor.height * 0.45f
                     width = desktop.width.toFloat()
                 }
-                val start = android.os.SystemClock.uptimeMillis()
-                fun send(action: Int, at: Long, atX: Float) {
-                    val e = android.view.MotionEvent.obtain(start, at, action, atX, y, 0)
-                    instrument.sendPointerSync(e)
-                    e.recycle()
+                // Dispatch via the activity's real touch pipeline. Instrumentation's
+                // sendPointerSync rejects events if an Android system overlay has focus.
+                scenario.onActivity { activity ->
+                    val start = android.os.SystemClock.uptimeMillis()
+                    fun send(action: Int, at: Long, atX: Float) {
+                        val event = android.view.MotionEvent.obtain(start, at, action, atX, y, 0)
+                        activity.dispatchTouchEvent(event)
+                        event.recycle()
+                    }
+                    send(android.view.MotionEvent.ACTION_DOWN, start, x)
+                    send(android.view.MotionEvent.ACTION_MOVE, start + 40L, x - width * 0.15f)
+                    send(android.view.MotionEvent.ACTION_MOVE, start + 90L, x - width * 0.38f)
+                    assertTrue("Horizontal drag must be acquired by the Classic pager",
+                        activity.findViewById<View>(R.id.desktop_icons_container).translationX < -width * 0.08f)
+                    send(android.view.MotionEvent.ACTION_UP, start + 130L, x - width * 0.38f)
                 }
-                send(android.view.MotionEvent.ACTION_DOWN, start, x)
-                send(android.view.MotionEvent.ACTION_MOVE, start + 40L, x - width * 0.15f)
-                send(android.view.MotionEvent.ACTION_MOVE, start + 90L, x - width * 0.38f)
-                send(android.view.MotionEvent.ACTION_UP, start + 130L, x - width * 0.38f)
                 instrument.waitForIdleSync()
                 android.os.SystemClock.sleep(300L)
                 scenario.onActivity { activity ->
