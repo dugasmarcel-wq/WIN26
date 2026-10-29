@@ -290,6 +290,20 @@ class NotepadRegressionTest {
                         event.recycle()
                     }
                     send(android.view.MotionEvent.ACTION_DOWN, start, x)
+                    fun field(name: String): Any? = MainActivity::class.java
+                        .getDeclaredField(name).apply { isAccessible = true }.get(activity)
+                    val debugDown = android.view.MotionEvent.obtain(start, start,
+                        android.view.MotionEvent.ACTION_DOWN, x, y, 0)
+                    val idleMethod = MainActivity::class.java.getDeclaredMethod(
+                        "isInactivePinnedNotepadTouch", Int::class.javaPrimitiveType,
+                        android.view.MotionEvent::class.java).apply { isAccessible = true }
+                    val inactive = idleMethod.invoke(activity, 1, debugDown)
+                    debugDown.recycle()
+                    assertFalse("Pager blocks idle Notepad DOWN: inactive=$inactive, " +
+                        "page=${field("win98CurrentPage")}, " +
+                        "menu=${field("isStartMenuVisible")}, " +
+                        "pagerBlocked=${field("win98DesktopPagerBlocked")}",
+                        field("win98DesktopPagerBlocked") as Boolean)
                     send(android.view.MotionEvent.ACTION_MOVE, start + 40L, x - width * 0.15f)
                     send(android.view.MotionEvent.ACTION_MOVE, start + 90L, x - width * 0.38f)
                     assertTrue("Horizontal drag must be acquired by the Classic pager",
