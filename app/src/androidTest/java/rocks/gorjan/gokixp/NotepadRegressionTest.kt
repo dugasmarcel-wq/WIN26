@@ -230,6 +230,91 @@ class NotepadRegressionTest {
         }
     }
 
+    @Test fun doubleTapEnablesKeyboardAndNativeCursorPlacement() {
+        ActivityScenario.launch(NotepadTestActivity::class.java).use { scenario ->
+            instrument.waitForIdleSync()
+            scenario.onActivity { activity ->
+                val editor = activity.surface.findViewById<EditText>(R.id.notes)
+                editor.setText("First line of text\nSecond line of text\nThird line of text")
+                val firstX = editor.totalPaddingLeft + 10f
+                val firstY = editor.totalPaddingTop + editor.layout.getLineTop(0) + 6f
+                val thirdY = editor.totalPaddingTop + editor.layout.getLineTop(2) + 6f
+                fun tap(x: Float, y: Float, time: Long) {
+                    val down = android.view.MotionEvent.obtain(time, time,
+                        android.view.MotionEvent.ACTION_DOWN, x, y, 0)
+                    val up = android.view.MotionEvent.obtain(time, time + 35L,
+                        android.view.MotionEvent.ACTION_UP, x, y, 0)
+                    editor.dispatchTouchEvent(down)
+                    editor.dispatchTouchEvent(up)
+                    down.recycle()
+                    up.recycle()
+                }
+                val start = android.os.SystemClock.uptimeMillis()
+                assertFalse(activity.controller.isEmbeddedEditorArmed())
+                tap(firstX, firstY, start)
+                assertFalse("Single tap must not arm the keyboard", activity.controller.isEmbeddedEditorArmed())
+                tap(firstX, firstY, start + 160L)
+                assertTrue("Double tap should arm keyboard", activity.controller.isEmbeddedEditorArmed())
+                tap(firstX, thirdY, start + 700L)
+                assertTrue("A later tap must move the cursor to the third line",
+                    editor.selectionStart >= editor.layout.getLineStart(2))
+            }
+        }
+    }
+
+    @Test fun swipeAcrossInactiveNotepadPagesRealClassicDesktop() {
+        val prefs = instrument.targetContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val oldTheme = prefs.getString("selected_theme", null)
+        val oldWidgets = prefs.getStringSet("win98_widget_page_1", null)?.toSet()
+        prefs.edit().putString("selected_theme", "Windows Classic")
+            .putStringSet("win98_widget_page_1", setOf("notepad_98")).commit()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                instrument.waitForIdleSync()
+                var x = 0f
+                var y = 0f
+                var width = 0f
+                scenario.onActivity { activity ->
+                    val desktop = activity.findViewById<ViewGroup>(R.id.desktop_icons_container)
+                    val host = (0 until desktop.childCount).map { desktop.getChildAt(it) }
+                        .filterIsInstance<Win98ResizableWidgetHost>()
+                        .first { it.contentDescription?.toString()?.startsWith("Pinned Notepad") == true }
+                    val editor = host.findViewById<EditText>(R.id.notes)
+                    assertTrue(editor.isShown)
+                    assertFalse(Win98NotepadWidget.isEditorArmed(host))
+                    val location = IntArray(2)
+                    editor.getLocationOnScreen(location)
+                    x = location[0] + editor.width * 0.7f
+                    y = location[1] + editor.height * 0.45f
+                    width = desktop.width.toFloat()
+                }
+                val start = android.os.SystemClock.uptimeMillis()
+                fun send(action: Int, at: Long, atX: Float) {
+                    val e = android.view.MotionEvent.obtain(start, at, action, atX, y, 0)
+                    instrument.sendPointerSync(e)
+                    e.recycle()
+                }
+                send(android.view.MotionEvent.ACTION_DOWN, start, x)
+                send(android.view.MotionEvent.ACTION_MOVE, start + 40L, x - width * 0.15f)
+                send(android.view.MotionEvent.ACTION_MOVE, start + 90L, x - width * 0.38f)
+                send(android.view.MotionEvent.ACTION_UP, start + 130L, x - width * 0.38f)
+                instrument.waitForIdleSync()
+                android.os.SystemClock.sleep(300L)
+                scenario.onActivity { activity ->
+                    assertEquals("Swipe over idle Notepad should leave Desktop",
+                        View.INVISIBLE,
+                        activity.findViewById<View>(R.id.desktop_icons_container).visibility)
+                }
+            }
+        } finally {
+            val editor = prefs.edit()
+            if (oldTheme == null) editor.remove("selected_theme") else editor.putString("selected_theme", oldTheme)
+            if (oldWidgets == null) editor.remove("win98_widget_page_1")
+            else editor.putStringSet("win98_widget_page_1", oldWidgets)
+            editor.commit()
+        }
+    }
+
     @Test fun pinnedWidgetUsesParentWidthWithTwelveDpMargins() {
         ActivityScenario.launch(NotepadTestActivity::class.java).use { scenario ->
             instrument.waitForIdleSync()

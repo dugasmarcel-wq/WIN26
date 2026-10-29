@@ -13652,19 +13652,32 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
         cancelEvent.recycle()
     }
 
+    /**
+     * An inactive pinned Notepad is a normal home-page swipe surface.
+     * Its reminder subject remains an independently editable field.
+     */
+    private fun isInactivePinnedNotepadTouch(pageIndex: Int, event: MotionEvent): Boolean {
+        val host = win98MovableClockHosts[pageIndex]?.get("notepad_98") ?: return false
+        if (!isTouchInsideView(host, event) || Win98NotepadWidget.isEditorArmed(host)) return false
+        val reminderSubject = host.findViewById<View>(R.id.notepad_reminder_subject)
+        return reminderSubject == null || !isTouchInsideView(reminderSubject, event)
+    }
+
     private fun handleWin98DesktopPagerTouch(event: MotionEvent): Boolean {
         if (!themeManager.isClassicTheme() || win98CurrentPage != 1) return false
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                val inactiveNotepad = isInactivePinnedNotepadTouch(1, event)
+                val notepadHost = win98MovableClockHosts[1]?.get("notepad_98")
                 win98DesktopPagerBlocked =
                     isStartMenuVisible ||
                     (::contextMenu.isInitialized && contextMenu.visibility == View.VISIBLE) ||
-                    isTouchOnEditableEditText(event) ||
+                    (isTouchOnEditableEditText(event) && !inactiveNotepad) ||
                     isTouchInGameWindow(event) ||
                     isTouchInFloatingWindow(event) ||
                     win98MovableClockHosts[1]?.values?.any {
-                        isTouchInsideView(it, event)
+                        isTouchInsideView(it, event) && !(inactiveNotepad && it === notepadHost)
                     } == true
                 if (win98DesktopPagerBlocked) return false
                 beginWin98PagerTouch(event, 1)
@@ -13863,12 +13876,14 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
 
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             win98PagerGlobalCaptured = false
+            val inactiveNotepad = isInactivePinnedNotepadTouch(win98CurrentPage, event)
+            val notepadHost = win98MovableClockHosts[win98CurrentPage]?.get("notepad_98")
             win98PagerGlobalBlocked =
                 !isTouchInsideView(page, event) ||
-                    isTouchOnEditableEditText(event) ||
+                    (isTouchOnEditableEditText(event) && !inactiveNotepad) ||
                     isTouchInGameWindow(event) ||
                     win98MovableClockHosts[win98CurrentPage]?.values?.any {
-                        isTouchInsideView(it, event)
+                        isTouchInsideView(it, event) && !(inactiveNotepad && it === notepadHost)
                     } == true
 
             if (win98PagerGlobalBlocked) return false

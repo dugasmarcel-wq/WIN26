@@ -354,6 +354,11 @@ class NotepadApp(
         popup.showAsDropDown(anchor)
     }
 
+    /**
+     * Only the keyboard is gated by the double tap. Let EditText handle its
+     * native touch events so the caret, selection handles and scrolling work.
+     * Pager interception is decided at activity level while editorArmed=false.
+     */
     private fun setupEmbeddedEditing() {
         val editor = notesEditText ?: return
         editor.showSoftInputOnFocus = false
@@ -362,59 +367,69 @@ class NotepadApp(
         var lastTapY = 0f
         var downX = 0f
         var downY = 0f
-        var dragged = false
-        val threshold = 24.dpToPx()
-        editor.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    downX = event.x
-                    downY = event.y
-                    dragged = false
-                    // Keep the first touch inside the editor; the launcher can still
-                    // intercept a genuine horizontal MOVE for page navigation.
-                    true
-                }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                    if (kotlin.math.abs(event.x - downX) > threshold ||
-                        kotlin.math.abs(event.y - downY) > threshold) {
-                        dragged = true
-                        lastTapTime = 0L
-                    }
-                    !dragged
-                }
-                android.view.MotionEvent.ACTION_UP -> {
-                    if (!dragged) {
-                        val now = android.os.SystemClock.uptimeMillis()
-                        val doubleTap = now - lastTapTime in 40L..350L &&
-                            kotlin.math.abs(event.x - lastTapX) < threshold &&
-                            kotlin.math.abs(event.y - lastTapY) < threshold
-                        if (doubleTap) {
-                            lastTapTime = 0L
-                            editorArmed = true
-                            editor.showSoftInputOnFocus = true
-                            editor.requestFocus()
-                            editor.post {
-                                (context.getSystemService(Context.INPUT_METHOD_SERVICE) as
-                                    android.view.inputmethod.InputMethodManager)
-                                    .showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-                            }
-                        } else {
-                            lastTapTime = now
-                            lastTapX = event.x
-                            lastTapY = event.y
-                        }
-                    }
-                    true
-                }
-                android.view.MotionEvent.ACTION_CANCEL -> {
-                    lastTapTime = 0L
-                    dragged = false
-                    true
-                }
-                else -> true
+        var moved = false
+        val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        val doubleTapDistance = 24.dpToPx().toFloat()
+
+        editor.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                editorArmed = false
+                editor.showSoftInputOnFocus = false
+                lastTapTime = 0L
             }
         }
+        editor.setOnTouchListener { _, event ->
+            if (!editorArmed) {
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        downX = event.x
+                        downY = event.y
+                        moved = false
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        if (kotlin.math.abs(event.x - downX) > slop ||
+                            kotlin.math.abs(event.y - downY) > slop) {
+                            moved = true
+                            lastTapTime = 0L
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        if (!moved) {
+                            val now = event.eventTime
+                            val doubleTap = now - lastTapTime in 40L..350L &&
+                                kotlin.math.abs(event.x - lastTapX) < doubleTapDistance &&
+                                kotlin.math.abs(event.y - lastTapY) < doubleTapDistance
+                            if (doubleTap) {
+                                editorArmed = true
+                                lastTapTime = 0L
+                                editor.showSoftInputOnFocus = true
+                                editor.requestFocus()
+                                editor.post {
+                                    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as
+                                        android.view.inputmethod.InputMethodManager)
+                                        .showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                                }
+                            } else {
+                                lastTapTime = now
+                                lastTapX = event.x
+                                lastTapY = event.y
+                            }
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL,
+                    android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+                        moved = true
+                        lastTapTime = 0L
+                    }
+                }
+            }
+            // Do not consume events: EditText must receive DOWN/MOVE/UP to
+            // place and drag its insertion cursor at arbitrary text positions.
+            false
+        }
     }
+
+    fun isEmbeddedEditorArmed(): Boolean = embeddedPage != null && editorArmed
 
     private fun disarmEmbeddedEditor() {
         if (embeddedPage == null) return
