@@ -13653,14 +13653,16 @@ class MainActivity : AppCompatActivity(), AppChangeListener {
     }
 
     /**
-     * An inactive pinned Notepad is a normal home-page swipe surface.
-     * Its reminder subject remains an independently editable field.
+     * The pinned Notepad owns every touch starting in its editor, tabs, note
+     * list and reminder controls. Before activation only the non-interactive
+     * title label can initiate a launcher page swipe. This keeps the editor's
+     * entire DOWN/MOVE/UP stream intact, including drag-selection and handles.
      */
     private fun isInactivePinnedNotepadTouch(pageIndex: Int, event: MotionEvent): Boolean {
         val host = win98MovableClockHosts[pageIndex]?.get("notepad_98") ?: return false
-        if (!isTouchInsideView(host, event) || Win98NotepadWidget.isEditorArmed(host)) return false
-        val reminderSubject = host.findViewById<View>(R.id.notepad_reminder_subject)
-        return reminderSubject == null || !isTouchInsideView(reminderSubject, event)
+        if (Win98NotepadWidget.isEditorArmed(host)) return false
+        val swipeHandle = host.findViewById<View>(R.id.notepad_window_title) ?: return false
+        return isTouchInsideView(swipeHandle, event)
     }
 
     private fun handleWin98DesktopPagerTouch(event: MotionEvent): Boolean {

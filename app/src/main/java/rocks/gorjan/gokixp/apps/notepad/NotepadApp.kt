@@ -355,13 +355,17 @@ class NotepadApp(
     }
 
     /**
-     * Only the keyboard is gated by the double tap. Let EditText handle its
-     * native touch events so the caret, selection handles and scrolling work.
-     * Pager interception is decided at activity level while editorArmed=false.
+     * Two taps unlock the embedded editor. Before that, do not let EditText
+     * acquire focus or process the first tap as a native cursor/selection
+     * gesture. Once unlocked, return every touch to Android's EditText:
+     * cursor placement, long-press selection, drag handles, and scrolling.
      */
     private fun setupEmbeddedEditing() {
         val editor = notesEditText ?: return
+        editor.isFocusable = true
+        editor.isFocusableInTouchMode = true
         editor.showSoftInputOnFocus = false
+
         var lastTapTime = 0L
         var lastTapX = 0f
         var lastTapY = 0f
@@ -379,53 +383,65 @@ class NotepadApp(
             }
         }
         editor.setOnTouchListener { _, event ->
-            if (!editorArmed) {
-                when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> {
-                        downX = event.x
-                        downY = event.y
-                        moved = false
-                    }
-                    android.view.MotionEvent.ACTION_MOVE -> {
-                        if (kotlin.math.abs(event.x - downX) > slop ||
-                            kotlin.math.abs(event.y - downY) > slop) {
-                            moved = true
-                            lastTapTime = 0L
-                        }
-                    }
-                    android.view.MotionEvent.ACTION_UP -> {
-                        if (!moved) {
-                            val now = event.eventTime
-                            val doubleTap = now - lastTapTime in 40L..350L &&
-                                kotlin.math.abs(event.x - lastTapX) < doubleTapDistance &&
-                                kotlin.math.abs(event.y - lastTapY) < doubleTapDistance
-                            if (doubleTap) {
-                                editorArmed = true
-                                lastTapTime = 0L
-                                editor.showSoftInputOnFocus = true
-                                editor.requestFocus()
-                                editor.post {
-                                    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as
-                                        android.view.inputmethod.InputMethodManager)
-                                        .showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-                                }
-                            } else {
-                                lastTapTime = now
-                                lastTapX = event.x
-                                lastTapY = event.y
-                            }
-                        }
-                    }
-                    android.view.MotionEvent.ACTION_CANCEL,
-                    android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+            // Never intercept an armed editor's native caret, selection or scroll
+            // events. The launcher pager separately excludes its entire window.
+            if (editorArmed) return@setOnTouchListener false
+
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    moved = false
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (kotlin.math.abs(event.x - downX) > slop ||
+                        kotlin.math.abs(event.y - downY) > slop) {
                         moved = true
                         lastTapTime = 0L
                     }
                 }
+                android.view.MotionEvent.ACTION_UP -> {
+                    if (!moved && editor.isEnabled) {
+                        val now = event.eventTime
+                        val secondTap = now - lastTapTime in 40L..350L &&
+                            kotlin.math.abs(event.x - lastTapX) < doubleTapDistance &&
+                            kotlin.math.abs(event.y - lastTapY) < doubleTapDistance
+                        if (secondTap) {
+                            lastTapTime = 0L
+                            editorArmed = true
+                            editor.showSoftInputOnFocus = true
+                            editor.requestFocus()
+                            // Place the caret at the activating touch. All
+                            // subsequent placement is handled natively.
+                            val position = editor.getOffsetForPosition(event.x, event.y)
+                                .coerceIn(0, editor.text.length)
+                            editor.setSelection(position)
+                            editor.post {
+                                if (editorArmed && editor.hasFocus() && editor.isEnabled) {
+                                    val input = context.getSystemService(
+                                        Context.INPUT_METHOD_SERVICE) as
+                                        android.view.inputmethod.InputMethodManager
+                                    input.showSoftInput(editor,
+                                        android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                                }
+                            }
+                        } else {
+                            lastTapTime = now
+                            lastTapX = event.x
+                            lastTapY = event.y
+                        }
+                    }
+                }
+                android.view.MotionEvent.ACTION_POINTER_DOWN,
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    moved = true
+                    lastTapTime = 0L
+                }
             }
-            // Do not consume events: EditText must receive DOWN/MOVE/UP to
-            // place and drag its insertion cursor at arbitrary text positions.
-            false
+            // Consume only the unarmed sequence. A single tap must not
+            // auto-focus the editor, trigger native double-tap selection or
+            // unexpectedly summon the keyboard.
+            true
         }
     }
 

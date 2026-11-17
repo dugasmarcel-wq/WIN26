@@ -250,11 +250,19 @@ class NotepadRegressionTest {
                 tap(firstX, thirdY, start + 700L)
                 assertTrue("A later tap must move the cursor to the third line",
                     editor.selectionStart >= editor.layout.getLineStart(2))
+                assertTrue("Armed editor must stay focused", editor.hasFocus())
+                // Exercise IME text commits, not just programmatic setText.
+                val connection = editor.onCreateInputConnection(
+                    android.view.inputmethod.EditorInfo())
+                assertNotNull("Native IME must be available after two taps", connection)
+                assertTrue("IME insertion must succeed", connection!!.commitText(" entered", 1))
+                assertTrue("Typing must change the selected note",
+                    editor.text.toString().contains(" entered"))
             }
         }
     }
 
-    @Test fun swipeAcrossInactiveNotepadPagesRealClassicDesktop() {
+    @Test fun classicPagerDoesNotStealNotepadEditorTouches() {
         val prefs = instrument.targetContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
         val oldTheme = prefs.getString("selected_theme", null)
         val oldWidgets = prefs.getStringSet("win98_widget_page_1", null)?.toSet()
@@ -299,22 +307,22 @@ class NotepadRegressionTest {
                         android.view.MotionEvent::class.java).apply { isAccessible = true }
                     val inactive = idleMethod.invoke(activity, 1, debugDown)
                     debugDown.recycle()
-                    assertFalse("Pager blocks idle Notepad DOWN: inactive=$inactive, " +
+                    assertTrue("Notepad editor must block the launcher pager: inactive=$inactive, " +
                         "page=${field("win98CurrentPage")}, " +
                         "menu=${field("isStartMenuVisible")}, " +
                         "pagerBlocked=${field("win98DesktopPagerBlocked")}",
                         field("win98DesktopPagerBlocked") as Boolean)
                     send(android.view.MotionEvent.ACTION_MOVE, start + 40L, x - width * 0.15f)
                     send(android.view.MotionEvent.ACTION_MOVE, start + 90L, x - width * 0.38f)
-                    assertTrue("Horizontal drag must be acquired by the Classic pager",
-                        activity.findViewById<View>(R.id.desktop_icons_container).translationX < -width * 0.08f)
+                    assertEquals("Native Notepad editing must not move the desktop pager",
+                        0f, activity.findViewById<View>(R.id.desktop_icons_container).translationX, 1f)
                     send(android.view.MotionEvent.ACTION_UP, start + 130L, x - width * 0.38f)
                 }
                 instrument.waitForIdleSync()
                 android.os.SystemClock.sleep(300L)
                 scenario.onActivity { activity ->
-                    assertEquals("Swipe over idle Notepad should leave Desktop",
-                        View.INVISIBLE,
+                    assertEquals("Touching Notepad must stay on Desktop",
+                        View.VISIBLE,
                         activity.findViewById<View>(R.id.desktop_icons_container).visibility)
                 }
             }
