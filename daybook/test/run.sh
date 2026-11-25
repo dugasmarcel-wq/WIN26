@@ -21,5 +21,7 @@ adb shell pm grant com.marcel.daybook android.permission.POST_NOTIFICATIONS
 adb shell appops set com.marcel.daybook SCHEDULE_EXACT_ALARM allow
 adb shell appwidget grantbind --package com.marcel.daybook
 adb shell settings put secure show_ime_with_hard_keyboard 1
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard
 adb shell am instrument -w com.marcel.daybook.test/com.marcel.daybook.Smoke | tee "$out/result.txt"
 grep -q DAYBOOK_TESTS_PASSED "$out/result.txt"

@@ -24,6 +24,8 @@ public final class Smoke extends Instrumentation {
     void tap(String selector){check("true".equals(js("(()=>{let b=document.querySelector("+JSONObject.quote(selector)+");if(!b)return false;b.click();return true;})()")),"tap "+selector);}
     void testWritingArea(Journal db,String id)throws Exception{
         touch("#body",80);
+        js("document.querySelector('#body').focus()");
+        runOnMainSync(()->activity.getWindow().getInsetsController().show(WindowInsets.Type.ime()));
         until(()->{
             AtomicBoolean visible=new AtomicBoolean();
             runOnMainSync(()->visible.set(activity.web.getRootWindowInsets().isVisible(WindowInsets.Type.ime())));
@@ -112,16 +114,23 @@ public final class Smoke extends Instrumentation {
     void touch(String selector,int milliseconds)throws Exception{
         js("document.querySelector("+JSONObject.quote(selector)+").scrollIntoView({block:'center'})");
         waitForIdleSync();
-        int[] origin=new int[3];
-        runOnMainSync(()->{activity.web.getLocationOnScreen(origin);origin[2]=activity.web.getWidth();});
-        double ratio=origin[2]/Double.parseDouble(js("innerWidth"));
+        AtomicInteger width=new AtomicInteger();
+        runOnMainSync(()->width.set(activity.web.getWidth()));
+        double ratio=width.get()/Double.parseDouble(js("innerWidth"));
         String rect="document.querySelector("+JSONObject.quote(selector)+").getBoundingClientRect()";
-        float x=(float)(origin[0]+ratio*Double.parseDouble(js("("+rect+").left+("+rect+").width/2")));
-        float y=(float)(origin[1]+ratio*Double.parseDouble(js("("+rect+").top+("+rect+").height/2")));
+        float x=(float)(ratio*Double.parseDouble(js("("+rect+").left+("+rect+").width/2")));
+        float y=(float)(ratio*Double.parseDouble(js("("+rect+").top+("+rect+").height/2")));
         long start=android.os.SystemClock.uptimeMillis();
-        sendPointerSync(MotionEvent.obtain(start,start,MotionEvent.ACTION_DOWN,x,y,0));
+        touchEvent(start,MotionEvent.ACTION_DOWN,x,y);
         android.os.SystemClock.sleep(milliseconds);
-        sendPointerSync(MotionEvent.obtain(start,android.os.SystemClock.uptimeMillis(),MotionEvent.ACTION_UP,x,y,0));
+        touchEvent(start,MotionEvent.ACTION_UP,x,y);
+    }
+    void touchEvent(long start,int action,float x,float y){
+        runOnMainSync(()->{
+            MotionEvent event=MotionEvent.obtain(start,android.os.SystemClock.uptimeMillis(),action,x,y,0);
+            event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            activity.web.dispatchTouchEvent(event);event.recycle();
+        });
     }
     void holdGoal(String id)throws Exception{
         touch("[data-mark='"+id+"']",750);
