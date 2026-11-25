@@ -23,12 +23,7 @@ public final class Smoke extends Instrumentation {
     }
     void tap(String selector){check("true".equals(js("(()=>{let b=document.querySelector("+JSONObject.quote(selector)+");if(!b)return false;b.click();return true;})()")),"tap "+selector);}
     void testWritingArea(Journal db,String id)throws Exception{
-        js("document.querySelector('#body').focus()");
-        runOnMainSync(()->{
-            activity.web.requestFocus();
-            activity.getSystemService(android.view.inputmethod.InputMethodManager.class)
-                .showSoftInput(activity.web,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
-        });
+        touch("#body",80);
         until(()->{
             AtomicBoolean visible=new AtomicBoolean();
             runOnMainSync(()->visible.set(activity.web.getRootWindowInsets().isVisible(WindowInsets.Type.ime())));
@@ -114,8 +109,7 @@ public final class Smoke extends Instrumentation {
         GoalBook.Goal g=new GoalBook(db).goals.get("dated");
         check(g.at(yesterday.toString()).getString("name").equals("Former aim")&&g.due(yesterday)&&!g.active(now)&&g.due(tomorrow)&&!g.active(tomorrow.plusDays(1)),"past preserved and one-day validity");
     }
-    void holdGoal(String id)throws Exception{
-        String selector="[data-mark='"+id+"']";
+    void touch(String selector,int milliseconds)throws Exception{
         js("document.querySelector("+JSONObject.quote(selector)+").scrollIntoView({block:'center'})");
         waitForIdleSync();
         int[] origin=new int[3];
@@ -126,8 +120,11 @@ public final class Smoke extends Instrumentation {
         float y=(float)(origin[1]+ratio*Double.parseDouble(js("("+rect+").top+("+rect+").height/2")));
         long start=android.os.SystemClock.uptimeMillis();
         sendPointerSync(MotionEvent.obtain(start,start,MotionEvent.ACTION_DOWN,x,y,0));
-        android.os.SystemClock.sleep(750);
+        android.os.SystemClock.sleep(milliseconds);
         sendPointerSync(MotionEvent.obtain(start,android.os.SystemClock.uptimeMillis(),MotionEvent.ACTION_UP,x,y,0));
+    }
+    void holdGoal(String id)throws Exception{
+        touch("[data-mark='"+id+"']",750);
         until(()->"true".equals(js("!!document.querySelector('#menuDeleteGoal') && dialog.open")),"Android long press opens goal options");
     }
     void testGoalActions(Journal db)throws Exception{
@@ -224,7 +221,11 @@ public final class Smoke extends Instrumentation {
             until(()->{try{return findGoal(db,"four-spiritual").getInt("done")==0;}catch(Exception e){return false;}},"goals-only widget checks goal");
             js("window.nativeEvent('route','notes')");
             check(js("document.querySelector('.active-reminders').innerText").contains("Test note"),"snoozed reminder visible above notes");
-            runOnMainSync(()->{host.stopListening();host.deleteHost();});
+            runOnMainSync(()->{
+                host.stopListening();host.deleteHost();
+                ((ViewGroup)views[0].getParent()).removeView(views[0]);
+                ((ViewGroup)lock[0].getParent()).removeView(lock[0]);
+            });
             testGoalGroups(db);
             testTracker(db);
             tap("#calendar");tap("[data-scale=year]");tap("[data-month]");tap("#calNow");tap("#addDate");
