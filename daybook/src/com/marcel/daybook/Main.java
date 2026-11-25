@@ -1,0 +1,115 @@
+package com.marcel.daybook;
+
+import android.app.*;
+import android.content.*;
+import android.net.Uri;
+import android.os.*;
+import android.provider.Settings;
+import android.view.*;
+import android.webkit.*;
+import android.widget.Toast;
+import org.json.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+
+public final class Main extends Activity {
+    WebView web; Journal journal; boolean ready; String route="today"; Updates updates;
+    private final Handler clock=new Handler(Looper.getMainLooper());
+    private String shownDay="";
+    private final Runnable tick=new Runnable(){public void run(){
+        String d=LocalDate.now().toString();
+        if(!d.equals(shownDay)){shownDay=d;event("refresh","");Widget.refresh(Main.this);}
+        clock.postDelayed(this,15000);
+    }};
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);journal=Journal.get(this);updates=new Updates(this);
+        getWindow().setStatusBarColor(0xFFF8F6EF);getWindow().setNavigationBarColor(0xFFF8F6EF);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        web=new WebView(this);
+        web.setOnApplyWindowInsetsListener((v,insets)->{
+            v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
+            return insets.consumeSystemWindowInsets();
+        });
+        web.setBackgroundColor(0xFFF8F6EF);setContentView(web);
+        web.getSettings().setJavaScriptEnabled(true);web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(false);
+        web.getSettings().setBlockNetworkLoads(true);
+        web.addJavascriptInterface(new Bridge(),"Daybook");
+        web.setWebViewClient(new WebViewClient(){
+            @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return true;}
+            @Override public void onPageFinished(WebView v,String url){ready=true;deliver();}
+        });
+        readIntent(getIntent());if(state!=null)route=state.getString("route",route);
+        web.loadUrl("file:///android_asset/index.html");Reminders.channel(this);
+    }
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("route",route);}
+    private void readIntent(Intent i){
+        Uri u=i.getData(); if(u!=null && "daybook".equals(u.getScheme())&&"open".equals(u.getHost())&&u.getPath()!=null)route=u.getPath().substring(1);
+    }
+    @Override protected void onNewIntent(Intent i){super.onNewIntent(i);setIntent(i);readIntent(i);deliver();}
+    void deliver(){event("route",route);}
+    void event(String type,String value){runOnUiThread(()->{if(ready&&!isDestroyed())web.evaluateJavascript("window.nativeEvent("+JSONObject.quote(type)+","+JSONObject.quote(value)+")",null);});}
+    void tell(String message){runOnUiThread(()->Toast.makeText(this,message,Toast.LENGTH_LONG).show());}
+    @Override protected void onResume(){super.onResume();clock.removeCallbacks(tick);tick.run();event("refresh","");updates.onResume();
+        try{if(Reminders.allowed(this))Reminders.all(this);}catch(JSONException e){tell("Could not restore reminders.");}}
+    @Override protected void onPause(){clock.removeCallbacks(tick);super.onPause();}
+    @Override public void onBackPressed(){web.evaluateJavascript("window.goBack()",r->{if(!"true".equals(r))super.onBackPressed();});}
+    @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);event("refresh","");if(r==7 && !Reminders.allowed(this))tell("Notifications are off. Your reminder is saved.");}
+    void notificationSettings(){
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED && !getPreferences(0).getBoolean("asked",false)){
+            getPreferences(0).edit().putBoolean("asked",true).apply();requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},7);
+        }else startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getPackageName()));
+    }
+    final class Bridge {
+        @JavascriptInterface public String call(String op,String arg) {
+            try{
+                JSONObject a=new JSONObject(arg);Object res=true;
+                switch(op){
+                case "state": res=journal.snapshot().put("notifications",Reminders.allowed(Main.this)).put("exact",Reminders.exact(Main.this)).put("version",getPackageManager().getPackageInfo(getPackageName(),0).versionName);break;
+                case "goal":journal.addGoal(a.getString("name"),a.getString("period"));Widget.refresh(Main.this);break;
+                case "mark":journal.mark(a.getString("id"),a.getString("day"),a.getBoolean("done"));Widget.refresh(Main.this);break;
+                case "pin":journal.pin(a.getString("id"),a.getBoolean("on"));Widget.refresh(Main.this);break;
+                case "history":res=journal.rows("SELECT day FROM marks WHERE goal=? ORDER BY day DESC",a.getString("id"));break;
+                case "folder":journal.addFolder(a.getString("name"));break;
+                case "uuid":res=Journal.uuid();break;
+                case "note":res=journal.note(a.getString("id"));break;
+                case "save":{
+                    String id=a.getString("id");JSONObject old=journal.note(id);
+                    long at=old==null?0:old.getLong("alarm");
+                    journal.saveNote(id,a.getString("folder"),a.getString("title"),a.getString("body"),at);break;
+                }
+                case "alarm":{
+                    String id=a.getString("id");long at=a.getLong("at");if(journal.note(id)==null)throw new Exception("Write a note first.");
+                    if(at!=0&&at<=System.currentTimeMillis())throw new Exception("Choose a future time.");
+                    journal.setAlarm(id,at);Reminders.plan(Main.this,id,at);
+                    getSystemService(NotificationManager.class).cancel(id,1);
+                    if(at>0&&!Reminders.allowed(Main.this))runOnUiThread(()->notificationSettings());break;
+                }
+                case "location":route=a.getString("route");break;
+                case "permissions":runOnUiThread(()->notificationSettings());break;
+                case "exact":if(Build.VERSION.SDK_INT>=31)runOnUiThread(()->startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName()))));break;
+                case "check":runOnUiThread(()->updates.check(true));break;
+                case "backup":runOnUiThread(()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"Daybook-"+LocalDate.now()+".json"),10));break;
+                case "restore":runOnUiThread(()->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),11));break;
+                default:throw new Exception("Unknown command.");
+                }
+                return new JSONObject().put("ok",true).put("value",res==null?JSONObject.NULL:res).toString();
+            }catch(Exception e){return "{\"ok\":false,\"error\":"+JSONObject.quote(e instanceof android.database.sqlite.SQLiteConstraintException?"That folder name already exists or the entry is invalid.":String.valueOf(e.getMessage()))+"}";}
+        }
+    }
+    @Override protected void onActivityResult(int r,int result,Intent data){
+        super.onActivityResult(r,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;
+        Uri uri=data.getData(); if(r==10){new Thread(()->{
+            try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")){out.write(journal.backup().toString().getBytes(StandardCharsets.UTF_8));tell("Backup saved.");}
+            catch(Exception e){tell("Backup failed: "+e.getMessage());}
+        }).start();} else if(r==11)new AlertDialog.Builder(this).setTitle("Replace this journal?").setMessage("Restoring replaces your current notes, goals and check-ins with the selected backup.").setNegativeButton("Cancel",null).setPositiveButton("Restore",(d,w)->new Thread(()->{
+            try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream buf=new ByteArrayOutputStream()){
+                byte[] bytes=new byte[8192];int n;while((n=in.read(bytes))!=-1){if(buf.size()+n>64*1024*1024)throw new IOException("Backup exceeds 64 MB.");buf.write(bytes,0,n);}
+                JSONArray old=journal.rows("SELECT id FROM notes WHERE alarm>0");
+                journal.restore(new JSONObject(buf.toString("UTF-8")));
+                for(int k=0;k<old.length();k++)Reminders.plan(this,old.getJSONObject(k).getString("id"),0);
+                getSystemService(NotificationManager.class).cancelAll();Reminders.all(this);Widget.refresh(this);route="today";deliver();tell("Journal restored.");
+            }catch(Exception e){tell("Restore failed: "+e.getMessage());}
+        }).start()).show();
+    }
+}
