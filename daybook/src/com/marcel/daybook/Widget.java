@@ -65,9 +65,15 @@ public final class Widget extends AppWidgetProvider {
                 String gid=g.getString("id");RemoteViews row=new RemoteViews(c.getPackageName(),R.layout.goal);
                 row.setTextViewText(R.id.name,g.getString("name"));
                 row.setTextViewText(R.id.missed,g.getInt("missed")+" missed");
-                row.setInt(R.id.bubble,"setBackgroundResource",done?R.drawable.filled:R.drawable.empty);
+                String period=g.getString("period");
+                int circle;
+                if ("Weekly".equals(period)) circle=done?R.drawable.weekly_full:R.drawable.weekly_open;
+                else if ("Daily".equals(period)) circle=done?R.drawable.daily_full:R.drawable.daily_open;
+                else circle=done?R.drawable.long_full:R.drawable.long_open;
+                row.setInt(R.id.bubble,"setBackgroundResource",circle);
                 row.setTextViewText(R.id.bubble,done?"✓":"");
-                row.setContentDescription(R.id.row,(done?"Undo today: ":"Complete today: ")+g.getString("name"));
+                String group=period.equals("Weekly")?"Weekly":period.equals("Daily")?"Daily":"Long-term";
+                row.setContentDescription(R.id.row,group+" goal, "+g.getString("name")+(done?", checked":", unchecked"));
                 Intent tap=new Intent(c,Widget.class).setAction("MARK").setData(Uri.parse("daybook://mark/"+gid+"/"+day+"/"+!done))
                     .putExtra("goal",gid).putExtra("day",day.toString()).putExtra("done",!done);
                 row.setOnClickPendingIntent(R.id.row,PendingIntent.getBroadcast(c,0,tap,FLAGS));v.addView(R.id.rows,row);

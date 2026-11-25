@@ -22,6 +22,47 @@ public final class Smoke extends Instrumentation {
         try{check(done.await(6,TimeUnit.SECONDS),"JS callback");}catch(Exception e){throw new RuntimeException(e);}return result.get();
     }
     void tap(String selector){check("true".equals(js("(()=>{let b=document.querySelector("+JSONObject.quote(selector)+");if(!b)return false;b.click();return true;})()")),"tap "+selector);}
+    void testWritingArea(Journal db,String id)throws Exception{
+        js("document.querySelector('#body').focus()");
+        runOnMainSync(()->{
+            activity.web.requestFocus();
+            activity.getSystemService(android.view.inputmethod.InputMethodManager.class)
+                .showSoftInput(activity.web,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        });
+        until(()->{
+            AtomicBoolean visible=new AtomicBoolean();
+            runOnMainSync(()->visible.set(activity.web.getRootWindowInsets().isVisible(WindowInsets.Type.ime())));
+            return visible.get();
+        },"keyboard open while editing");
+        check("true".equals(js("(()=>{const r=document.querySelector('#body').getBoundingClientRect();return r.height>innerHeight*0.65&&r.bottom<=innerHeight+1;})()")),"writing area fills keyboard-safe viewport");
+        js("document.execCommand('selectAll');document.execCommand('insertText',false,'A full line of notebook text.\\n'.repeat(100))");
+        sendStringSync("visible end");
+        until(()->"true".equals(js("(()=>{const b=document.querySelector('#body');return b.value.endsWith('visible end')&&b.scrollTop>0&&b.scrollHeight-b.clientHeight-b.scrollTop<30;})()")),"typed final line stays visible");
+        check("true".equals(js("(()=>{const b=document.querySelector('#body');b.scrollTop=0;return b.scrollTop===0&&b.scrollHeight>b.clientHeight;})()")),"can scroll to first line");
+        check(db.note(id).getString("body").endsWith("visible end"),"long note saved");
+        runOnMainSync(()->activity.getSystemService(android.view.inputmethod.InputMethodManager.class).hideSoftInputFromWindow(activity.web.getWindowToken(),0));
+    }
+    void testGoalGroups(Journal db)throws Exception{
+        js("window.nativeEvent('route','today')");
+        for(String kind:new String[]{"weekly","daily"}){
+            tap("[data-new="+kind+"]");
+            js("document.querySelector('#gname').value='Example "+kind+"'");
+            tap("#confirm");
+            check("true".equals(js("!!document.querySelector('."+kind+" [data-mark]')")),"goal in "+kind+" group");
+        }
+        LocalDate now=LocalDate.now(),week=Journal.monday(now),start=week.minusWeeks(2).plusDays(2);
+        String id=db.rows("SELECT id FROM goals WHERE period='Weekly'").getJSONObject(0).getString("id");
+        db.getWritableDatabase().execSQL("UPDATE goals SET start=? WHERE id=?",new Object[]{start.toString(),id});
+        db.mark(id,now.toString(),true);db.mark(id,now.toString(),true);
+        check(db.rows("SELECT * FROM marks WHERE goal=?",id).length()==1,"one mark per week");
+        for(LocalDate date:new LocalDate[]{now,week.plusDays(6),week.plusWeeks(1)}){
+            JSONArray all=db.goals(date);JSONObject g=null;
+            for(int i=0;i<all.length();i++)if(id.equals(all.getJSONObject(i).getString("id")))g=all.getJSONObject(i);
+            check(g!=null&&g.getInt("missed")==2,"missed weeks stay permanent");
+            check(g.getInt("done")==(date.equals(week.plusWeeks(1))?0:1),"weekly reset on Monday");
+        }
+        check("true".equals(js("new Set(['long','weekly','daily'].map(k=>getComputedStyle(document.querySelector('.'+k+' .orb')).borderTopColor)).size===3")),"three distinct goal colors");
+    }
     @Override public void onStart(){
         Bundle result=new Bundle();
         try {
@@ -42,6 +83,7 @@ public final class Smoke extends Instrumentation {
             check(n.getString("body").equals("Remember this")&&n.getString("folder").equals("daily"),"autosave daily note");
             js("document.querySelector('#nfolder').value='long';document.querySelector('#nfolder').dispatchEvent(new Event('change'))");
             check(db.note(nid).getString("folder").equals("long"),"move to Long Term");
+            testWritingArea(db,nid);
             long at=System.currentTimeMillis()+2000;
             db.setAlarm(nid,at);Reminders.plan(c,nid,at);
             until(()->c.getSystemService(NotificationManager.class).getActiveNotifications().length>0,"actual reminder notification");
@@ -64,6 +106,7 @@ public final class Smoke extends Instrumentation {
             runOnMainSync(()->views[0].findViewById(R.id.openNote).performClick());
             until(()->"\"\"".equals(js("document.querySelector('#ntitle')?.value")),"widget opens blank Daily note");
             runOnMainSync(()->{host.stopListening();host.deleteHost();});
+            testGoalGroups(db);
             result.putString("stream","DAYBOOK_TESTS_PASSED");finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("stream",android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}
     }

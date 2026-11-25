@@ -4,7 +4,7 @@ Daybook is a standalone Android journal under the package `com.marcel.daybook`. 
 
 ## Install and connect
 
-Install Daybook and open it once. Add a goal for one week, one month, six months, or one year. Every elapsed, unchecked day counts permanently. Tap today's bubble again to undo today's check-in. Tap a goal name for its history and widget visibility. The Notebook starts with Daily and Long Term folders. Notes save as you type, and each can carry a notification that opens the note or snoozes for ten minutes.
+Install Daybook and open it once. Choose purple Long-term for daily check-ins over a week, month, six months or year. Green Daily repeats each day. Blue Weekly repeats each Monday through Sunday. Missed periods are permanent. Tap a bubble to check or undo the current period. Use History below the bubble to see the record or set widget visibility. The Notebook starts with Daily and Long Term folders. Notes save as you type, and each can carry a notification that opens the note or snoozes for ten minutes.
 
 On WIN26 release 100141, install the optional WIN26-Daybook-Widget.apk over the existing launcher. Open WINSUNG Widgets, choose Daybook, choose Manage, and add it to Desktop. Tap Connect Daybook widget and approve Android's binding prompt. The host also supports the Quick Glance and Page 2 placements. On launchers with a standard widget picker, add Daybook directly.
 

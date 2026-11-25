@@ -27,11 +27,21 @@ public final class Main extends Activity {
         getWindow().setStatusBarColor(0xFFF8F6EF);getWindow().setNavigationBarColor(0xFFF8F6EF);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         web=new WebView(this);
-        web.setOnApplyWindowInsetsListener((v,insets)->{
-            v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
-            return insets.consumeSystemWindowInsets();
-        });
-        web.setBackgroundColor(0xFFF8F6EF);setContentView(web);
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        frame.setBackgroundColor(0xFFF8F6EF);
+        frame.addView(web);
+        if (Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+            frame.setOnApplyWindowInsetsListener((v, insets) -> {
+                android.graphics.Insets safe = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                v.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                return WindowInsets.CONSUMED;
+            });
+        }
+        web.setBackgroundColor(0xFFF8F6EF);
+        setContentView(frame);
+        frame.requestApplyInsets();
         web.getSettings().setJavaScriptEnabled(true);web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(false);
         web.getSettings().setBlockNetworkLoads(true);
         web.addJavascriptInterface(new Bridge(),"Daybook");

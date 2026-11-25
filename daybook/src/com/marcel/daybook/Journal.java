@@ -31,6 +31,8 @@ final class Journal extends SQLiteOpenHelper {
     static String title(String s) { s=s.trim(); if(s.isEmpty() || s.length()>200) throw new IllegalArgumentException("Use a name between 1 and 200 characters."); return s; }
     static LocalDate end(LocalDate start,String period) {
         switch(period) {
+            case "Daily":
+            case "Weekly": return LocalDate.of(9999,12,31);
             case "Week": return start.plusWeeks(1);
             case "Month": return start.plusMonths(1);
             case "6 months": return start.plusMonths(6);
@@ -47,8 +49,18 @@ final class Journal extends SQLiteOpenHelper {
         String today=LocalDate.now().toString();
         if (!today.equals(shownDay)) return false;
         SQLiteDatabase db=getWritableDatabase();
-        if (done) db.execSQL("INSERT OR IGNORE INTO marks SELECT id,? FROM goals WHERE id=? AND start<=? AND end>?",new Object[]{today,id,today,today});
-        else db.delete("marks","goal=? AND day=?",new String[]{id,today});
+        try (Cursor c=db.rawQuery("SELECT period,start FROM goals WHERE id=? AND start<=? AND end>?",new String[]{id,today,today})) {
+            if (!c.moveToFirst()) return false;
+            LocalDate slot=LocalDate.parse(today);
+            if ("Weekly".equals(c.getString(0))) {
+                LocalDate start=LocalDate.parse(c.getString(1));
+                slot=monday(slot);
+                if (slot.isBefore(start)) slot=start;
+            }
+            String[] key={id,slot.toString()};
+            if (done) db.execSQL("INSERT OR IGNORE INTO marks(goal,day) VALUES(?,?)",key);
+            else db.delete("marks","goal=? AND day=?",key);
+        }
         return true;
     }
     void pin(String id,boolean pin) {getWritableDatabase().execSQL("UPDATE goals SET pinned=? WHERE id=?",new Object[]{pin?1:0,id});}
@@ -62,13 +74,20 @@ final class Journal extends SQLiteOpenHelper {
             }
         } return out;
     }
+    static LocalDate monday(LocalDate day) { return day.minusDays(day.getDayOfWeek().getValue()-1); }
     JSONArray goals(LocalDate now) throws JSONException {
         String d=now.toString();
-        JSONArray items=rows("SELECT g.*, (SELECT count(*) FROM marks WHERE goal=g.id AND day<?) AS prior, EXISTS(SELECT 1 FROM marks WHERE goal=g.id AND day=?) AS done FROM goals g ORDER BY start DESC,rowid",d,d);
+        // A weekly mark belongs to one calendar week. In the first partial week
+        // the key is the creation date, so a mark never predates its goal.
+        JSONArray items=rows("SELECT slots.*, (SELECT count(*) FROM marks WHERE goal=slots.id AND day<slots.slot) AS prior, " +
+            "EXISTS(SELECT 1 FROM marks WHERE goal=slots.id AND day=slots.slot) AS done FROM " +
+            "(SELECT g.*,g.rowid AS seq,CASE WHEN period='Weekly' THEN max(start,?) ELSE ? END AS slot FROM goals g) slots " +
+            "ORDER BY start DESC,seq",monday(now).toString(),d);
         for(int i=0;i<items.length();i++) {
             JSONObject g=items.getJSONObject(i);
             LocalDate start=LocalDate.parse(g.getString("start")), limit=LocalDate.parse(g.getString("end"));
             long elapsed=Math.max(0,ChronoUnit.DAYS.between(start,now.isBefore(limit)?now:limit));
+            if ("Weekly".equals(g.getString("period"))) elapsed=Math.max(0,ChronoUnit.WEEKS.between(monday(start),monday(now)));
             g.put("missed",Math.max(0,elapsed-g.getInt("prior")));
             g.put("active",!now.isBefore(start)&&now.isBefore(limit));
         } return items;
