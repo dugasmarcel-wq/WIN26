@@ -15,7 +15,7 @@ function showTracker(){
  const start=year?month.slice(0,4)+'-01-01':month;
  const data=api('tracker',{start,year});
  const rate=data.percent<0?'—':data.percent+'%';
- const earliest=state.goals.reduce((first,g)=>g.start<first?g.start:first,state.today);
+ const earliest=state.goals.reduce((first,g)=>g.created<first?g.created:first,state.today);
  const title=pretty(start,year?{year:'numeric'}:{month:'long',year:'numeric'});
  const modeButton=(name,label)=>'<button type="button" data-mode="'+name+'" aria-pressed="'+(trackerMode===name)+'">'+label+'</button>';
  host.innerHTML='<div class="tracker-top"><h2>Completion tracker</h2><div class="tracker-switch">'+modeButton('month','Month')+modeButton('year','Year')+'</div></div>'+

@@ -31,6 +31,7 @@ final class Journal extends SQLiteOpenHelper {
     private void upgradeMethod(SQLiteDatabase db){
         db.execSQL("CREATE TABLE goal_edits(goal TEXT REFERENCES goals(id),since TEXT,name TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,PRIMARY KEY(goal,since))");
         db.execSQL("CREATE TABLE reflections(goal TEXT REFERENCES goals(id),day TEXT,body TEXT NOT NULL,PRIMARY KEY(goal,day))");
+        db.execSQL("CREATE TABLE weekly_taps(goal TEXT,week TEXT,day TEXT NOT NULL,PRIMARY KEY(goal,week),FOREIGN KEY(goal,week) REFERENCES marks(goal,day) ON DELETE CASCADE)");
         db.execSQL("CREATE TABLE colors(target TEXT PRIMARY KEY,value TEXT NOT NULL)");
     }
     void editGoal(JSONObject a)throws JSONException{
@@ -101,13 +102,18 @@ final class Journal extends SQLiteOpenHelper {
         String today=LocalDate.now().toString();
         if (!today.equals(shownDay)) return false;
         SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
         try {
             GoalBook.Goal goal=new GoalBook(this).goals.get(id);
             if(goal==null||!goal.active(LocalDate.parse(today)))return false;
             String[] key={id,goal.key(LocalDate.parse(today))};
-            if(done)db.execSQL("INSERT OR IGNORE INTO marks VALUES(?,?)",key);
+            if(done){
+                db.execSQL("INSERT OR IGNORE INTO marks VALUES(?,?)",key);
+                if(goal.weekly&&!goal.marks.contains(key[1]))db.execSQL("INSERT OR IGNORE INTO weekly_taps VALUES(?,?,?)",new Object[]{id,key[1],today});
+            }
             else db.delete("marks","goal=? AND day=?",key);
-        }catch(JSONException e){throw new IllegalStateException(e);}
+            db.setTransactionSuccessful();
+        }catch(JSONException e){throw new IllegalStateException(e);}finally{db.endTransaction();}
         return true;
     }
     void pin(String id,boolean pin) {getWritableDatabase().execSQL("UPDATE goals SET pinned=? WHERE id=?",new Object[]{pin?1:0,id});}
@@ -159,7 +165,7 @@ final class Journal extends SQLiteOpenHelper {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {
             JSONObject result=new JSONObject().put("format","com.marcel.daybook/1");
-            for(String table:new String[]{"folders","goals","marks","notes","events","goal_edits","reflections","colors"}) result.put(table,rows("SELECT * FROM "+table+" ORDER BY rowid"));
+            for(String table:new String[]{"folders","goals","marks","notes","events","goal_edits","reflections","colors","weekly_taps"}) result.put(table,rows("SELECT * FROM "+table+" ORDER BY rowid"));
             db.setTransactionSuccessful(); return result;
         } finally {db.endTransaction();}
     }
@@ -168,7 +174,7 @@ final class Journal extends SQLiteOpenHelper {
         if(!"com.marcel.daybook/1".equals(b.getString("format"))) throw new JSONException("Choose a Daybook backup.");
         SQLiteDatabase db=getWritableDatabase(); db.beginTransaction();
         try {
-            for(String t:new String[]{"colors","reflections","goal_edits","events","marks","notes","goals","folders"}) db.delete(t,null,null);
+            for(String t:new String[]{"weekly_taps","colors","reflections","goal_edits","events","marks","notes","goals","folders"}) db.delete(t,null,null);
             String[][] schema={{"folders","id","name"},{"goals","id","name","start","end","period","pinned"},{"marks","goal","day"},{"notes","id","folder","title","body","changed","alarm"}};
             for(String[] fields:schema) {
                 JSONArray list=b.getJSONArray(fields[0]);
@@ -189,7 +195,7 @@ final class Journal extends SQLiteOpenHelper {
                 JSONObject e=events.getJSONObject(i);
                 db.execSQL("INSERT INTO events VALUES(?,?,?,?)",new Object[]{e.getString("id"),title(e.getString("name")),LocalDate.parse(e.getString("day")).toString(),e.getInt("annual")});
             }
-            String[][] optional={{"goal_edits","goal","since","name","start","end"},{"reflections","goal","day","body"},{"colors","target","value"}};
+            String[][] optional={{"weekly_taps","goal","week","day"},{"goal_edits","goal","since","name","start","end"},{"reflections","goal","day","body"},{"colors","target","value"}};
             for(String[] t:optional)if(b.has(t[0]))for(JSONObject row:GoalBook.items(b.getJSONArray(t[0]))){
                 ContentValues v=new ContentValues();for(int i=1;i<t.length;i++)v.put(t[i],row.getString(t[i]));db.insertOrThrow(t[0],null,v);
             }

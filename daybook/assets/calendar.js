@@ -4,15 +4,17 @@ let calDay='',scale='month',returnCal=false;
 const dayOfTime=t=>{const d=new Date(t);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const occasions=d=>state.events.filter(e=>e.day===d||(e.annual&&d>=e.day&&d.slice(5)===e.day.slice(5)));
 function daySummary(d,compact=false){
- const goals=api('dayGoals',{day:d}).filter(g=>g.due);
+ const dated=api('dayGoals',{day:d}),goals=dated.filter(g=>g.due);
+ const early=dated.filter(g=>g.tapped&&!g.due);
  goals.sort((a,b)=>(areaIds.includes(a.id)?areaIds.indexOf(a.id):4)-(areaIds.includes(b.id)?areaIds.indexOf(b.id):4));
  const done=goals.filter(g=>g.done&&d<=state.today).length;
- const chips=goals.map(g=>{
+ const chips=goals.concat(early).map(g=>{
    const status=d>state.today?'Scheduled':g.done?'Done':d<state.today?'Missed':'Pending';
    const label=focusNames[g.id]||g.name;
-   return '<span class="result-chip" data-status="'+status+'" data-color-key="'+esc(focusNames[g.id]?g.id:groupOf(g))+'" aria-label="'+esc(label+', '+g.name+', '+status)+'" title="'+esc(g.name+' · '+status)+'"><i aria-hidden="true">'+(status==='Done'?'✓':status==='Missed'?'×':'')+'</i>'+esc(compact?label:(focusNames[g.id]?label+' · ':'')+g.name)+'</span>';
+   const earlyLabel=g.tapped&&!g.due?'Weekly · ':'';
+   return '<span class="result-chip" data-status="'+status+'" data-color-key="'+esc(focusNames[g.id]?g.id:groupOf(g))+'" aria-label="'+esc(label+', '+g.name+', '+status)+'" title="'+esc(g.name+' · '+status)+'"><i aria-hidden="true">'+(status==='Done'?'✓':status==='Missed'?'×':'')+'</i>'+esc(earlyLabel+(compact?label:(focusNames[g.id]?label+' · ':'')+g.name))+'</span>';
  }).join('');
- return '<section class="result-strip '+(compact?'compact':'')+'" aria-label="Check-ins for '+esc(d)+'"><b>Check-ins <span>'+done+'/'+goals.length+'</span></b><div class="result-chips">'+(chips||'<small>No goals due</small>')+'</div></section>';
+ return '<section class="result-strip '+(compact?'compact':'')+'" aria-label="Check-ins for '+esc(d)+'"><b>Check-ins <span title="Completed out of goals due">'+done+'/'+goals.length+'</span></b><div class="result-chips">'+(chips||'<small>No goals due</small>')+'</div></section>';
 }
 function calendarPage(){
  if(!calDay)calDay=state.today;

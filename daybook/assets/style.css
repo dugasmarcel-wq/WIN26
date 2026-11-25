@@ -128,3 +128,5 @@ nav button.active{background:var(--tint);color:var(--accent);box-shadow:inset 0 
 .reflections p{white-space:pre-wrap;overflow-wrap:anywhere}
 .calendar-dot{display:inline-block;width:6px;height:6px;margin-left:2px;border:1px solid #657a72;border-radius:50%;vertical-align:middle}.calendar-dot.done{background:#28674c}.calendar-dot.partial{background:#ab780a}.calendar-dot.missed{background:#ae473d}.calendar-dot.open{background:#457799}
 @media(max-height:500px){.writing main{padding-block:0 3px;gap:2px}.writing .editor-head,.editor-head #back,.editor-head #manageNote,.editor-head #remind{min-height:30px}.note-meta #ntitle{font-size:19px;padding:2px}.note-meta #nfolder{padding-block:2px}.compact .result-chip{padding-block:2px}.compact>b span{display:inline}}
+
+.inactive-schedule{display:block;font-size:11px}

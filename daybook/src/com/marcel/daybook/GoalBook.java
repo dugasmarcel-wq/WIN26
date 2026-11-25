@@ -11,6 +11,7 @@ final class GoalBook {
         final String id;
         final boolean weekly;
         final TreeMap<String,JSONObject> edits=new TreeMap<>();
+        final Set<String> taps=new HashSet<>();
         final Set<String> marks=new HashSet<>();
         Goal(JSONObject g)throws JSONException {original=g;id=g.getString("id");weekly="Weekly".equals(g.getString("period"));}
         JSONObject at(String day){Map.Entry<String,JSONObject> e=edits.floorEntry(day);return e==null?original:e.getValue();}
@@ -28,6 +29,7 @@ final class GoalBook {
         JSONArray list=db.rows("SELECT * FROM goals ORDER BY start DESC,rowid");
         for(int i=0;i<list.length();i++){Goal g=new Goal(list.getJSONObject(i));goals.put(g.id,g);}
         for(JSONObject edit:items(db.rows("SELECT * FROM goal_edits ORDER BY since")))goals.get(edit.getString("goal")).edits.put(edit.getString("since"),edit);
+        for(JSONObject tap:items(db.rows("SELECT goal,day FROM weekly_taps")))goals.get(tap.getString("goal")).taps.add(tap.getString("day"));
         for(JSONObject mark:items(db.rows("SELECT goal,day FROM marks")))goals.get(mark.getString("goal")).marks.add(mark.getString("day"));
     }
     static List<JSONObject> items(JSONArray a)throws JSONException{List<JSONObject> result=new ArrayList<>();for(int i=0;i<a.length();i++)result.add(a.getJSONObject(i));return result;}
@@ -43,7 +45,7 @@ final class GoalBook {
                 if(!g.due(d))continue;
                 if(g.marks.contains(g.key(d)))prior++;else missed++;
             }
-            v.put("active",active).put("done",done?1:0).put("due",g.due(now)).put("prior",prior).put("missed",missed);
+            v.put("tapped",g.taps.contains(now.toString())).put("active",active).put("done",done?1:0).put("due",g.due(now)).put("prior",prior).put("missed",missed);
             out.put(v);
         }return out;
     }
@@ -51,9 +53,10 @@ final class GoalBook {
         JSONObject days=new JSONObject();
         LocalDate end=first.plusMonths(1);
         for(LocalDate d=first;d.isBefore(end);d=d.plusDays(1)){
-            int due=0,done=0;
+            int due=0,done=0,taps=0;
             for(Goal goal:goals.values())if(goal.due(d)){due++;if(goal.marks.contains(goal.key(d)))done++;}
-            if(due>0)days.put(d.toString(),new JSONObject().put("due",due).put("done",done));
+            for(Goal goal:goals.values())if(goal.taps.contains(d.toString()))taps++;
+            if(due>0||taps>0)days.put(d.toString(),new JSONObject().put("due",due).put("done",done).put("taps",taps));
         }
         return days;
     }

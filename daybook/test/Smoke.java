@@ -55,6 +55,7 @@ public final class Smoke extends Instrumentation {
         db.getWritableDatabase().execSQL("UPDATE goals SET start=? WHERE id=?",new Object[]{start.toString(),id});
         db.mark(id,now.toString(),true);db.mark(id,now.toString(),true);
         check(db.rows("SELECT * FROM marks WHERE goal=?",id).length()==1,"one mark per week");
+        check(db.rows("SELECT day FROM weekly_taps WHERE goal=? AND day=?",id,now.toString()).length()==1,"journal records actual weekly tap date");
         for(LocalDate date:new LocalDate[]{now,week.plusDays(6),week.plusWeeks(1)}){
             JSONArray all=db.goals(date);JSONObject g=null;
             for(int i=0;i<all.length();i++)if(id.equals(all.getJSONObject(i).getString("id")))g=all.getJSONObject(i);

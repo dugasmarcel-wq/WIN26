@@ -52,7 +52,7 @@ function today(){
 }
 function goalBubble(g){
  const unit=groupOf(g)==='weekly'?'this week':'today';
- return '<div class="goal-tile" data-color-key="'+esc(focusNames[g.id]?g.id:groupOf(g))+'"><button class="goal-check" '+(g.active?'':'disabled')+' data-mark="'+esc(g.id)+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+unit)+'"><span class="orb" aria-hidden="true">'+(g.done?'✓':'')+'</span><span class="goal-name">'+(focusNames[g.id]?'<b>'+focusNames[g.id]+'</b><br>':'')+esc(g.name)+'</span></button>'+
+ return '<div class="goal-tile" data-color-key="'+esc(focusNames[g.id]?g.id:groupOf(g))+'"><button class="goal-check" '+(g.active?'':'disabled')+' data-mark="'+esc(g.id)+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+unit)+'"><span class="orb" aria-hidden="true">'+(g.done?'✓':'')+'</span><span class="goal-name">'+(focusNames[g.id]?'<b>'+focusNames[g.id]+'</b><br>':'')+esc(g.name)+(!g.active?'<small class="inactive-schedule">'+(state.today<g.start?'Starts '+esc(pretty(g.start,{month:'short',day:'numeric'})):'Ended')+'</small>':'')+'</span></button>'+
  '<button class="goal-history" data-goal="'+esc(g.id)+'" aria-label="'+esc((focusNames[g.id]?'Write or edit ':'History and settings for ')+g.name)+'">'+(focusNames[g.id]?'Write / edit':g.missed+' missed · History')+'</button></div>';
 }
 function newGoal(group){
