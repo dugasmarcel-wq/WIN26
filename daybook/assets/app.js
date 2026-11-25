@@ -16,7 +16,8 @@ $('#form').onsubmit=e=>{e.preventDefault();if(submitForm()!==false)dialog.close(
 function render(){
  document.body.classList.toggle('writing',view==='edit');
  state=api('state');$('#today').className=['today','goal'].includes(view)?'active':'';$('#notebook').className=['notes','edit'].includes(view)?'active':'';
- if(view==='today')today();else if(view==='notes')notes();else if(view==='edit')editor();else if(view==='goal')detail();else settings();
+ $('#calendar').className=view==='calendar'?'active':'';
+ if(view==='calendar')calendarPage();else if(view==='today')today();else if(view==='notes')notes();else if(view==='edit')editor();else if(view==='goal')detail();else settings();
 }
 const groups = [
  {id:'long', label:'Long-term', hint:'Check in daily'},
@@ -27,8 +28,8 @@ function groupOf(g){return g.period==='Daily'?'daily':g.period==='Weekly'?'weekl
 function today(){
  const active=state.goals.filter(g=>g.active), ended=state.goals.filter(g=>!g.active);
  screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><div class="goal-actions"><button id="jumpTracker">Tracker</button><button class="primary" id="addGoal">Add goal</button></div></div>'+
- groups.map(group=>{
-   const items=active.filter(g=>groupOf(g)===group.id);
+ '<section class="four-section"><h2>Daily four</h2><div class="four-grid">'+active.filter(g=>focusNames[g.id]).map(goalBubble).join('')+'</div></section>'+groups.map(group=>{
+   const items=active.filter(g=>!focusNames[g.id]&&groupOf(g)===group.id);
    return '<section class="goal-group '+group.id+'"><div class="group-head"><h2>'+group.label+'</h2><span class="count">'+items.filter(g=>g.done).length+'/'+items.length+'</span><button class="inline-add" data-new="'+group.id+'" aria-label="Add '+group.label+' goal">+</button></div>'+
      (items.length?'<div class="bubbles">'+items.map(goalBubble).join('')+'</div>':'')+'</section>';
 
@@ -51,7 +52,7 @@ function today(){
 }
 function goalBubble(g){
  const unit=groupOf(g)==='weekly'?'this week':'today';
- return '<div class="goal-tile"><button class="goal-check" data-mark="'+esc(g.id)+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+unit)+'"><span class="orb" aria-hidden="true">'+(g.done?'✓':'')+'</span><span class="goal-name">'+esc(g.name)+'</span></button>'+
+ return '<div class="goal-tile"><button class="goal-check" data-mark="'+esc(g.id)+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+unit)+'"><span class="orb" aria-hidden="true">'+(g.done?'✓':'')+'</span><span class="goal-name">'+(focusNames[g.id]?'<b>'+focusNames[g.id]+'</b><br>':'')+esc(g.name)+'</span></button>'+
  '<button class="goal-history" data-goal="'+esc(g.id)+'" aria-label="'+esc('History of '+g.name)+'">'+g.missed+' missed · History</button></div>';
 }
 function newGoal(group){
@@ -86,11 +87,13 @@ function reminderSection(){
 }
 function notes(){
  if(!state.folders.some(f=>f.id===folder))folder='daily';
- const list=state.notes.filter(n=>n.folder===folder);
- screen.innerHTML='<h1>Notebook</h1><div class="chips">'+state.folders.map(f=>'<button class="'+(f.id===folder?'chosen':'')+'" data-folder="'+esc(f.id)+'">'+esc(f.name)+'</button>').join('')+'<button id="newFolder">+ Folder</button></div>'+reminderSection()+'<div class="section"><h2>'+list.length+' '+(list.length===1?'note':'notes')+'</h2><button class="primary" id="newNote">New note</button></div>'+
+ const pinned=[state.notes.find(n=>n.id===state.dailyId),...([2,3].map(k=>state.notes.find(n=>n.slot===k)))];
+ const list=state.notes.filter(n=>n.folder===folder&&!pinned.some(p=>p&&p.id===n.id));
+ const slots=pinned.map((n,i)=>n?'<button class="item card" data-note="'+esc(n.id)+'"><small>'+(i?'Pinned '+(i+1):'Today')+'</small><b>'+esc(n.title||'Untitled note')+'</b></button>':'<small class="slot-empty">Slot '+(i+1)+' · Hold a note to pin it</small>').join('');
+ screen.innerHTML='<h1>Notebook</h1><div class="chips">'+state.folders.map(f=>'<button class="'+(f.id===folder?'chosen':'')+'" data-folder="'+esc(f.id)+'">'+esc(f.name)+'</button>').join('')+'<button id="newFolder">+ Folder</button></div>'+slots+reminderSection()+'<div class="section"><h2>'+list.length+' '+(list.length===1?'note':'notes')+'</h2><button class="primary" id="newNote">New note</button></div>'+
  (list.length?list.map(n=>'<button class="item card" data-note="'+esc(n.id)+'"><b>'+esc(n.title||'Untitled note')+'</b><div class="note-preview">'+esc(n.excerpt)+'</div><small>'+esc(n.alarm?'Reminder · '+stamp(n.alarm):stamp(n.changed))+'</small></button>').join(''):'<p class="empty">Write your first note in this folder.</p>');
  $('#newFolder').onclick=()=>modal('New folder','<label for="fname">Folder name</label><input id="fname" maxlength="200" required>','Create folder',()=>{const name=$('#fname').value.trim();api('folder',{name});folder=api('state').folders.find(f=>f.name===name).id;render();});
- $('#newNote').onclick=()=>openNote(null,folder);screen.querySelectorAll('[data-folder]').forEach(b=>b.onclick=()=>{folder=b.dataset.folder;render();});screen.querySelectorAll('[data-note]').forEach(b=>b.onclick=()=>openNote(b.dataset.note));
+ $('#newNote').onclick=()=>openNote(null,folder);screen.querySelectorAll('[data-folder]').forEach(b=>b.onclick=()=>{folder=b.dataset.folder;render();});bindNoteRows();
 }
 function openNote(id,where='daily'){
  entry=id?api('note',{id}):null;if(id&&!entry){go('notes');return;}
@@ -105,7 +108,9 @@ function editor(){
  '<div class="note-meta"><input id="ntitle" aria-label="Note title" placeholder="Untitled note" maxlength="300"><select id="nfolder" aria-label="Folder">'+state.folders.map(f=>'<option value="'+esc(f.id)+'" '+(f.id===entry.folder?'selected':'')+'>'+esc(f.name)+'</option>').join('')+'</select></div>'+
  '<textarea id="body" aria-label="Note text" placeholder="Start writing…" spellcheck="true"></textarea>';
  $('#nfolder').disabled=entry.id.startsWith('day-');$('#ntitle').value=entry.title;$('#body').value=entry.body;
- $('#back').onclick=()=>go('notes');$('#body').oninput=()=>save();$('#ntitle').oninput=()=>save();$('#nfolder').onchange=()=>save();$('#remind').onclick=remind;
+ $('#back').onclick=()=>{go(returnCal?'calendar':'notes');returnCal=false;};$('#body').oninput=()=>save();$('#ntitle').oninput=()=>save();$('#nfolder').onchange=()=>save();$('#remind').onclick=remind;
+ if(!draft){$('#saved').insertAdjacentHTML('beforebegin','<button id="manageNote" aria-label="Note settings">•••</button>');$('#manageNote').onclick=()=>noteMenu(entry.id);}
+ if(entry.written){screen.insertAdjacentHTML('beforeend','<details class="note-day-summary"><summary>Check-ins · '+esc(entry.written)+'</summary></details>');$('.note-day-summary').innerHTML+=daySummary(entry.written);}
  reminderLabel();
 }
 function reminderLabel(){
@@ -127,7 +132,7 @@ function settings(){screen.innerHTML='<h1>Settings</h1><div class="settings-list
 function setting(title,desc,label,id){return '<div class="card setting"><div><h3>'+title+'</h3><small class="meta">'+desc+'</small></div><button id="'+id+'">'+label+'</button></div>';}
 $('#today').onclick=()=>go('today');$('#notebook').onclick=()=>go('notes');$('#settings').onclick=()=>go('settings');
 window.nativeEvent=(type,value)=>{
- if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){trackerMode='month';trackerMonth='';pickedDay='';go('today');jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','settings'].includes(value)?value:'today');}
+ if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){trackerMode='month';trackerMonth='';pickedDay='';go('today');jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','calendar','settings'].includes(value)?value:'today');}
  else if(type==='refresh'&&!dialog.open){if(view==='edit'){if(!draft){let n=api('note',{id:entry.id});if(n){entry.alarm=n.alarm;reminderLabel();}}}else render();}
 };
-window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){go('notes');return true;}if(view!=='today'){go('today');return true;}return false;};
+window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){go(returnCal?'calendar':'notes');returnCal=false;return true;}if(view!=='today'){go('today');return true;}return false;};

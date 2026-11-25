@@ -78,6 +78,7 @@ public class Widget extends AppWidgetProvider {
             for(int i=0;i<data.length();i++) {
                 JSONObject g=data.getJSONObject(i);if(g.getBoolean("active"))goals.add(g);
             }
+            goals.sort((a,b)->Boolean.compare(!a.optString("id").startsWith("four-"),!b.optString("id").startsWith("four-")));
             int height=m.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,220);
             int count=Math.max(1,Math.min(16,(height-(locked?54:90))/44));
             int pages=Math.max(1,(goals.size()+count-1)/count);
@@ -96,7 +97,12 @@ public class Widget extends AppWidgetProvider {
             for(int n=page*count;n<Math.min((page+1)*count,goals.size());n++) {
                 JSONObject g=goals.get(n);boolean done=g.getInt("done")==1;
                 String gid=g.getString("id");RemoteViews row=new RemoteViews(c.getPackageName(),R.layout.goal);
-                row.setTextViewText(R.id.name,g.getString("name"));
+                String label=g.getString("name");
+                if(gid.startsWith("four-")){
+                    String area=gid.substring(5);
+                    label=Character.toUpperCase(area.charAt(0))+area.substring(1)+" · "+label;
+                }
+                row.setTextViewText(R.id.name,label);
                 row.setTextViewText(R.id.missed,g.getInt("missed")+" missed");
                 String period=g.getString("period");
                 int circle;

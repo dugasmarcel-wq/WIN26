@@ -90,6 +90,17 @@ public final class Smoke extends Instrumentation {
         tap("[data-month]:not(:disabled)");tap("[data-date]:not(:disabled)");
         check(js("document.querySelector('#dayCounts').textContent").length()>5,"selected day detail");
     }
+    void apiCheckNotes(Journal db,String id)throws Exception{
+        js("api('place',{id:'"+id+"',slot:2});api('rename',{id:'"+id+"',title:'Pinned journal'});go('notes')");
+        check(db.note(id).getInt("slot")==2 && js("document.body.innerText").contains("Pinned journal"),"persistent named pin");
+        JSONObject backup=db.backup();db.restore(backup);
+        check(db.note(id).getInt("slot")==2 && db.rows("SELECT id FROM events WHERE annual=1").length()>0,"pins and dates restore");
+    }
+    JSONObject findGoal(Journal db,String id)throws Exception{
+        JSONArray goals=db.goals(LocalDate.now());
+        for(int i=0;i<goals.length();i++)if(id.equals(goals.getJSONObject(i).getString("id")))return goals.getJSONObject(i);
+        throw new AssertionError(id);
+    }
     @Override public void onStart(){
         Bundle result=new Bundle();
         try {
@@ -105,12 +116,12 @@ public final class Smoke extends Instrumentation {
             js("window.nativeEvent('route','today')");
             tap("#addGoal");js("document.querySelector('#gname').value='Read 20 minutes'");tap("#confirm");
             until(()->js("document.body.innerText").contains("Read 20 minutes"),"goal displayed");
-            tap("[data-mark]");check(db.goals(LocalDate.now()).getJSONObject(0).getInt("done")==1,"goal bubble persisted");
-            tap("[data-mark]");check(db.goals(LocalDate.now()).getJSONObject(0).getInt("done")==0,"undo today");
-            String d=LocalDate.now().toString(),id=db.goals(LocalDate.now()).getJSONObject(0).getString("id");
+            String d=LocalDate.now().toString(),id=db.rows("SELECT id FROM goals WHERE name='Read 20 minutes'").getJSONObject(0).getString("id");
+            tap("[data-mark='"+id+"']");check(findGoal(db,id).getInt("done")==1,"goal bubble persisted");
+            tap("[data-mark='"+id+"']");check(findGoal(db,id).getInt("done")==0,"undo today");
             LocalDate past=LocalDate.now().minusDays(2);db.getWritableDatabase().execSQL("UPDATE goals SET start=?,end=? WHERE id=?",new Object[]{past.toString(),past.plusWeeks(1).toString(),id});
             check(!db.mark(id,past.toString(),true),"no backfill");db.mark(id,d,true);db.mark(id,d,true);
-            JSONObject g=db.goals(LocalDate.now()).getJSONObject(0);check(g.getInt("missed")==2&&g.getInt("done")==1,"permanent missed count");
+            JSONObject g=findGoal(db,id);check(g.getInt("missed")==2&&g.getInt("done")==1,"permanent missed count");
             check(Journal.end(LocalDate.of(2024,2,29),"Year").equals(LocalDate.of(2025,2,28)),"leap horizon");
             js("window.nativeEvent('route','new')");js("document.querySelector('#ntitle').value='Test note';document.querySelector('#ntitle').dispatchEvent(new Event('input'));document.querySelector('#body').value='Remember this';document.querySelector('#body').dispatchEvent(new Event('input'))");
             JSONObject n=db.rows("SELECT * FROM notes WHERE title='Test note'").getJSONObject(0);String nid=n.getString("id");
@@ -125,7 +136,7 @@ public final class Smoke extends Instrumentation {
             notice.getNotification().actions[0].actionIntent.send();
             until(()->{try{return db.note(nid).getLong("alarm")>System.currentTimeMillis();}catch(Exception e){return false;}},"snooze");
             notice.getNotification().contentIntent.send();until(()->js("document.querySelector('#ntitle')?.value").contains("Test note"),"notification opens note");
-            JSONObject backup=db.backup();db.restore(backup);check(db.goals(LocalDate.now()).getJSONObject(0).getInt("missed")==2&&db.note(nid)!=null,"backup round trip");
+            JSONObject backup=db.backup();db.restore(backup);check(findGoal(db,id).getInt("missed")==2&&db.note(nid)!=null,"backup round trip");
             JSONObject invalid=new JSONObject(backup.toString());invalid.getJSONArray("notes").getJSONObject(0).put("folder","missing");
             try{db.restore(invalid);throw new AssertionError("invalid restore accepted");}catch(android.database.sqlite.SQLiteConstraintException expected){}
             check(db.note(nid)!=null,"restore rolls back");
@@ -136,7 +147,7 @@ public final class Smoke extends Instrumentation {
             runOnMainSync(()->{host.startListening();views[0]=host.createView(activity,wid,m.getAppWidgetInfo(wid));activity.addContentView(views[0],new ViewGroup.LayoutParams(620,480));Widget.refresh(c);});
             until(()->{AtomicBoolean found=new AtomicBoolean();runOnMainSync(()->found.set(views[0].findViewById(R.id.row)!=null));return found.get();},"widget row inflated");
             runOnMainSync(()->views[0].findViewById(R.id.row).performClick());
-            until(()->{try{return db.goals(LocalDate.now()).getJSONObject(0).getInt("done")==0;}catch(Exception e){return false;}},"interactive widget bubble");
+            until(()->{try{return findGoal(db,"four-spiritual").getInt("done")==1;}catch(Exception e){return false;}},"interactive widget bubble");
             runOnMainSync(()->views[0].findViewById(R.id.tracker).performClick());
             until(()->"true".equals(js("(()=>{const p=document.querySelector('#trackerPanel');return !!p && p.getBoundingClientRect().top<innerHeight;})()")),"widget opens tracker");
             until(()->{
@@ -155,12 +166,17 @@ public final class Smoke extends Instrumentation {
             });
             until(()->{AtomicBoolean present=new AtomicBoolean();runOnMainSync(()->present.set(lock[0].findViewById(R.id.row)!=null&&lock[0].findViewById(R.id.openNote)==null));return present.get();},"goals-only widget has bubble and no note button");
             runOnMainSync(()->lock[0].findViewById(R.id.row).performClick());
-            until(()->{try{return db.goals(LocalDate.now()).getJSONObject(0).getInt("done")==1;}catch(Exception e){return false;}},"goals-only widget checks goal");
+            until(()->{try{return findGoal(db,"four-spiritual").getInt("done")==0;}catch(Exception e){return false;}},"goals-only widget checks goal");
             js("window.nativeEvent('route','notes')");
             check(js("document.querySelector('.active-reminders').innerText").contains("Test note"),"snoozed reminder visible above notes");
             runOnMainSync(()->{host.stopListening();host.deleteHost();});
             testGoalGroups(db);
             testTracker(db);
+            tap("#calendar");tap("[data-scale=year]");tap("[data-month]");tap("#calNow");tap("#addDate");
+            js("document.querySelector('#eventName').value='Birthday';document.querySelector('#annual').checked=true");tap("#confirm");
+            check(js("document.body.innerText").contains("Birthday"),"annual date shown");
+            apiCheckNotes(db,nid);
+
             result.putString("stream","DAYBOOK_TESTS_PASSED");finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("stream",android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}
     }

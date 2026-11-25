@@ -17,7 +17,7 @@ final class Journal extends SQLiteOpenHelper {
         if (instance == null) instance = new Journal(c.getApplicationContext());
         return instance;
     }
-    private Journal(Context c) { super(c, "daybook.db", null, 1); }
+    private Journal(Context c) { super(c, "daybook.db", null, 2); }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE folders(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE)");
@@ -25,8 +25,34 @@ final class Journal extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE marks(goal TEXT REFERENCES goals(id),day TEXT NOT NULL,PRIMARY KEY(goal,day))");
         db.execSQL("CREATE TABLE notes(id TEXT PRIMARY KEY,folder TEXT NOT NULL REFERENCES folders(id),title TEXT NOT NULL,body TEXT NOT NULL,changed INTEGER NOT NULL,alarm INTEGER NOT NULL)");
         db.execSQL("INSERT INTO folders VALUES('daily','Daily'),('long','Long Term')");
+        upgradeCalendar(db);
     }
-    @Override public void onUpgrade(SQLiteDatabase db,int old,int next) { throw new IllegalStateException("Unsupported database version"); }
+    @Override public void onUpgrade(SQLiteDatabase db,int old,int next) { if(old<2)upgradeCalendar(db); }
+    private void upgradeCalendar(SQLiteDatabase db){
+        db.execSQL("ALTER TABLE notes ADD COLUMN written TEXT");
+        db.execSQL("ALTER TABLE notes ADD COLUMN slot INTEGER");
+        db.execSQL("CREATE UNIQUE INDEX notebook_slot ON notes(slot)");
+        db.execSQL("CREATE TABLE events(id TEXT PRIMARY KEY, name TEXT NOT NULL, day TEXT NOT NULL, annual INTEGER NOT NULL)");
+        fillDates(db);seedFour(db);
+    }
+    private void fillDates(SQLiteDatabase db){
+        db.execSQL("UPDATE notes SET written=CASE WHEN id LIKE 'day-%' THEN substr(id,5) ELSE date(changed/1000,'unixepoch','localtime') END WHERE written IS NULL");
+    }
+    private void seedFour(SQLiteDatabase db){
+        String[][] four={{"spiritual","Read the Bible"},{"financial","Study finances"},{"mental","Study Japanese"},{"physical","Go to the gym"}};
+        for(String[] item:four)db.execSQL("INSERT OR IGNORE INTO goals VALUES(?,?,?,'9999-12-31','Daily',1)",
+            new Object[]{"four-"+item[0],item[1],LocalDate.now().toString()});
+    }
+    void place(String id,int slot){
+        if(slot!=0 && slot!=2 && slot!=3)throw new IllegalArgumentException("Invalid slot");
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try{
+            if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM notes WHERE id=?",new String[]{id})!=1)throw new IllegalArgumentException("Note missing");
+            if(slot!=0)db.execSQL("UPDATE notes SET slot=NULL WHERE slot=?",new Object[]{slot});
+            db.execSQL("UPDATE notes SET slot=? WHERE id=?",new Object[]{slot==0?null:slot,id});
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
     static String uuid() { return UUID.randomUUID().toString(); }
     static String title(String s) { s=s.trim(); if(s.isEmpty() || s.length()>200) throw new IllegalArgumentException("Use a name between 1 and 200 characters."); return s; }
     static LocalDate end(LocalDate start,String period) {
@@ -95,23 +121,23 @@ final class Journal extends SQLiteOpenHelper {
     String ensureDailyNote(LocalDate day) {
         String id="day-"+day;
         String title=day.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL,java.util.Locale.getDefault());
-        getWritableDatabase().execSQL("INSERT OR IGNORE INTO notes(id,folder,title,body,changed,alarm) VALUES(?,'daily',?,'',?,0)",
-            new Object[]{id,title,System.currentTimeMillis()});
+        getWritableDatabase().execSQL("INSERT OR IGNORE INTO notes(id,folder,title,body,changed,alarm,written) VALUES(?,'daily',?,'',?,0,?)",
+            new Object[]{id,title,System.currentTimeMillis(),day.toString()});
         return id;
     }
     JSONObject snapshot() throws JSONException {
         LocalDate d=LocalDate.now();
         String dailyId=ensureDailyNote(d);
         return new JSONObject().put("dailyId",dailyId).put("today",d.toString()).put("goals",goals(d))
-            .put("folders",rows("SELECT * FROM folders ORDER BY rowid"))
-            .put("notes",rows("SELECT id,folder,title,substr(body,1,180) AS excerpt,changed,alarm FROM notes ORDER BY changed DESC"));
+            .put("events",rows("SELECT * FROM events ORDER BY day,name")).put("folders",rows("SELECT * FROM folders ORDER BY rowid"))
+            .put("notes",rows("SELECT id,folder,title,substr(body,1,180) AS excerpt,changed,alarm,written,slot FROM notes ORDER BY changed DESC"));
     }
     JSONObject note(String id) throws JSONException {return rows("SELECT * FROM notes WHERE id=?",id).optJSONObject(0);}
     synchronized void saveNote(String id,String folder,String title,String body) {
         ContentValues v=new ContentValues();v.put("folder",folder);v.put("title",title);v.put("body",body);v.put("changed",System.currentTimeMillis());
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {
-            if(db.update("notes",v,"id=?",new String[]{id})==0){v.put("id",id);v.put("alarm",0);db.insertOrThrow("notes",null,v);}
+            if(db.update("notes",v,"id=?",new String[]{id})==0){v.put("id",id);v.put("alarm",0);v.put("written",LocalDate.now().toString());db.insertOrThrow("notes",null,v);}
             db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
@@ -126,7 +152,7 @@ final class Journal extends SQLiteOpenHelper {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {
             JSONObject result=new JSONObject().put("format","com.marcel.daybook/1");
-            for(String table:new String[]{"folders","goals","marks","notes"}) result.put(table,rows("SELECT * FROM "+table+" ORDER BY rowid"));
+            for(String table:new String[]{"folders","goals","marks","notes","events"}) result.put(table,rows("SELECT * FROM "+table+" ORDER BY rowid"));
             db.setTransactionSuccessful(); return result;
         } finally {db.endTransaction();}
     }
@@ -135,7 +161,7 @@ final class Journal extends SQLiteOpenHelper {
         if(!"com.marcel.daybook/1".equals(b.getString("format"))) throw new JSONException("Choose a Daybook backup.");
         SQLiteDatabase db=getWritableDatabase(); db.beginTransaction();
         try {
-            for(String t:new String[]{"marks","notes","goals","folders"}) db.delete(t,null,null);
+            for(String t:new String[]{"events","marks","notes","goals","folders"}) db.delete(t,null,null);
             String[][] schema={{"folders","id","name"},{"goals","id","name","start","end","period","pinned"},{"marks","goal","day"},{"notes","id","folder","title","body","changed","alarm"}};
             for(String[] fields:schema) {
                 JSONArray list=b.getJSONArray(fields[0]);
@@ -147,10 +173,16 @@ final class Journal extends SQLiteOpenHelper {
                         if(!end(start,row.getString("period")).toString().equals(row.getString("end"))) throw new JSONException("Invalid goal dates.");
                     }
                     if(fields[0].equals("marks")) LocalDate.parse(row.getString("day"));
-                    if(fields[0].equals("notes")) {row.getLong("alarm");row.getLong("changed");}
+                    if(fields[0].equals("notes")) {row.getLong("alarm");row.getLong("changed");if(!row.isNull("written"))v.put("written",LocalDate.parse(row.getString("written")).toString());if(!row.isNull("slot"))v.put("slot",row.getInt("slot"));}
                     db.insertOrThrow(fields[0],null,v);
                 }
             }
+            JSONArray events=b.optJSONArray("events");
+            if(events!=null)for(int i=0;i<events.length();i++){
+                JSONObject e=events.getJSONObject(i);
+                db.execSQL("INSERT INTO events VALUES(?,?,?,?)",new Object[]{e.getString("id"),title(e.getString("name")),LocalDate.parse(e.getString("day")).toString(),e.getInt("annual")});
+            }
+            fillDates(db);seedFour(db);
             if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM folders WHERE id IN ('daily','long')",null)!=2) throw new JSONException("Missing default folders.");
             if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM marks JOIN goals ON goal=id WHERE day<start OR day>=end",null)!=0) throw new JSONException("Invalid check-in date.");
             db.setTransactionSuccessful();

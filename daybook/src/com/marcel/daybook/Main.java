@@ -82,6 +82,16 @@ public final class Main extends Activity {
                     res=new Tracker(journal,first,year?first.plusYears(1):first.plusMonths(1),LocalDate.now()).json(year);
                     break;
                 }
+                case "dayGoals":res=journal.goals(LocalDate.parse(a.getString("day")));break;
+                case "place":journal.place(a.getString("id"),a.getInt("slot"));break;
+                case "rename":journal.getWritableDatabase().execSQL("UPDATE notes SET title=? WHERE id=?",new Object[]{Journal.title(a.getString("title")),a.getString("id")});break;
+                case "removeNote":{
+                    String id=a.getString("id");
+                    journal.getWritableDatabase().delete("notes","id=?",new String[]{id});
+                    Reminders.plan(Main.this,id,0);getSystemService(NotificationManager.class).cancel(id,1);break;
+                }
+                case "event":journal.getWritableDatabase().execSQL("INSERT INTO events VALUES(?,?,?,?)",new Object[]{Journal.uuid(),Journal.title(a.getString("name")),LocalDate.parse(a.getString("day")).toString(),a.getBoolean("annual")?1:0});break;
+                case "removeEvent":journal.getWritableDatabase().delete("events","id=?",new String[]{a.getString("id")});break;
                 case "state": res=journal.snapshot().put("notifications",Reminders.allowed(Main.this)).put("exact",Reminders.exact(Main.this)).put("version",getPackageManager().getPackageInfo(getPackageName(),0).versionName);break;
                 case "goal":journal.addGoal(a.getString("name"),a.getString("period"));Widget.refresh(Main.this);break;
                 case "mark":journal.mark(a.getString("id"),a.getString("day"),a.getBoolean("done"));Widget.refresh(Main.this);break;
