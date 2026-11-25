@@ -1,0 +1,128 @@
+package com.marcel.daybook;
+
+import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
+import android.database.DatabaseUtils;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import org.json.*;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
+
+final class Journal extends SQLiteOpenHelper {
+    private static Journal instance;
+    static synchronized Journal get(Context c) {
+        if (instance == null) instance = new Journal(c.getApplicationContext());
+        return instance;
+    }
+    private Journal(Context c) { super(c, "daybook.db", null, 1); }
+    @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
+    @Override public void onCreate(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE folders(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE)");
+        db.execSQL("CREATE TABLE goals(id TEXT PRIMARY KEY,name TEXT NOT NULL,start TEXT NOT NULL,end TEXT NOT NULL,period TEXT NOT NULL,pinned INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE marks(goal TEXT REFERENCES goals(id),day TEXT NOT NULL,PRIMARY KEY(goal,day))");
+        db.execSQL("CREATE TABLE notes(id TEXT PRIMARY KEY,folder TEXT NOT NULL REFERENCES folders(id),title TEXT NOT NULL,body TEXT NOT NULL,changed INTEGER NOT NULL,alarm INTEGER NOT NULL)");
+        db.execSQL("INSERT INTO folders VALUES('daily','Daily'),('long','Long Term')");
+    }
+    @Override public void onUpgrade(SQLiteDatabase db,int old,int next) { throw new IllegalStateException("Unsupported database version"); }
+    static String uuid() { return UUID.randomUUID().toString(); }
+    static String title(String s) { s=s.trim(); if(s.isEmpty() || s.length()>200) throw new IllegalArgumentException("Use a name between 1 and 200 characters."); return s; }
+    static LocalDate end(LocalDate start,String period) {
+        switch(period) {
+            case "Week": return start.plusWeeks(1);
+            case "Month": return start.plusMonths(1);
+            case "6 months": return start.plusMonths(6);
+            case "Year": return start.plusYears(1);
+            default: throw new IllegalArgumentException("Unknown goal period.");
+        }
+    }
+    void addGoal(String name,String period) {
+        LocalDate start=LocalDate.now();
+        getWritableDatabase().execSQL("INSERT INTO goals VALUES(?,?,?,?,?,1)",new Object[]{uuid(),title(name),start.toString(),end(start,period).toString(),period});
+    }
+    void addFolder(String name) { getWritableDatabase().execSQL("INSERT INTO folders VALUES(?,?)",new Object[]{uuid(),title(name)}); }
+    boolean mark(String id,String shownDay,boolean done) {
+        String today=LocalDate.now().toString();
+        if (!today.equals(shownDay)) return false;
+        SQLiteDatabase db=getWritableDatabase();
+        if (done) db.execSQL("INSERT OR IGNORE INTO marks SELECT id,? FROM goals WHERE id=? AND start<=? AND end>?",new Object[]{today,id,today,today});
+        else db.delete("marks","goal=? AND day=?",new String[]{id,today});
+        return true;
+    }
+    void pin(String id,boolean pin) {getWritableDatabase().execSQL("UPDATE goals SET pinned=? WHERE id=?",new Object[]{pin?1:0,id});}
+    JSONArray rows(String query,String... args) throws JSONException {
+        JSONArray out=new JSONArray();
+        try(Cursor c=getReadableDatabase().rawQuery(query,args)) {
+            while(c.moveToNext()) {
+                JSONObject row=new JSONObject(); for(int i=0;i<c.getColumnCount();i++) {
+                    row.put(c.getColumnName(i),c.getType(i)==Cursor.FIELD_TYPE_INTEGER?(Object)c.getLong(i):c.getString(i));
+                } out.put(row);
+            }
+        } return out;
+    }
+    JSONArray goals(LocalDate now) throws JSONException {
+        String d=now.toString();
+        JSONArray items=rows("SELECT g.*, (SELECT count(*) FROM marks WHERE goal=g.id AND day<?) AS prior, EXISTS(SELECT 1 FROM marks WHERE goal=g.id AND day=?) AS done FROM goals g ORDER BY start DESC,rowid",d,d);
+        for(int i=0;i<items.length();i++) {
+            JSONObject g=items.getJSONObject(i);
+            LocalDate start=LocalDate.parse(g.getString("start")), limit=LocalDate.parse(g.getString("end"));
+            long elapsed=Math.max(0,ChronoUnit.DAYS.between(start,now.isBefore(limit)?now:limit));
+            g.put("missed",Math.max(0,elapsed-g.getInt("prior")));
+            g.put("active",!now.isBefore(start)&&now.isBefore(limit));
+        } return items;
+    }
+    JSONObject snapshot() throws JSONException {
+        LocalDate d=LocalDate.now();
+        return new JSONObject().put("today",d.toString()).put("goals",goals(d))
+            .put("folders",rows("SELECT * FROM folders ORDER BY rowid"))
+            .put("notes",rows("SELECT id,folder,title,substr(body,1,180) AS excerpt,changed,alarm FROM notes ORDER BY changed DESC"));
+    }
+    JSONObject note(String id) throws JSONException {return rows("SELECT * FROM notes WHERE id=?",id).optJSONObject(0);}
+    void saveNote(String id,String folder,String title,String body,long alarm) {
+        ContentValues v=new ContentValues(); v.put("id",id);v.put("folder",folder);v.put("title",title);v.put("body",body);v.put("alarm",alarm);v.put("changed",System.currentTimeMillis());
+        getWritableDatabase().insertWithOnConflict("notes",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+    }
+    synchronized long setAlarm(String id,long time) {
+        getWritableDatabase().execSQL("UPDATE notes SET alarm=? WHERE id=?",new Object[]{time,id}); return time;
+    }
+    boolean clearIfDue(String id,long time) {
+        ContentValues values=new ContentValues();values.put("alarm",0);
+        return getWritableDatabase().update("notes",values,"id=? AND alarm=?",new String[]{id,String.valueOf(time)})==1;
+    }
+    JSONObject backup() throws JSONException {
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try {
+            JSONObject result=new JSONObject().put("format","com.marcel.daybook/1");
+            for(String table:new String[]{"folders","goals","marks","notes"}) result.put(table,rows("SELECT * FROM "+table+" ORDER BY rowid"));
+            db.setTransactionSuccessful(); return result;
+        } finally {db.endTransaction();}
+    }
+    // Restore in one transaction. A malformed file cannot partially replace a journal.
+    void restore(JSONObject b) throws JSONException {
+        if(!"com.marcel.daybook/1".equals(b.getString("format"))) throw new JSONException("Choose a Daybook backup.");
+        SQLiteDatabase db=getWritableDatabase(); db.beginTransaction();
+        try {
+            for(String t:new String[]{"marks","notes","goals","folders"}) db.delete(t,null,null);
+            String[][] schema={{"folders","id","name"},{"goals","id","name","start","end","period","pinned"},{"marks","goal","day"},{"notes","id","folder","title","body","changed","alarm"}};
+            for(String[] fields:schema) {
+                JSONArray list=b.getJSONArray(fields[0]);
+                for(int i=0;i<list.length();i++) {
+                    JSONObject row=list.getJSONObject(i); ContentValues v=new ContentValues();
+                    for(int j=1;j<fields.length;j++) v.put(fields[j],row.getString(fields[j]));
+                    if(fields[0].equals("goals")) {
+                        LocalDate start=LocalDate.parse(row.getString("start"));
+                        if(!end(start,row.getString("period")).toString().equals(row.getString("end"))) throw new JSONException("Invalid goal dates.");
+                    }
+                    if(fields[0].equals("marks")) LocalDate.parse(row.getString("day"));
+                    if(fields[0].equals("notes")) {row.getLong("alarm");row.getLong("changed");}
+                    db.insertOrThrow(fields[0],null,v);
+                }
+            }
+            if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM folders WHERE id IN ('daily','long')",null)!=2) throw new JSONException("Missing default folders.");
+            if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM marks JOIN goals ON goal=id WHERE day<start OR day>=end",null)!=0) throw new JSONException("Invalid check-in date.");
+            db.setTransactionSuccessful();
+        } finally {db.endTransaction();}
+    }
+}
