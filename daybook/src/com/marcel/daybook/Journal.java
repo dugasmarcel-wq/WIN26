@@ -92,9 +92,17 @@ final class Journal extends SQLiteOpenHelper {
             g.put("active",!now.isBefore(start)&&now.isBefore(limit));
         } return items;
     }
+    String ensureDailyNote(LocalDate day) {
+        String id="day-"+day;
+        String title=day.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL,java.util.Locale.getDefault());
+        getWritableDatabase().execSQL("INSERT OR IGNORE INTO notes(id,folder,title,body,changed,alarm) VALUES(?,'daily',?,'',?,0)",
+            new Object[]{id,title,System.currentTimeMillis()});
+        return id;
+    }
     JSONObject snapshot() throws JSONException {
         LocalDate d=LocalDate.now();
-        return new JSONObject().put("today",d.toString()).put("goals",goals(d))
+        String dailyId=ensureDailyNote(d);
+        return new JSONObject().put("dailyId",dailyId).put("today",d.toString()).put("goals",goals(d))
             .put("folders",rows("SELECT * FROM folders ORDER BY rowid"))
             .put("notes",rows("SELECT id,folder,title,substr(body,1,180) AS excerpt,changed,alarm FROM notes ORDER BY changed DESC"));
     }

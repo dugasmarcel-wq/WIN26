@@ -96,6 +96,13 @@ public final class Smoke extends Instrumentation {
             Context c=getTargetContext();Journal db=Journal.get(c);
             activity=(Main)startActivitySync(new Intent(c,Main.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             until(()->"true".equals(js("!!document.querySelector('#addGoal')")),"today rendered");
+            String dayId=db.ensureDailyNote(LocalDate.now());
+            js("document.querySelector('#dailyBody').value='Daily notebook check';document.querySelector('#dailyBody').dispatchEvent(new Event('input'))");
+            check(db.note(dayId).getString("body").equals("Daily notebook check"),"inline pad autosaves");
+            check(!dayId.equals(db.ensureDailyNote(LocalDate.now().minusDays(1))),"different dates have different notes");
+            tap("#notebook");tap("[data-note='"+dayId+"']");
+            check(js("document.querySelector('#body').value").contains("Daily notebook check"),"same note in Notebook");
+            js("window.nativeEvent('route','today')");
             tap("#addGoal");js("document.querySelector('#gname').value='Read 20 minutes'");tap("#confirm");
             until(()->js("document.body.innerText").contains("Read 20 minutes"),"goal displayed");
             tap("[data-mark]");check(db.goals(LocalDate.now()).getJSONObject(0).getInt("done")==1,"goal bubble persisted");
@@ -106,7 +113,7 @@ public final class Smoke extends Instrumentation {
             JSONObject g=db.goals(LocalDate.now()).getJSONObject(0);check(g.getInt("missed")==2&&g.getInt("done")==1,"permanent missed count");
             check(Journal.end(LocalDate.of(2024,2,29),"Year").equals(LocalDate.of(2025,2,28)),"leap horizon");
             js("window.nativeEvent('route','new')");js("document.querySelector('#ntitle').value='Test note';document.querySelector('#ntitle').dispatchEvent(new Event('input'));document.querySelector('#body').value='Remember this';document.querySelector('#body').dispatchEvent(new Event('input'))");
-            JSONObject n=db.rows("SELECT * FROM notes").getJSONObject(0);String nid=n.getString("id");
+            JSONObject n=db.rows("SELECT * FROM notes WHERE title='Test note'").getJSONObject(0);String nid=n.getString("id");
             check(n.getString("body").equals("Remember this")&&n.getString("folder").equals("daily"),"autosave daily note");
             js("document.querySelector('#nfolder').value='long';document.querySelector('#nfolder').dispatchEvent(new Event('change'))");
             check(db.note(nid).getString("folder").equals("long"),"move to Long Term");
@@ -138,7 +145,19 @@ public final class Smoke extends Instrumentation {
                 return rate.get().endsWith(js("document.querySelector('#completionRate').textContent").replace("\"",""));
             },"matching widget and app rates");
             runOnMainSync(()->views[0].findViewById(R.id.openNote).performClick());
-            until(()->"\"\"".equals(js("document.querySelector('#ntitle')?.value")),"widget opens blank Daily note");
+            until(()->"true".equals(js("document.querySelector('#ntitle')?.value===api('note',{id:state.dailyId}).title")),"widget opens dated note");
+            int lockId=host.allocateAppWidgetId();
+            check(m.bindAppWidgetIdIfAllowed(lockId,new ComponentName(c,LockGoals.class)),"bind goals-only provider");
+            AppWidgetHostView[] lock=new AppWidgetHostView[1];
+            runOnMainSync(()->{
+                lock[0]=host.createView(activity,lockId,m.getAppWidgetInfo(lockId));
+                activity.addContentView(lock[0],new ViewGroup.LayoutParams(620,340));Widget.refresh(c);
+            });
+            until(()->{AtomicBoolean present=new AtomicBoolean();runOnMainSync(()->present.set(lock[0].findViewById(R.id.row)!=null&&lock[0].findViewById(R.id.openNote)==null));return present.get();},"goals-only widget has bubble and no note button");
+            runOnMainSync(()->lock[0].findViewById(R.id.row).performClick());
+            until(()->{try{return db.goals(LocalDate.now()).getJSONObject(0).getInt("done")==1;}catch(Exception e){return false;}},"goals-only widget checks goal");
+            js("window.nativeEvent('route','notes')");
+            check(js("document.querySelector('.active-reminders').innerText").contains("Test note"),"snoozed reminder visible above notes");
             runOnMainSync(()->{host.stopListening();host.deleteHost();});
             testGoalGroups(db);
             testTracker(db);

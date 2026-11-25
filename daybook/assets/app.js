@@ -29,10 +29,16 @@ function today(){
  screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><div class="goal-actions"><button id="jumpTracker">Tracker</button><button class="primary" id="addGoal">Add goal</button></div></div>'+
  groups.map(group=>{
    const items=active.filter(g=>groupOf(g)===group.id);
-   return '<section class="goal-group '+group.id+'"><div class="group-head"><div><h2>'+group.label+'</h2><small>'+group.hint+'</small></div><span class="count">'+items.filter(g=>g.done).length+'/'+items.length+'</span></div><div class="bubbles">'+items.map(goalBubble).join('')+
-     '<button class="new-bubble" data-new="'+group.id+'" aria-label="Add '+group.label+' goal"><span aria-hidden="true">+</span>Add goal</button></div></section>';
+   return '<section class="goal-group '+group.id+'"><div class="group-head"><h2>'+group.label+'</h2><span class="count">'+items.filter(g=>g.done).length+'/'+items.length+'</span><button class="inline-add" data-new="'+group.id+'" aria-label="Add '+group.label+' goal">+</button></div>'+
+     (items.length?'<div class="bubbles">'+items.map(goalBubble).join('')+'</div>':'')+'</section>';
+
  }).join('')+(ended.length?'<h2 class="section">Goal archive</h2>'+ended.map(g=>'<button class="item card" data-goal="'+esc(g.id)+'">'+esc(g.name)+'</button>').join(''):'');
  screen.insertAdjacentHTML('beforeend','<section id="trackerPanel" tabindex="-1" aria-label="Completion tracker"></section>');
+ const daily=api('note',{id:state.dailyId});
+ $('#trackerPanel').insertAdjacentHTML('beforebegin','<section class="daily-pad"><div><h2>'+esc(daily.title)+'</h2><button id="expandDaily">Open note</button></div><textarea id="dailyBody" aria-label="Today’s note" placeholder="Write today’s note…"></textarea></section>');
+ const pad=$('#dailyBody');pad.value=daily.body;
+ pad.oninput=()=>{daily.body=pad.value;api('save',daily);};
+ $('#expandDaily').onclick=()=>openNote(daily.id);
  showTracker();
  $('#jumpTracker').onclick=jumpToTracker;
  $('#addGoal').onclick=()=>newGoal('long');
@@ -71,13 +77,17 @@ function detail(){
    cells+='<div class="'+(done?'yes':open?'':'no')+'">'+range+'<span>'+(done?'Done':open?'Open':'Missed')+'</span></div>';
  }
  const duration=ongoing?'Since '+pretty(g.start,{dateStyle:'medium'}):g.period+' · '+pretty(g.start,{dateStyle:'medium'})+' – '+pretty(dayAt(utc(g.end)-day),{dateStyle:'medium'});
- screen.innerHTML='<button class="back" id="back">‹ Today</button><h1>'+esc(g.name)+'</h1><p class="detail">'+esc(duration)+'</p><div class="summary"><strong>'+g.missed+'</strong> missed '+(weekly?'weeks':'days')+' · '+(g.prior+g.done)+' completed</div><label class="card"><input type="checkbox" id="pin" '+(g.pinned?'checked':'')+'> Show on home-screen widget</label><div class="section"><h2>Check-in history</h2></div><div class="history">'+cells+'</div>';
- $('#back').onclick=()=>go('today');$('#pin').onchange=e=>api('pin',{id:g.id,on:e.target.checked});
+ screen.innerHTML='<button class="back" id="back">‹ Today</button><h1>'+esc(g.name)+'</h1><p class="detail">'+esc(duration)+'</p><div class="summary"><strong>'+g.missed+'</strong> missed '+(weekly?'weeks':'days')+' · '+(g.prior+g.done)+' completed</div><div class="section"><h2>Check-in history</h2></div><div class="history">'+cells+'</div>';
+ $('#back').onclick=()=>go('today');
+}
+function reminderSection(){
+ const alarms=state.notes.filter(n=>n.alarm>0).sort((a,b)=>a.alarm-b.alarm);
+ return '<section class="active-reminders"><h2>Active reminders</h2>'+ (alarms.length?alarms.map(n=>'<button data-note="'+esc(n.id)+'"><b>'+esc(n.title||'Untitled note')+'</b><span>'+esc(stamp(n.alarm))+'</span></button>').join(''):'<small>No active reminders</small>')+'</section>';
 }
 function notes(){
  if(!state.folders.some(f=>f.id===folder))folder='daily';
  const list=state.notes.filter(n=>n.folder===folder);
- screen.innerHTML='<h1>Notebook</h1><div class="chips">'+state.folders.map(f=>'<button class="'+(f.id===folder?'chosen':'')+'" data-folder="'+esc(f.id)+'">'+esc(f.name)+'</button>').join('')+'<button id="newFolder">+ Folder</button></div><div class="section"><h2>'+list.length+' '+(list.length===1?'note':'notes')+'</h2><button class="primary" id="newNote">New note</button></div>'+
+ screen.innerHTML='<h1>Notebook</h1><div class="chips">'+state.folders.map(f=>'<button class="'+(f.id===folder?'chosen':'')+'" data-folder="'+esc(f.id)+'">'+esc(f.name)+'</button>').join('')+'<button id="newFolder">+ Folder</button></div>'+reminderSection()+'<div class="section"><h2>'+list.length+' '+(list.length===1?'note':'notes')+'</h2><button class="primary" id="newNote">New note</button></div>'+
  (list.length?list.map(n=>'<button class="item card" data-note="'+esc(n.id)+'"><b>'+esc(n.title||'Untitled note')+'</b><div class="note-preview">'+esc(n.excerpt)+'</div><small>'+esc(n.alarm?'Reminder · '+stamp(n.alarm):stamp(n.changed))+'</small></button>').join(''):'<p class="empty">Write your first note in this folder.</p>');
  $('#newFolder').onclick=()=>modal('New folder','<label for="fname">Folder name</label><input id="fname" maxlength="200" required>','Create folder',()=>{const name=$('#fname').value.trim();api('folder',{name});folder=api('state').folders.find(f=>f.name===name).id;render();});
  $('#newNote').onclick=()=>openNote(null,folder);screen.querySelectorAll('[data-folder]').forEach(b=>b.onclick=()=>{folder=b.dataset.folder;render();});screen.querySelectorAll('[data-note]').forEach(b=>b.onclick=()=>openNote(b.dataset.note));
@@ -94,7 +104,7 @@ function editor(){
  screen.innerHTML='<div class="editor-head"><button class="back" id="back">‹ Notebook</button><span id="saved" class="meta">'+(draft?'New note':'Saved')+'</span><button id="remind" aria-label="Set or change reminder"></button></div>'+
  '<div class="note-meta"><input id="ntitle" aria-label="Note title" placeholder="Untitled note" maxlength="300"><select id="nfolder" aria-label="Folder">'+state.folders.map(f=>'<option value="'+esc(f.id)+'" '+(f.id===entry.folder?'selected':'')+'>'+esc(f.name)+'</option>').join('')+'</select></div>'+
  '<textarea id="body" aria-label="Note text" placeholder="Start writing…" spellcheck="true"></textarea>';
- $('#ntitle').value=entry.title;$('#body').value=entry.body;
+ $('#nfolder').disabled=entry.id.startsWith('day-');$('#ntitle').value=entry.title;$('#body').value=entry.body;
  $('#back').onclick=()=>go('notes');$('#body').oninput=()=>save();$('#ntitle').oninput=()=>save();$('#nfolder').onchange=()=>save();$('#remind').onclick=remind;
  reminderLabel();
 }
@@ -117,7 +127,7 @@ function settings(){screen.innerHTML='<h1>Settings</h1><div class="settings-list
 function setting(title,desc,label,id){return '<div class="card setting"><div><h3>'+title+'</h3><small class="meta">'+desc+'</small></div><button id="'+id+'">'+label+'</button></div>';}
 $('#today').onclick=()=>go('today');$('#notebook').onclick=()=>go('notes');$('#settings').onclick=()=>go('settings');
 window.nativeEvent=(type,value)=>{
- if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){trackerMode='month';trackerMonth='';pickedDay='';go('today');jumpToTracker();}else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','settings'].includes(value)?value:'today');}
+ if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){trackerMode='month';trackerMonth='';pickedDay='';go('today');jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','settings'].includes(value)?value:'today');}
  else if(type==='refresh'&&!dialog.open){if(view==='edit'){if(!draft){let n=api('note',{id:entry.id});if(n){entry.alarm=n.alarm;reminderLabel();}}}else render();}
 };
 window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){go('notes');return true;}if(view!=='today'){go('today');return true;}return false;};

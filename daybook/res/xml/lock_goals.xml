@@ -1,0 +1,1 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="210dp" android:minHeight="100dp" android:targetCellWidth="4" android:targetCellHeight="2" android:initialLayout="@layout/lock_goals" android:updatePeriodMillis="1800000" android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen|keyguard" />

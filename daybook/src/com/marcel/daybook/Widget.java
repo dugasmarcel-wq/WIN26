@@ -10,7 +10,7 @@ import org.json.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 
-public final class Widget extends AppWidgetProvider {
+public class Widget extends AppWidgetProvider {
     static final int FLAGS=PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE;
     static PendingIntent open(Context c,String route) {
         Intent i=new Intent(c,Main.class).setAction("com.marcel.daybook.OPEN").setData(Uri.parse("daybook://open/"+route))
@@ -19,7 +19,8 @@ public final class Widget extends AppWidgetProvider {
     }
     static void refresh(Context c) {
         AppWidgetManager m=AppWidgetManager.getInstance(c);
-        for(int id:m.getAppWidgetIds(new ComponentName(c,Widget.class))) draw(c,m,id);
+        for(Class<?> provider:new Class<?>[]{Widget.class,LockGoals.class})
+            for(int id:m.getAppWidgetIds(new ComponentName(c,provider))) draw(c,m,id);
     }
     @Override public void onUpdate(Context c,AppWidgetManager m,int[] ids) {for(int id:ids) draw(c,m,id);}
     @Override public void onDeleted(Context c,int[] ids) {for(int id:ids)c.getSharedPreferences("widget",0).edit().remove("page"+id).apply();}
@@ -64,18 +65,21 @@ public final class Widget extends AppWidgetProvider {
     }
     static void draw(Context c,AppWidgetManager m,int id) {
         try {
-            RemoteViews v=new RemoteViews(c.getPackageName(),R.layout.widget);
-            v.setOnClickPendingIntent(R.id.heading,open(c,"today"));
-            v.setOnClickPendingIntent(R.id.openNote,open(c,"new"));
+            AppWidgetProviderInfo info=m.getAppWidgetInfo(id);
+            boolean locked=(info!=null && info.provider.equals(new ComponentName(c,LockGoals.class))) ||
+                m.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY)==AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD;
+            RemoteViews v=new RemoteViews(c.getPackageName(),locked?R.layout.lock_goals:R.layout.widget);
+            if(!locked)v.setOnClickPendingIntent(R.id.heading,open(c,"today"));
+            if(!locked)v.setOnClickPendingIntent(R.id.openNote,open(c,"daily-note"));
             v.removeAllViews(R.id.rows);
             LocalDate day=LocalDate.now(); JSONArray data=Journal.get(c).goals(day);
-            drawTracker(c,v,day);
+            if(!locked)drawTracker(c,v,day);
             ArrayList<JSONObject> goals=new ArrayList<>();
             for(int i=0;i<data.length();i++) {
-                JSONObject g=data.getJSONObject(i);if(g.getBoolean("active")&&g.getInt("pinned")==1)goals.add(g);
+                JSONObject g=data.getJSONObject(i);if(g.getBoolean("active"))goals.add(g);
             }
             int height=m.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,220);
-            int count=Math.max(1,Math.min(3,(height-128)/44));
+            int count=Math.max(1,Math.min(16,(height-(locked?54:90))/44));
             int pages=Math.max(1,(goals.size()+count-1)/count);
             int page=Math.floorMod(c.getSharedPreferences("widget",0).getInt("page"+id,0),pages);
             v.setViewVisibility(R.id.next,pages>1?View.VISIBLE:View.GONE);
@@ -87,7 +91,7 @@ public final class Widget extends AppWidgetProvider {
             if(goals.isEmpty()){
                 RemoteViews row=new RemoteViews(c.getPackageName(),R.layout.goal);
                 row.setViewVisibility(R.id.bubble,View.GONE);row.setTextViewText(R.id.name,"Choose goals in Daybook");
-                row.setOnClickPendingIntent(R.id.row,open(c,"today"));v.addView(R.id.rows,row);
+                if(!locked)row.setOnClickPendingIntent(R.id.row,open(c,"today"));v.addView(R.id.rows,row);
             }
             for(int n=page*count;n<Math.min((page+1)*count,goals.size());n++) {
                 JSONObject g=goals.get(n);boolean done=g.getInt("done")==1;

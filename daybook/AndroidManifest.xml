@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.marcel.daybook" android:versionCode="3" android:versionName="1.2">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.marcel.daybook" android:versionCode="4" android:versionName="1.3">
   <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -12,6 +12,10 @@
     <receiver android:name=".Widget" android:exported="false" android:label="Daybook">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget"/>
+    </receiver>
+    <receiver android:name=".LockGoals" android:exported="false" android:label="Daybook Goals">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/lock_goals"/>
     </receiver>
     <receiver android:name=".Reminders" android:exported="false">
       <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/><action android:name="android.intent.action.TIME_SET"/><action android:name="android.intent.action.TIMEZONE_CHANGED"/><action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"/></intent-filter>
