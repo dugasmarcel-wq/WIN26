@@ -82,6 +82,7 @@ public final class Main extends Activity {
                     res=new Tracker(journal,first,year?first.plusYears(1):first.plusMonths(1),LocalDate.now()).json(year);
                     break;
                 }
+                case "removeGoal":journal.removeGoal(a.getString("id"));Widget.refresh(Main.this);break;
                 case "goalEdit":journal.editGoal(a);Widget.refresh(Main.this);break;
                 case "goalHistory":res=new GoalBook(journal).history(a.getString("id"),LocalDate.now());break;
                 case "reflections":res=journal.rows("SELECT goal,body FROM reflections WHERE day=?",LocalDate.parse(a.getString("day")).toString());break;

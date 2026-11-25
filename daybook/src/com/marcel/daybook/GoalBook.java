@@ -11,14 +11,22 @@ final class GoalBook {
         final String id;
         final boolean weekly;
         final TreeMap<String,JSONObject> edits=new TreeMap<>();
+        final TreeMap<String,Boolean> visibility=new TreeMap<>();
         final Set<String> taps=new HashSet<>();
         final Set<String> marks=new HashSet<>();
         Goal(JSONObject g)throws JSONException {original=g;id=g.getString("id");weekly="Weekly".equals(g.getString("period"));}
         JSONObject at(String day){Map.Entry<String,JSONObject> e=edits.floorEntry(day);return e==null?original:e.getValue();}
-        boolean active(LocalDate d){String key=d.toString();JSONObject g=at(key);return key.compareTo(g.optString("start"))>=0&&key.compareTo(g.optString("end"))<0;}
+        boolean hidden(LocalDate d){
+            Map.Entry<String,Boolean> latest=visibility.floorEntry(d.toString());
+            return latest!=null&&latest.getValue();
+        }
+        boolean active(LocalDate d){return scheduled(d)&&!hidden(d);}
+        boolean scheduled(LocalDate d){String key=d.toString();JSONObject g=at(key);return key.compareTo(g.optString("start"))>=0&&key.compareTo(g.optString("end"))<0;}
         String key(LocalDate d){String k=weekly?Journal.monday(d).toString():d.toString();String first=original.optString("start");return k.compareTo(first)<0?first:k;}
         boolean due(LocalDate d){
-            if(!active(d))return false;
+            if(!scheduled(d))return false;
+            // A completed period still counts after the goal is removed.
+            if(hidden(d)&&!marks.contains(key(d)))return false;
             if(!weekly)return true;
             return d.getDayOfWeek().getValue()==7 || d.plusDays(1).toString().equals(at(d.toString()).optString("end"));
         }
@@ -28,6 +36,7 @@ final class GoalBook {
     GoalBook(Journal db)throws JSONException{
         JSONArray list=db.rows("SELECT * FROM goals ORDER BY start DESC,rowid");
         for(int i=0;i<list.length();i++){Goal g=new Goal(list.getJSONObject(i));goals.put(g.id,g);}
+        for(JSONObject row:items(db.rows("SELECT * FROM goal_visibility")))goals.get(row.getString("goal")).visibility.put(row.getString("day"),row.getInt("hidden")==1);
         for(JSONObject edit:items(db.rows("SELECT * FROM goal_edits ORDER BY since")))goals.get(edit.getString("goal")).edits.put(edit.getString("since"),edit);
         for(JSONObject tap:items(db.rows("SELECT goal,day FROM weekly_taps")))goals.get(tap.getString("goal")).taps.add(tap.getString("day"));
         for(JSONObject mark:items(db.rows("SELECT goal,day FROM marks")))goals.get(mark.getString("goal")).marks.add(mark.getString("day"));
@@ -40,12 +49,12 @@ final class GoalBook {
             for(String field:new String[]{"start","end","name"})v.put(field,plan.getString(field));
             v.put("created",g.original.getString("start"));
             int prior=0,missed=0;String key=g.key(now);
-            boolean active=g.active(now),done=active&&g.marks.contains(key);
+            boolean active=g.active(now),done=(active||g.due(now)||g.taps.contains(now.toString()))&&g.marks.contains(key);
             for(LocalDate d=g.first();d.isBefore(now)&&d.isBefore(LocalDate.now().plusDays(1));d=d.plusDays(1)){
                 if(!g.due(d))continue;
                 if(g.marks.contains(g.key(d)))prior++;else missed++;
             }
-            v.put("tapped",g.taps.contains(now.toString())).put("active",active).put("done",done?1:0).put("due",g.due(now)).put("prior",prior).put("missed",missed);
+            v.put("deleted",g.hidden(now)).put("tapped",g.taps.contains(now.toString())).put("active",active).put("done",done?1:0).put("due",g.due(now)).put("prior",prior).put("missed",missed);
             out.put(v);
         }return out;
     }

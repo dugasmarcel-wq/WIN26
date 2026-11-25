@@ -26,17 +26,17 @@ const groups = [
 ];
 function groupOf(g){return g.period==='Daily'?'daily':g.period==='Weekly'?'weekly':'long';}
 function today(){
- const active=state.goals.filter(g=>g.active), ended=state.goals.filter(g=>!g.active&&!focusNames[g.id]);
+ const active=state.goals.filter(g=>g.active), ended=state.goals.filter(g=>!g.active&&!g.deleted&&!focusNames[g.id]);
  screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><div class="goal-actions"><button id="jumpTracker">Tracker</button><button class="primary" id="addGoal">Add goal</button></div></div>'+
  '<section class="four-section"><h2>The Method of 4</h2><div class="four-grid">'+areaIds.map(id=>state.goals.find(g=>g.id===id)).filter(Boolean).map(goalBubble).join('')+'</div></section>'+groups.map(group=>{
    const items=active.filter(g=>!focusNames[g.id]&&groupOf(g)===group.id);
    return '<section class="goal-group '+group.id+'" data-color-key="'+group.id+'"><div class="group-head"><h2>'+group.label+'</h2><span class="count">'+items.filter(g=>g.done).length+'/'+items.length+'</span><button class="inline-add" data-new="'+group.id+'" aria-label="Add '+group.label+' goal">+</button></div>'+
      (items.length?'<div class="bubbles">'+items.map(goalBubble).join('')+'</div>':'')+'</section>';
 
- }).join('')+(ended.length?'<h2 class="section">Scheduled and past goals</h2>'+ended.map(g=>'<button class="item card" data-goal="'+esc(g.id)+'">'+esc(g.name)+'</button>').join(''):'');
+ }).join('')+(ended.length?'<h2 class="section">Scheduled and past goals</h2>'+ended.map(g=>'<button class="item card" data-menu-goal="'+esc(g.id)+'">'+esc(g.name)+'</button>').join(''):'');
  screen.insertAdjacentHTML('beforeend','<section id="trackerPanel" tabindex="-1" aria-label="Completion tracker"></section>');
  const daily=api('note',{id:state.dailyId});
- $('#trackerPanel').insertAdjacentHTML('beforebegin','<section class="daily-pad"><div><h2>'+esc(daily.title)+'</h2><button id="expandDaily">Open note</button></div><textarea id="dailyBody" aria-label="Today’s note" placeholder="Write today’s note…"></textarea></section>');
+ $('.four-section').insertAdjacentHTML('afterend','<section class="daily-pad"><div><h2>'+esc(daily.title)+'</h2><button id="expandDaily">Open note</button></div><textarea id="dailyBody" aria-label="Today’s note" placeholder="Write today’s note…"></textarea></section>');
  const pad=$('#dailyBody');pad.value=daily.body;
  pad.oninput=()=>{daily.body=pad.value;api('save',daily);};
  $('#expandDaily').onclick=()=>openNote(daily.id);
@@ -46,14 +46,19 @@ function today(){
  screen.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>newGoal(b.dataset.new));
  screen.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{
    const g=state.goals.find(g=>g.id===b.dataset.mark);
+   if(!g.active)return;
    api('mark',{id:g.id,day:state.today,done:!g.done});render();
  });
- screen.querySelectorAll('[data-goal]').forEach(b=>b.onclick=()=>showGoal(b.dataset.goal));
+ screen.querySelectorAll('[data-menu-goal]').forEach(el=>bindGoalActions(el,el.dataset.menuGoal));
+ screen.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>editGoal(state.goals.find(g=>g.id===b.dataset.restore)));
+
 }
 function goalBubble(g){
  const unit=groupOf(g)==='weekly'?'this week':'today';
- return '<div class="goal-tile" data-color-key="'+esc(focusNames[g.id]?g.id:groupOf(g))+'"><button class="goal-check" '+(g.active?'':'disabled')+' data-mark="'+esc(g.id)+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+unit)+'"><span class="orb" aria-hidden="true">'+(g.done?'✓':'')+'</span><span class="goal-name">'+(focusNames[g.id]?'<b>'+focusNames[g.id]+'</b><br>':'')+esc(g.name)+(!g.active?'<small class="inactive-schedule">'+(state.today<g.start?'Starts '+esc(pretty(g.start,{month:'short',day:'numeric'})):'Ended')+'</small>':'')+'</span></button>'+
- '<button class="goal-history" data-goal="'+esc(g.id)+'" aria-label="'+esc((focusNames[g.id]?'Write or edit ':'History and settings for ')+g.name)+'">'+(focusNames[g.id]?'Write / edit':g.missed+' missed · History')+'</button></div>';
+ const area=focusNames[g.id],id=esc(g.id);
+ if(g.deleted)return '<button class="empty-aim" data-color-key="'+id+'" data-restore="'+id+'"><b>'+esc(area)+'</b> Set aim</button>';
+ const schedule=g.active?'':state.today<g.start?'Starts '+pretty(g.start,{month:'short',day:'numeric'}):'Ended';
+ return '<div class="goal-tile" data-menu-goal="'+id+'" data-color-key="'+esc(area?g.id:groupOf(g))+'"><button class="goal-check" '+(g.active?'':'aria-disabled="true"')+' data-mark="'+id+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+(schedule||unit))+'"><span class="orb" aria-hidden="true">'+(g.done?'✓':'')+'</span><span class="goal-name">'+(area?'<b>'+area+'</b>':'')+'<span>'+esc(g.name)+'</span>'+(schedule?'<small>'+esc(schedule)+'</small>':'')+'</span></button><button class="goal-more" data-goal="'+id+'" aria-label="'+esc('Options for '+g.name)+'" aria-haspopup="dialog">⋯</button></div>';
 }
 function newGoal(group){
  modal('New goal','<label for="gname">Goal name</label><input id="gname" required maxlength="200" placeholder="Read for 20 minutes">'+

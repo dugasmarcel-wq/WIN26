@@ -130,3 +130,20 @@ nav button.active{background:var(--tint);color:var(--accent);box-shadow:inset 0 
 @media(max-height:500px){.writing main{padding-block:0 3px;gap:2px}.writing .editor-head,.editor-head #back,.editor-head #manageNote,.editor-head #remind{min-height:30px}.note-meta #ntitle{font-size:19px;padding:2px}.note-meta #nfolder{padding-block:2px}.compact .result-chip{padding-block:2px}.compact>b span{display:inline}}
 
 .inactive-schedule{display:block;font-size:11px}
+
+/* Keep room for the journal. The bubble and its options share one row. */
+.four-section{padding:3px 0}.four-section h2{font-size:18px;margin:3px 0 5px}
+.four-grid{gap:4px 6px;grid-template-columns:repeat(2,minmax(0,1fr))}
+[data-menu-goal],[data-menu-goal] *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.goal-tile,.four-grid .goal-tile{display:flex;flex-direction:row;align-items:center;gap:0;padding:0 1px 0 5px;min-width:0;border-radius:7px;touch-action:pan-y}
+.four-grid .goal-tile{border-inline-start-width:2px}
+.goal-check,.four-grid .goal-check{padding:2px 1px;min-height:32px;gap:4px;justify-content:flex-start}
+.four-grid .goal-check{flex:1;min-height:39px}
+.goal-check .orb{width:16px;height:16px;border-width:1.5px;font-size:11px}
+.goal-name{display:block;min-width:0;line-height:1.15;text-align:left}.goal-name b,.four-grid .goal-name b{display:block;font-size:12px}.goal-name span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.goal-name small{display:block;font-size:10px}
+.goal-more{padding:0 3px;min-width:25px;min-height:32px;align-self:stretch;color:var(--accent);font-size:17px;line-height:1}
+.goal-check[aria-disabled=true]{opacity:.6}.empty-aim{background:var(--tint);color:var(--accent);font-size:12px;min-height:38px;border-radius:7px}
+.bubbles{gap:4px}.bubbles .goal-tile{max-width:100%}.bubbles .goal-check{flex:0 1 auto}
+.goal-group,.goal-group.long{padding-block:1px}.group-head .inline-add,.long .inline-add{min-height:27px}
+.daily-pad{margin:6px 0 9px}.daily-pad>div{min-height:30px}.daily-pad button{min-height:30px}
+#dailyBody{height:clamp(155px,26dvh,260px)}.sheet-history{display:block;width:100%;text-align:left;padding:7px 12px}

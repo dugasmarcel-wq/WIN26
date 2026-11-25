@@ -98,7 +98,7 @@ public final class Smoke extends Instrumentation {
         check(db.note(id).getInt("slot")==2 && db.rows("SELECT id FROM events WHERE annual=1").length()>0,"pins and dates restore");
     }
     void testMethod(Journal db,String note)throws Exception{
-        js("go('today')");tap("[data-goal='four-physical']");tap("#editGoal");
+        js("go('today')");tap("[data-goal='four-physical']");tap("#menuEditGoal");
         js("document.querySelector('#aim').value='Walk outdoors'");tap("#confirm");
         js("document.querySelector('#reflection').value='Walked by the river';document.querySelector('#reflection').dispatchEvent(new Event('input'))");
         js("go('calendar');document.querySelector('#calNow').click()");
@@ -113,6 +113,43 @@ public final class Smoke extends Instrumentation {
         db.editGoal(new JSONObject().put("id","dated").put("name","New aim").put("start",tomorrow.toString()).put("end",tomorrow.plusDays(1).toString()));
         GoalBook.Goal g=new GoalBook(db).goals.get("dated");
         check(g.at(yesterday.toString()).getString("name").equals("Former aim")&&g.due(yesterday)&&!g.active(now)&&g.due(tomorrow)&&!g.active(tomorrow.plusDays(1)),"past preserved and one-day validity");
+    }
+    void holdGoal(String id)throws Exception{
+        String selector="[data-mark='"+id+"']";
+        js("document.querySelector("+JSONObject.quote(selector)+").scrollIntoView({block:'center'})");
+        waitForIdleSync();
+        int[] origin=new int[3];
+        runOnMainSync(()->{activity.web.getLocationOnScreen(origin);origin[2]=activity.web.getWidth();});
+        double ratio=origin[2]/Double.parseDouble(js("innerWidth"));
+        String rect="document.querySelector("+JSONObject.quote(selector)+").getBoundingClientRect()";
+        float x=(float)(origin[0]+ratio*Double.parseDouble(js("("+rect+").left+("+rect+").width/2")));
+        float y=(float)(origin[1]+ratio*Double.parseDouble(js("("+rect+").top+("+rect+").height/2")));
+        long start=android.os.SystemClock.uptimeMillis();
+        sendPointerSync(MotionEvent.obtain(start,start,MotionEvent.ACTION_DOWN,x,y,0));
+        android.os.SystemClock.sleep(750);
+        sendPointerSync(MotionEvent.obtain(start,android.os.SystemClock.uptimeMillis(),MotionEvent.ACTION_UP,x,y,0));
+        until(()->"true".equals(js("!!document.querySelector('#menuDeleteGoal') && dialog.open")),"Android long press opens goal options");
+    }
+    void testGoalActions(Journal db)throws Exception{
+        LocalDate now=LocalDate.now();
+        String id="hold-test";
+        db.getWritableDatabase().execSQL("INSERT INTO goals VALUES(?,?,?,'9999-12-31','Daily',1)",new Object[]{id,"Test holding",now.minusDays(1).toString()});
+        db.getWritableDatabase().execSQL("INSERT INTO marks VALUES(?,?)",new Object[]{id,now.minusDays(1).toString()});
+        js("go('today')");
+        check("true".equals(js("document.querySelector('#dailyBody').getBoundingClientRect().top<innerHeight/2 && document.querySelector('.four-grid').offsetHeight<105")),"compact goals leave journal visible");
+        holdGoal(id);check(findGoal(db,id).getInt("done")==0,"holding does not check goal");
+        tap("#menuEditGoal");js("document.querySelector('#aim').value='Edited by hold'");tap("#confirm");
+        check(findGoal(db,id).getString("name").equals("Edited by hold"),"hold and edit");
+        holdGoal(id);tap("#menuDeleteGoal");tap("#cancel");check(findGoal(db,id).getBoolean("active"),"cancel keeps goal");
+        holdGoal(id);tap("#menuDeleteGoal");tap("#confirm");
+        GoalBook.Goal goal=new GoalBook(db).goals.get(id);
+        check(!goal.active(now)&&!goal.due(now)&&!goal.active(now.plusDays(1))&&goal.due(now.minusDays(1))&&goal.marks.contains(now.minusDays(1).toString()),"delete preserves history and stops future obligations");
+        check(!db.mark(id,now.toString(),true),"stale widget cannot check deleted goal");
+        String area="four-mental";db.mark(area,now.toString(),true);db.removeGoal(area);js("go('today')");
+        check(findGoal(db,area).getInt("done")==1&&findGoal(db,area).getBoolean("due"),"completed day survives removal");
+        tap("[data-restore='four-mental']");js("document.querySelector('#aim').value='Restore my aim'");tap("#confirm");
+        check(findGoal(db,area).getBoolean("active"),"can set method aim after removal");
+        db.restore(db.backup());check(findGoal(db,id).getBoolean("deleted"),"backup preserves removal");
     }
     JSONObject findGoal(Journal db,String id)throws Exception{
         JSONArray goals=db.goals(LocalDate.now());
@@ -193,7 +230,7 @@ public final class Smoke extends Instrumentation {
             tap("#calendar");tap("[data-scale=year]");tap("[data-month]");tap("#calNow");tap("#addDate");
             js("document.querySelector('#eventName').value='Birthday';document.querySelector('#annual').checked=true");tap("#confirm");
             check(js("document.body.innerText").contains("Birthday"),"annual date shown");
-            apiCheckNotes(db,nid);testMethod(db,nid);
+            apiCheckNotes(db,nid);testMethod(db,nid);testGoalActions(db);
 
             result.putString("stream","DAYBOOK_TESTS_PASSED");finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("stream",android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}

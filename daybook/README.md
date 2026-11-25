@@ -4,7 +4,7 @@ Daybook is a standalone Android journal under the package `com.marcel.daybook`. 
 
 ## Install and connect
 
-Install Daybook and open it once. Choose purple Long-term for daily check-ins over a week, month, six months or year. Green Daily repeats each day. Blue Weekly repeats each Monday through Sunday. Missed periods are permanent. Tap a bubble to check or undo the current period. Use History below the bubble to see the record or set widget visibility. The Notebook starts with Daily and Long Term folders. Notes save as you type, and each can carry a notification that opens the note or snoozes for ten minutes.
+Install Daybook and open it once. Choose purple Long-term for daily check-ins over a week, month, six months or year. Green Daily repeats each day. Blue Weekly repeats each Monday through Sunday. Missed periods are permanent. Tap a bubble to check or undo the current period. Hold a goal or tap its ⋯ button to edit, see history, or delete it. A deleted goal stops appearing on the widgets. Prior check-ins are kept. The daily writing pad is directly under The Method of 4. The Notebook starts with Daily and Long Term folders. Notes save as you type, and each can carry a notification that opens the note or snoozes for ten minutes.
 
 The goals page includes a day-dot calendar, monthly and yearly completion rates, and period navigation. The widget shows the last seven days and this month’s rate. Its tracker row opens the full calendar. Weekly goals count on Sunday. Open check-ins are excluded from the percentage until completed or missed.
 
