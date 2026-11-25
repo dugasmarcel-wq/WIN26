@@ -1,0 +1,38 @@
+name: Verify WIN26 online update
+on:
+  push:
+    branches: [daybook-journal]
+    paths: [".github/workflows/verify-win26-feed.yml"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the update seen by launcher build 100141
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/$GITHUB_REPOSITORY/releases"
+          for i in {1..60}; do
+            curl -fsSL --retry 3 "$base/latest/download/update.json" -o feed.json
+            if jq -e '.versionCode > 100141' feed.json >/dev/null; then break; fi
+            sleep 15
+          done
+          jq -e '.versionCode > 100141' feed.json
+          url=$(jq -r '.apkUrl' feed.json)
+          [[ "$url" == "$base/"* ]]
+          curl -fsSL --retry 3 "$url" -o next.apk
+          sha=$(jq -er '.sha256' feed.json)
+          echo "$sha  next.apk" | sha256sum -c
+          gh release download win26-update-100141 --repo "$GITHUB_REPOSITORY" -p WIN26.apk
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          for apk in WIN26.apk next.apk; do
+            "$bt/apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' > "$apk.cert"
+            test -s "$apk.cert"
+          done
+          cmp WIN26.apk.cert next.apk.cert
+          "$bt/aapt2" dump badging next.apk > badging
+          code=$(jq -r '.versionCode' feed.json)
+          grep -F "package: name='com.win26.launcher' versionCode='$code'" badging
