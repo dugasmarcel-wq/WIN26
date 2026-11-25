@@ -22,7 +22,7 @@ function showTracker(){
  '<div class="tracker-period"><button id="earlier" aria-label="Previous '+trackerMode+'">‹</button><b>'+esc(title)+'</b><button id="later" aria-label="Next '+trackerMode+'">›</button></div>'+
  '<div class="tracker-score"><strong id="completionRate">'+rate+'</strong><div><b>Completion</b><span>'+trackerCaption(data)+'</span></div></div>'+
  (year?'<div class="year-months" id="trackerGrid"></div>':'<div class="month-days" id="trackerGrid"></div><div class="tracker-legend"><span class="done">Done</span><span class="partial">Partial</span><span class="missed">Missed</span><span class="open">Open</span><span class="none">No goals due</span></div><p id="dayCounts" aria-live="polite"></p>')+
- '<details class="tracker-help"><summary>How it’s counted</summary><p>Completion is done ÷ (done + missed). Open check-ins are left out. Daily and long-term goals count each day. Each weekly goal counts once on Sunday.</p></details>';
+ '<details class="tracker-help"><summary>How it’s counted</summary><p>Completion is done ÷ (done + missed). Open check-ins are left out. Daily and long-term goals count each day. Weekly goals count on Sunday, or on the last valid day if they end earlier.</p></details>';
  const periodKey=(date)=>date.slice(0,year?4:7);
  $('#earlier').disabled=periodKey(start)<=periodKey(earliest);
  $('#later').disabled=periodKey(start)>=periodKey(current);

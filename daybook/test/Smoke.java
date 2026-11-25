@@ -96,6 +96,23 @@ public final class Smoke extends Instrumentation {
         JSONObject backup=db.backup();db.restore(backup);
         check(db.note(id).getInt("slot")==2 && db.rows("SELECT id FROM events WHERE annual=1").length()>0,"pins and dates restore");
     }
+    void testMethod(Journal db,String note)throws Exception{
+        js("go('today')");tap("[data-goal='four-physical']");tap("#editGoal");
+        js("document.querySelector('#aim').value='Walk outdoors'");tap("#confirm");
+        js("document.querySelector('#reflection').value='Walked by the river';document.querySelector('#reflection').dispatchEvent(new Event('input'))");
+        js("go('calendar');document.querySelector('#calNow').click()");
+        check(js("document.querySelector('#calContent').innerText").contains("Walked by the river"),"calendar shows dated reflection");
+        js("openNote('"+note+"')");
+        check("true".equals(js("!!(document.querySelector('#noteCheckins').compareDocumentPosition(document.querySelector('#body')) & Node.DOCUMENT_POSITION_FOLLOWING) && !document.querySelector('#noteCheckins button')")),"read-only bubbles above editor");
+        tap("#manageNote");check("true".equals(js("document.querySelector('#dialog').classList.contains('note-sheet') && !document.querySelector('#confirm').offsetHeight")),"single close note sheet");tap(".sheet-close");
+        js("go('settings');const sw=document.querySelector('[data-palette=calendar]');sw.value='#74428a';sw.dispatchEvent(new Event('change'))");
+        db.restore(db.backup());check(db.rows("SELECT * FROM colors WHERE target='calendar' AND value='#74428a'").length()==1,"tab color restored");
+        LocalDate now=LocalDate.now(),yesterday=now.minusDays(1),tomorrow=now.plusDays(1);
+        db.getWritableDatabase().execSQL("INSERT INTO goals VALUES('dated','Former aim',?,'9999-12-31','Daily',1)",new Object[]{yesterday.toString()});
+        db.editGoal(new JSONObject().put("id","dated").put("name","New aim").put("start",tomorrow.toString()).put("end",tomorrow.plusDays(1).toString()));
+        GoalBook.Goal g=new GoalBook(db).goals.get("dated");
+        check(g.at(yesterday.toString()).getString("name").equals("Former aim")&&g.due(yesterday)&&!g.active(now)&&g.due(tomorrow)&&!g.active(tomorrow.plusDays(1)),"past preserved and one-day validity");
+    }
     JSONObject findGoal(Journal db,String id)throws Exception{
         JSONArray goals=db.goals(LocalDate.now());
         for(int i=0;i<goals.length();i++)if(id.equals(goals.getJSONObject(i).getString("id")))return goals.getJSONObject(i);
@@ -175,7 +192,7 @@ public final class Smoke extends Instrumentation {
             tap("#calendar");tap("[data-scale=year]");tap("[data-month]");tap("#calNow");tap("#addDate");
             js("document.querySelector('#eventName').value='Birthday';document.querySelector('#annual').checked=true");tap("#confirm");
             check(js("document.body.innerText").contains("Birthday"),"annual date shown");
-            apiCheckNotes(db,nid);
+            apiCheckNotes(db,nid);testMethod(db,nid);
 
             result.putString("stream","DAYBOOK_TESTS_PASSED");finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("stream",android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}

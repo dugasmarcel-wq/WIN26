@@ -35,31 +35,15 @@ final class Tracker {
         for(int i=0;i<days.length;i++)days[i]=new Counts();
         LocalDate cutoff=end.isBefore(today.plusDays(1))?end:today.plusDays(1);
         if(!start.isBefore(cutoff))return;
-        SQLiteDatabase db=journal.getReadableDatabase();
-        HashMap<String,HashSet<String>> marks=new HashMap<>();
-        try(Cursor c=db.rawQuery("SELECT goal,day FROM marks WHERE day>=? AND day<?",
-                new String[]{start.minusDays(6).toString(),cutoff.toString()})) {
-            while(c.moveToNext())marks.computeIfAbsent(c.getString(0),k->new HashSet<>()).add(c.getString(1));
-        }
-        try(Cursor c=db.rawQuery("SELECT id,start,end,period FROM goals WHERE start<? AND end>?",
-                new String[]{cutoff.toString(),start.toString()})) {
-            while(c.moveToNext()) {
-                LocalDate created=LocalDate.parse(c.getString(1)), expires=LocalDate.parse(c.getString(2));
-                LocalDate d=start.isAfter(created)?start:created;
-                LocalDate limit=cutoff.isBefore(expires)?cutoff:expires;
-                boolean weekly="Weekly".equals(c.getString(3));
-                if(weekly)d=Journal.monday(d).plusDays(6);
-                HashSet<String> checked=marks.get(c.getString(0));
-                for(;d.isBefore(limit);d=d.plusDays(weekly?7:1)) {
-                    LocalDate key=weekly?Journal.monday(d):d;
-                    if(key.isBefore(created))key=created;
-                    Counts n=on(d);
-                    if(checked!=null && checked.contains(key.toString()))n.done++;
-                    else if(d.equals(today))n.open++;
-                    else n.missed++;
+        try {
+            GoalBook book=new GoalBook(journal);
+            for(LocalDate d=start;d.isBefore(cutoff);d=d.plusDays(1)){
+                Counts n=on(d);
+                for(GoalBook.Goal g:book.goals.values())if(g.due(d)){
+                    if(g.marks.contains(g.key(d)))n.done++;else if(d.equals(today))n.open++;else n.missed++;
                 }
             }
-        }
+        }catch(JSONException e){throw new IllegalStateException(e);}
     }
     Counts on(LocalDate date) {return days[(int)(date.toEpochDay()-start.toEpochDay())];}
     Counts total(LocalDate from,LocalDate until) {

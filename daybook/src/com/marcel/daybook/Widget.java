@@ -63,6 +63,19 @@ public class Widget extends AppWidgetProvider {
         views.setContentDescription(R.id.tracker,description.toString());
         views.setOnClickPendingIntent(R.id.tracker,open(c,"tracker"));
     }
+    static android.graphics.Bitmap bubble(String color,boolean done){
+        android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(64,64,android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        int ink=android.graphics.Color.parseColor(color);
+        if(android.graphics.Color.luminance(ink)>.62f)ink=android.graphics.Color.rgb(android.graphics.Color.red(ink)*2/3,android.graphics.Color.green(ink)*2/3,android.graphics.Color.blue(ink)*2/3);
+        paint.setColor(ink);paint.setStyle(done?android.graphics.Paint.Style.FILL:android.graphics.Paint.Style.STROKE);paint.setStrokeWidth(4);
+        canvas.drawCircle(32,32,27,paint);
+        if(done){
+            paint.setColor(android.graphics.Color.WHITE);paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setStrokeWidth(5);paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+            android.graphics.Path mark=new android.graphics.Path();mark.moveTo(18,33);mark.lineTo(28,43);mark.lineTo(46,22);canvas.drawPath(mark,paint);
+        }return bitmap;
+    }
     static void draw(Context c,AppWidgetManager m,int id) {
         try {
             AppWidgetProviderInfo info=m.getAppWidgetInfo(id);
@@ -94,6 +107,10 @@ public class Widget extends AppWidgetProvider {
                 row.setViewVisibility(R.id.bubble,View.GONE);row.setTextViewText(R.id.name,"Choose goals in Daybook");
                 if(!locked)row.setOnClickPendingIntent(R.id.row,open(c,"today"));v.addView(R.id.rows,row);
             }
+            java.util.Map<String,String> colors=new java.util.HashMap<>();
+            String[][] defaults={{"four-spiritual","#79569b"},{"four-financial","#32725c"},{"four-physical","#a24d38"},{"four-mental","#326998"},{"long","#775286"},{"weekly","#396b94"},{"daily","#28755c"}};
+            for(String[] pair:defaults)colors.put(pair[0],pair[1]);
+            for(JSONObject option:GoalBook.items(Journal.get(c).rows("SELECT * FROM colors")))if(option.optString("value").matches("#[0-9a-fA-F]{6}"))colors.put(option.getString("target"),option.getString("value"));
             for(int n=page*count;n<Math.min((page+1)*count,goals.size());n++) {
                 JSONObject g=goals.get(n);boolean done=g.getInt("done")==1;
                 String gid=g.getString("id");RemoteViews row=new RemoteViews(c.getPackageName(),R.layout.goal);
@@ -105,12 +122,8 @@ public class Widget extends AppWidgetProvider {
                 row.setTextViewText(R.id.name,label);
                 row.setTextViewText(R.id.missed,g.getInt("missed")+" missed");
                 String period=g.getString("period");
-                int circle;
-                if ("Weekly".equals(period)) circle=done?R.drawable.weekly_full:R.drawable.weekly_open;
-                else if ("Daily".equals(period)) circle=done?R.drawable.daily_full:R.drawable.daily_open;
-                else circle=done?R.drawable.long_full:R.drawable.long_open;
-                row.setInt(R.id.bubble,"setBackgroundResource",circle);
-                row.setTextViewText(R.id.bubble,done?"✓":"");
+                String key=gid.startsWith("four-")?gid:period.equals("Weekly")?"weekly":period.equals("Daily")?"daily":"long";
+                row.setImageViewBitmap(R.id.bubble,bubble(colors.getOrDefault(key,"#245748"),done));
                 String group=period.equals("Weekly")?"Weekly":period.equals("Daily")?"Daily":"Long-term";
                 row.setContentDescription(R.id.row,group+" goal, "+g.getString("name")+(done?", checked":", unchecked"));
                 Intent tap=new Intent(c,Widget.class).setAction("MARK").setData(Uri.parse("daybook://mark/"+gid+"/"+day+"/"+!done))
