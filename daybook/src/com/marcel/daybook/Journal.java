@@ -80,9 +80,13 @@ final class Journal extends SQLiteOpenHelper {
             .put("notes",rows("SELECT id,folder,title,substr(body,1,180) AS excerpt,changed,alarm FROM notes ORDER BY changed DESC"));
     }
     JSONObject note(String id) throws JSONException {return rows("SELECT * FROM notes WHERE id=?",id).optJSONObject(0);}
-    void saveNote(String id,String folder,String title,String body,long alarm) {
-        ContentValues v=new ContentValues(); v.put("id",id);v.put("folder",folder);v.put("title",title);v.put("body",body);v.put("alarm",alarm);v.put("changed",System.currentTimeMillis());
-        getWritableDatabase().insertWithOnConflict("notes",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+    synchronized void saveNote(String id,String folder,String title,String body) {
+        ContentValues v=new ContentValues();v.put("folder",folder);v.put("title",title);v.put("body",body);v.put("changed",System.currentTimeMillis());
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try {
+            if(db.update("notes",v,"id=?",new String[]{id})==0){v.put("id",id);v.put("alarm",0);db.insertOrThrow("notes",null,v);}
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
     }
     synchronized long setAlarm(String id,long time) {
         getWritableDatabase().execSQL("UPDATE notes SET alarm=? WHERE id=?",new Object[]{time,id}); return time;

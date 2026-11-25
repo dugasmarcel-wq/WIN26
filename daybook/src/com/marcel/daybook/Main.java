@@ -74,9 +74,8 @@ public final class Main extends Activity {
                 case "uuid":res=Journal.uuid();break;
                 case "note":res=journal.note(a.getString("id"));break;
                 case "save":{
-                    String id=a.getString("id");JSONObject old=journal.note(id);
-                    long at=old==null?0:old.getLong("alarm");
-                    journal.saveNote(id,a.getString("folder"),a.getString("title"),a.getString("body"),at);break;
+                    String id=a.getString("id");
+                    journal.saveNote(id,a.getString("folder"),a.getString("title"),a.getString("body"));break;
                 }
                 case "alarm":{
                     String id=a.getString("id");long at=a.getLong("at");if(journal.note(id)==null)throw new Exception("Write a note first.");

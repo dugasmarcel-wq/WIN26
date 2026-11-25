@@ -29,3 +29,20 @@ jobs:
           name: sdk-apksigner
           path: ${{ runner.temp }}/apksigner.jar
           retention-days: 1
+  device:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: bash daybook/build.sh
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash daybook/test/run.sh
