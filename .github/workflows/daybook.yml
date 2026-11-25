@@ -1,0 +1,22 @@
+name: Daybook Android
+on:
+  push:
+    branches: [daybook-journal]
+    paths: ["daybook/**"]
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Build standalone journal
+        run: bash daybook/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daybook-unsigned
+          path: daybook/build/Daybook-unsigned.apk
