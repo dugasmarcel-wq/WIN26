@@ -28,6 +28,7 @@
     <attribution android:tag="system"
                  android:label="@string/attribution_system" />
 
+    <uses-permission android:name="android.permission.BIND_APPWIDGET" />
     <application
         android:allowBackup="false"
         android:icon="@drawable/icon"

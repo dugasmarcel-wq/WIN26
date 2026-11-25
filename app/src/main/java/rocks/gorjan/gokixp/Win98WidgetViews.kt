@@ -40,6 +40,7 @@ data class Win98WidgetSpec(
 object Win98WidgetViews {
 
     val specs = listOf(
+        Win98WidgetSpec("daybook", "Daybook", "Check off daily goals and open a journal note."),
         Win98WidgetSpec(
             "desktop_pet",
             "Desktop Pet",
@@ -109,6 +110,7 @@ object Win98WidgetViews {
 
     fun create(activity: MainActivity, id: String, pageIndex: Int = 1): View {
         return when (id) {
+            "daybook" -> DaybookWidgetHost(activity, pageIndex)
             "desktop_pet" -> DesktopPetView(activity)
             "pipes" -> PipesView(activity)
             "internet_zone" -> createInternetZone(activity)

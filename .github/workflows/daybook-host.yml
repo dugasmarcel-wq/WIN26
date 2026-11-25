@@ -1,0 +1,38 @@
+name: WIN26 Daybook widget host
+on:
+  push:
+    branches: [daybook-journal]
+    paths: ["app/src/main/java/rocks/gorjan/gokixp/DaybookWidgetHost.kt", ".github/workflows/daybook-host.yml"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      WIN26_VERSION_CODE: '100141'
+      WIN26_VERSION_NAME: '0.4.141-daybook'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build optional widget host from the installed release line
+        run: ./gradlew --no-daemon assembleRelease -x lintVitalAnalyzeRelease
+      - name: Verify compatibility and attach the optional host
+        shell: bash
+        run: |
+          set -euo pipefail
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          base="https://raw.githubusercontent.com/aosp-mirror/platform_build/045a3d6a3e359633a14853a5a5e1e4f2a11cbdae/target/product/security"
+          curl -fsSL "$base/testkey.pk8" -o "$RUNNER_TEMP/host.pk8"
+          curl -fsSL "$base/testkey.x509.pem" -o "$RUNNER_TEMP/host.pem"
+          "$bt/zipalign" -P 16 -f 4 app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" sign --key "$RUNNER_TEMP/host.pk8" --cert "$RUNNER_TEMP/host.pem" --out WIN26-Daybook-Widget.apk "$RUNNER_TEMP/aligned.apk"
+          gh release download win26-update-100141 -p WIN26.apk -D "$RUNNER_TEMP"
+          cert() { "$bt/apksigner" verify --print-certs "$1" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p'; }
+          original=$(cert "$RUNNER_TEMP/WIN26.apk")
+          test -n "$original" && test "$original" = "$(cert WIN26-Daybook-Widget.apk)"
+          gh release upload win26-update-100141 WIN26-Daybook-Widget.apk
