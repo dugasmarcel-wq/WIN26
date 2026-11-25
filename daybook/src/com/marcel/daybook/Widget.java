@@ -34,6 +34,34 @@ public final class Widget extends AppWidgetProvider {
             Journal.get(c).mark(i.getStringExtra("goal"),i.getStringExtra("day"),i.getBooleanExtra("done",false));refresh(c);
         }
     }
+    static void drawTracker(Context c,RemoteViews views,LocalDate today) {
+        LocalDate first=today.withDayOfMonth(1), week=today.minusDays(6), end=today.plusDays(1);
+        Tracker tracker=new Tracker(Journal.get(c),first.isBefore(week)?first:week,end,today);
+        int percent=tracker.total(first,end).percent();
+        String month=today.format(java.time.format.DateTimeFormatter.ofPattern("MMM",java.util.Locale.getDefault()));
+        String rate=month+" · "+(percent<0?"—":percent+"%");
+        views.setTextViewText(R.id.trackRate,rate);
+        android.text.SpannableStringBuilder dots=new android.text.SpannableStringBuilder();
+        StringBuilder description=new StringBuilder(rate).append(". Last seven days. ");
+        for(LocalDate d=week;!d.isAfter(today);d=d.plusDays(1)) {
+            String status=tracker.on(d).status();
+            int color;
+            switch(status) {
+                case "done": color=0xff28674c; break;
+                case "partial": color=0xff946210; break;
+                case "missed": color=0xffb14039; break;
+                case "open": color=0xff326691; break;
+                default: color=0xff868b81;
+            }
+            int pos=dots.length(); dots.append(status.equals("none")?"○":"●");
+            dots.setSpan(new android.text.style.ForegroundColorSpan(color),pos,pos+1,android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if(!d.equals(today))dots.append(" ");
+            description.append(d).append(" ").append(status).append(". ");
+        }
+        views.setTextViewText(R.id.trackDots,new android.text.SpannedString(dots));
+        views.setContentDescription(R.id.tracker,description.toString());
+        views.setOnClickPendingIntent(R.id.tracker,open(c,"tracker"));
+    }
     static void draw(Context c,AppWidgetManager m,int id) {
         try {
             RemoteViews v=new RemoteViews(c.getPackageName(),R.layout.widget);
@@ -41,12 +69,13 @@ public final class Widget extends AppWidgetProvider {
             v.setOnClickPendingIntent(R.id.openNote,open(c,"new"));
             v.removeAllViews(R.id.rows);
             LocalDate day=LocalDate.now(); JSONArray data=Journal.get(c).goals(day);
+            drawTracker(c,v,day);
             ArrayList<JSONObject> goals=new ArrayList<>();
             for(int i=0;i<data.length();i++) {
                 JSONObject g=data.getJSONObject(i);if(g.getBoolean("active")&&g.getInt("pinned")==1)goals.add(g);
             }
             int height=m.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,220);
-            int count=Math.max(1,Math.min(3,(height-100)/44));
+            int count=Math.max(1,Math.min(3,(height-128)/44));
             int pages=Math.max(1,(goals.size()+count-1)/count);
             int page=Math.floorMod(c.getSharedPreferences("widget",0).getInt("page"+id,0),pages);
             v.setViewVisibility(R.id.next,pages>1?View.VISIBLE:View.GONE);

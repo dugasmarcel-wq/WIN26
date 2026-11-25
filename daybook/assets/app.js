@@ -26,12 +26,15 @@ const groups = [
 function groupOf(g){return g.period==='Daily'?'daily':g.period==='Weekly'?'weekly':'long';}
 function today(){
  const active=state.goals.filter(g=>g.active), ended=state.goals.filter(g=>!g.active);
- screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><button class="primary" id="addGoal">Add goal</button></div>'+
+ screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><div class="goal-actions"><button id="jumpTracker">Tracker</button><button class="primary" id="addGoal">Add goal</button></div></div>'+
  groups.map(group=>{
    const items=active.filter(g=>groupOf(g)===group.id);
    return '<section class="goal-group '+group.id+'"><div class="group-head"><div><h2>'+group.label+'</h2><small>'+group.hint+'</small></div><span class="count">'+items.filter(g=>g.done).length+'/'+items.length+'</span></div><div class="bubbles">'+items.map(goalBubble).join('')+
      '<button class="new-bubble" data-new="'+group.id+'" aria-label="Add '+group.label+' goal"><span aria-hidden="true">+</span>Add goal</button></div></section>';
  }).join('')+(ended.length?'<h2 class="section">Goal archive</h2>'+ended.map(g=>'<button class="item card" data-goal="'+esc(g.id)+'">'+esc(g.name)+'</button>').join(''):'');
+ screen.insertAdjacentHTML('beforeend','<section id="trackerPanel" tabindex="-1" aria-label="Completion tracker"></section>');
+ showTracker();
+ $('#jumpTracker').onclick=jumpToTracker;
  $('#addGoal').onclick=()=>newGoal('long');
  screen.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>newGoal(b.dataset.new));
  screen.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{
@@ -114,7 +117,7 @@ function settings(){screen.innerHTML='<h1>Settings</h1><div class="settings-list
 function setting(title,desc,label,id){return '<div class="card setting"><div><h3>'+title+'</h3><small class="meta">'+desc+'</small></div><button id="'+id+'">'+label+'</button></div>';}
 $('#today').onclick=()=>go('today');$('#notebook').onclick=()=>go('notes');$('#settings').onclick=()=>go('settings');
 window.nativeEvent=(type,value)=>{
- if(type==='route'){if(dialog.open)dialog.close();if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','settings'].includes(value)?value:'today');}
+ if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){trackerMode='month';trackerMonth='';pickedDay='';go('today');jumpToTracker();}else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','settings'].includes(value)?value:'today');}
  else if(type==='refresh'&&!dialog.open){if(view==='edit'){if(!draft){let n=api('note',{id:entry.id});if(n){entry.alarm=n.alarm;reminderLabel();}}}else render();}
 };
 window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){go('notes');return true;}if(view!=='today'){go('today');return true;}return false;};

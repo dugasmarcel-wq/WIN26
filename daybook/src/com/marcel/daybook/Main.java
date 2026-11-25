@@ -75,6 +75,13 @@ public final class Main extends Activity {
             try{
                 JSONObject a=new JSONObject(arg);Object res=true;
                 switch(op){
+                case "tracker":{
+                    boolean year=a.getBoolean("year");
+                    LocalDate first=LocalDate.parse(a.getString("start")).withDayOfMonth(1);
+                    if(year)first=first.withDayOfYear(1);
+                    res=new Tracker(journal,first,year?first.plusYears(1):first.plusMonths(1),LocalDate.now()).json(year);
+                    break;
+                }
                 case "state": res=journal.snapshot().put("notifications",Reminders.allowed(Main.this)).put("exact",Reminders.exact(Main.this)).put("version",getPackageManager().getPackageInfo(getPackageName(),0).versionName);break;
                 case "goal":journal.addGoal(a.getString("name"),a.getString("period"));Widget.refresh(Main.this);break;
                 case "mark":journal.mark(a.getString("id"),a.getString("day"),a.getBoolean("done"));Widget.refresh(Main.this);break;

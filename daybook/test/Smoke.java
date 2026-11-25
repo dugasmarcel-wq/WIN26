@@ -63,6 +63,33 @@ public final class Smoke extends Instrumentation {
         }
         check("true".equals(js("new Set(['long','weekly','daily'].map(k=>getComputedStyle(document.querySelector('.'+k+' .orb')).borderTopColor)).size===3")),"three distinct goal colors");
     }
+    void testTracker(Journal db)throws Exception{
+        android.database.sqlite.SQLiteDatabase sql=db.getWritableDatabase();
+        sql.beginTransaction();
+        try{
+            sql.execSQL("INSERT INTO goals VALUES('tw','Weekly fixture','2023-12-29','9999-12-31','Weekly',1)");
+            sql.execSQL("INSERT INTO goals VALUES('td','Daily fixture','2024-01-04','2024-01-11','Week',1)");
+            sql.execSQL("INSERT INTO marks VALUES('tw','2024-01-01'),('td','2024-01-04'),('td','2024-01-06')");
+            LocalDate jan=LocalDate.of(2024,1,1),today=jan.plusDays(6);
+            Tracker year=new Tracker(db,jan,jan.plusYears(1),today);
+            Tracker.Counts total=year.total(jan,jan.plusYears(1));
+            check(total.done==3 && total.missed==1 && total.open==1 && total.percent()==75,"weighted yearly percentage");
+            check("missed".equals(year.on(jan.plusDays(4)).status()),"missed day dot");
+            check(year.on(today).done==1 && year.on(today).open==1,"Sunday counts weekly completion once");
+            check(year.on(today.plusDays(1)).percent()==-1,"future excluded");
+            check(year.on(LocalDate.of(2024,2,29)).status().equals("none"),"leap year");
+            Tracker dec=new Tracker(db,jan.minusMonths(1),jan,today);
+            check(dec.on(jan.minusDays(1)).missed==1 && dec.total(jan.minusMonths(1),jan).percent()==0,"partial first week at year boundary");
+            sql.execSQL("INSERT INTO goals VALUES('t2','Second daily','2024-01-05','2024-01-12','Week',1)");
+            sql.execSQL("INSERT INTO marks VALUES('t2','2024-01-05')");
+            Tracker updated=new Tracker(db,jan,jan.plusMonths(1),today);
+            check(updated.on(jan.plusDays(4)).status().equals("partial"),"mixed-result day dot");
+        }finally{sql.endTransaction();}
+        tap("#jumpTracker"); tap("[data-mode=year]");
+        check("12".equals(js("document.querySelectorAll('[data-month]').length")),"twelve monthly summary buttons");
+        tap("[data-month]:not(:disabled)");tap("[data-date]:not(:disabled)");
+        check(js("document.querySelector('#dayCounts').textContent").length()>5,"selected day detail");
+    }
     @Override public void onStart(){
         Bundle result=new Bundle();
         try {
@@ -103,10 +130,18 @@ public final class Smoke extends Instrumentation {
             until(()->{AtomicBoolean found=new AtomicBoolean();runOnMainSync(()->found.set(views[0].findViewById(R.id.row)!=null));return found.get();},"widget row inflated");
             runOnMainSync(()->views[0].findViewById(R.id.row).performClick());
             until(()->{try{return db.goals(LocalDate.now()).getJSONObject(0).getInt("done")==0;}catch(Exception e){return false;}},"interactive widget bubble");
+            runOnMainSync(()->views[0].findViewById(R.id.tracker).performClick());
+            until(()->"true".equals(js("(()=>{const p=document.querySelector('#trackerPanel');return !!p && p.getBoundingClientRect().top<innerHeight;})()")),"widget opens tracker");
+            until(()->{
+                AtomicReference<String> rate=new AtomicReference<>();
+                runOnMainSync(()->rate.set(((android.widget.TextView)views[0].findViewById(R.id.trackRate)).getText().toString()));
+                return rate.get().endsWith(js("document.querySelector('#completionRate').textContent").replace("\"",""));
+            },"matching widget and app rates");
             runOnMainSync(()->views[0].findViewById(R.id.openNote).performClick());
             until(()->"\"\"".equals(js("document.querySelector('#ntitle')?.value")),"widget opens blank Daily note");
             runOnMainSync(()->{host.stopListening();host.deleteHost();});
             testGoalGroups(db);
+            testTracker(db);
             result.putString("stream","DAYBOOK_TESTS_PASSED");finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("stream",android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}
     }

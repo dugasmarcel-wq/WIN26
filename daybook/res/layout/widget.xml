@@ -1,8 +1,12 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="9dp" android:background="@drawable/panel">
   <LinearLayout android:orientation="horizontal" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
     <TextView android:id="@+id/heading" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textSize="17sp" android:textStyle="bold" android:textColor="#173B32" android:text="Daybook"/>
-    <TextView android:id="@+id/next" android:gravity="center" android:minHeight="40dp" android:minWidth="48dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#245749"/>
+    <TextView android:id="@+id/next" android:gravity="center" android:minHeight="36dp" android:minWidth="48dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#245749"/>
+  </LinearLayout>
+  <LinearLayout android:id="@+id/tracker" android:orientation="horizontal" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="36dp">
+    <TextView android:id="@+id/trackRate" android:singleLine="true" android:textColor="#23493C" android:textStyle="bold" android:textSize="12sp" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+    <TextView android:id="@+id/trackDots" android:singleLine="true" android:textSize="14sp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
   </LinearLayout>
   <LinearLayout android:id="@+id/rows" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"/>
-  <TextView android:id="@+id/openNote" android:gravity="center" android:layout_width="match_parent" android:layout_height="42dp" android:background="@drawable/note_button" android:text="Open Note" android:textStyle="bold" android:textColor="#FFFFFF"/>
+  <TextView android:id="@+id/openNote" android:gravity="center" android:layout_width="match_parent" android:layout_height="38dp" android:background="@drawable/note_button" android:text="Open Note" android:textStyle="bold" android:textColor="#FFFFFF"/>
 </LinearLayout>

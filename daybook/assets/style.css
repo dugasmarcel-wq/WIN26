@@ -43,3 +43,31 @@ body.writing{height:100vh;height:100dvh;overflow:hidden}
 .writing #body{flex:1 1 0;height:0;min-height:0;resize:none;overflow-y:auto;overscroll-behavior-y:contain;touch-action:pan-y;padding:8px 10px 16px;font:17px/1.45 system-ui,sans-serif;scroll-padding-block:8px;border-color:#c4cdbf}
 .writing #body:focus{outline:1px solid var(--green);outline-offset:-1px}
 .writing #status:not(:empty){bottom:8px}
+
+.goal-actions{display:flex;align-items:center;gap:4px;font-size:13px}
+#trackerPanel{margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);scroll-margin-top:6px}
+#trackerPanel:focus{outline:none}
+.tracker-top,.tracker-period,.tracker-score{display:flex;align-items:center;gap:10px}
+.tracker-top{justify-content:space-between;flex-wrap:wrap}
+.tracker-top h2{font-size:20px}
+.tracker-switch{display:inline-flex;border:1px solid var(--line);border-radius:7px;padding:2px}
+.tracker-switch button{font-size:12px;min-height:30px;padding:2px 9px;border-radius:4px}
+.tracker-switch button[aria-pressed=true]{background:var(--green);color:white}
+.tracker-period{justify-content:space-between;margin:7px 0 3px}
+.tracker-period button{min-height:34px;min-width:38px;font-size:22px}
+#trackerPanel button:disabled{opacity:.4}
+.tracker-score{padding:8px 10px;background:#e9efe6;border-radius:7px}
+.tracker-score strong{font:normal 29px/1 Georgia,serif}
+.tracker-score b,.tracker-score span{display:block;font-size:12px}
+.month-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));margin-top:10px;gap:1px}
+.month-days small{text-align:center;color:var(--muted);font-size:11px}
+.track-day{min-height:34px;display:flex;align-items:center;justify-content:center;gap:3px;padding:0;font-size:12px;color:var(--ink);border-radius:6px}
+.track-day[aria-pressed=true]{outline:1px solid #677c6d;outline-offset:-2px}
+#trackerPanel .done{--dot:#28674c}#trackerPanel .partial{--dot:#946210}#trackerPanel .missed{--dot:#b14039}#trackerPanel .open{--dot:#326691}#trackerPanel .none{--dot:transparent}
+.track-day i,.tracker-legend span::before{content:'';display:inline-block;width:9px;height:9px;background:var(--dot);border-radius:100%}
+.track-day.none i,.tracker-legend .none::before{border:1px solid #999e94}
+.tracker-legend{display:flex;gap:4px 10px;flex-wrap:wrap;margin:8px 0;font-size:11px}.tracker-legend span{display:flex;align-items:center;gap:4px}
+#dayCounts{font-size:13px;font-weight:600;margin:7px 0}
+.tracker-help{font-size:12px;color:var(--muted);margin-top:7px}.tracker-help summary{cursor:pointer}.tracker-help p{margin-top:5px}
+.year-months{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px}
+.year-months button{display:flex;align-items:center;justify-content:space-between;gap:2px;min-height:38px;font-size:12px;padding:4px 7px;background:var(--paper);border-radius:5px}
