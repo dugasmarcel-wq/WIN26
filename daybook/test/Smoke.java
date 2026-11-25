@@ -97,6 +97,7 @@ public final class Smoke extends Instrumentation {
     void testMethod(Journal db,String note)throws Exception{
         js("go('today')");tap("[data-goal='four-physical']");tap("#menuEditGoal");
         js("document.querySelector('#aim').value='Walk outdoors'");tap("#confirm");
+        tap("[data-goal='four-physical']");tap("#menuHistory");
         js("document.querySelector('#reflection').value='Walked by the river';document.querySelector('#reflection').dispatchEvent(new Event('input'))");
         js("go('calendar');document.querySelector('#calNow').click()");
         check(js("document.querySelector('#calContent').innerText").contains("Walked by the river"),"calendar shows dated reflection");
