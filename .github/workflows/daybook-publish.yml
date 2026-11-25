@@ -1,0 +1,19 @@
+name: Publish signed Daybook
+on:
+  push:
+    branches: [daybook-journal]
+    paths: ["daybook/publishing/**", ".github/workflows/daybook-publish.yml"]
+permissions:
+  contents: write
+concurrency:
+  group: daybook-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify signed journal and publish update feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash daybook/publishing/publish.sh
