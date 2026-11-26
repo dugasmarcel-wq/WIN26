@@ -7,7 +7,6 @@ import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.FrameLayout
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -41,7 +40,7 @@ class DaybookWidgetConnectionTest {
             fun mount() {
                 scenario.onActivity { a ->
                     host = DaybookWidgetHost(a, 2)
-                    a.setContentView(FrameLayout(a).apply { addView(host) })
+                    a.addContentView(host, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 }
             }
             mount()
