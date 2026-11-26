@@ -27,20 +27,18 @@ const groups = [
 function groupOf(g){return g.period==='Daily'?'daily':g.period==='Weekly'?'weekly':'long';}
 function today(){
  const active=state.goals.filter(g=>g.active), ended=state.goals.filter(g=>!g.active&&!g.deleted&&!focusNames[g.id]);
- screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><div class="goal-actions"><button id="jumpTracker">Tracker</button><button class="primary" id="addGoal">Add goal</button></div></div>'+
+ screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><div class="goal-actions"><button id="jumpTracker">Calendar</button><button class="primary" id="addGoal">Add goal</button></div></div>'+
  '<section class="four-section"><h2>The Method of 4</h2><div class="four-grid">'+areaIds.map(id=>state.goals.find(g=>g.id===id)).filter(Boolean).map(goalBubble).join('')+'</div></section>'+groups.map(group=>{
    const items=active.filter(g=>!focusNames[g.id]&&groupOf(g)===group.id);
    return '<section class="goal-group '+group.id+'" data-color-key="'+group.id+'"><div class="group-head"><h2>'+group.label+'</h2><span class="count">'+items.filter(g=>g.done).length+'/'+items.length+'</span><button class="inline-add" data-new="'+group.id+'" aria-label="Add '+group.label+' goal">+</button></div>'+
      (items.length?'<div class="bubbles">'+items.map(goalBubble).join('')+'</div>':'')+'</section>';
 
  }).join('')+(ended.length?'<h2 class="section">Scheduled and past goals</h2>'+ended.map(g=>'<button class="item card" data-menu-goal="'+esc(g.id)+'">'+esc(g.name)+'</button>').join(''):'');
- screen.insertAdjacentHTML('beforeend','<section id="trackerPanel" tabindex="-1" aria-label="Completion tracker"></section>');
  const daily=api('note',{id:state.dailyId});
- $('.four-section').insertAdjacentHTML('afterend','<section class="daily-pad"><div><h2>'+esc(daily.title)+'</h2><button id="expandDaily">Open note</button></div><textarea id="dailyBody" aria-label="Today’s note" placeholder="Write today’s note…"></textarea></section>');
+ $('.goal-group.daily').insertAdjacentHTML('afterend','<section class="daily-pad"><div><h2>'+esc(daily.title)+'</h2><button id="expandDaily">Open note</button></div><textarea id="dailyBody" aria-label="Today’s note" placeholder="Write today’s note…"></textarea></section>');
  const pad=$('#dailyBody');pad.value=daily.body;
  pad.oninput=()=>{daily.body=pad.value;api('save',daily);};
  $('#expandDaily').onclick=()=>openNote(daily.id);
- showTracker();
  $('#jumpTracker').onclick=jumpToTracker;
  $('#addGoal').onclick=()=>newGoal('long');
  screen.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>newGoal(b.dataset.new));
@@ -132,7 +130,7 @@ function settings(){screen.innerHTML='<h1>Settings</h1><div class="settings-list
 function setting(title,desc,label,id){return '<div class="card setting"><div><h3>'+title+'</h3><small class="meta">'+desc+'</small></div><button id="'+id+'">'+label+'</button></div>';}
 $('#today').onclick=()=>go('today');$('#notebook').onclick=()=>go('notes');$('#settings').onclick=()=>go('settings');
 window.nativeEvent=(type,value)=>{
- if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){trackerMode='month';trackerMonth='';pickedDay='';go('today');jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','calendar','settings'].includes(value)?value:'today');}
+ if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','calendar','settings'].includes(value)?value:'today');}
  else if(type==='refresh'&&!dialog.open){if(view==='edit'){if(!draft){let n=api('note',{id:entry.id});if(n){entry.alarm=n.alarm;state.today=dayOfTime(Date.now());$('#noteCheckins').innerHTML=daySummary(n.written,true);applyColors();reminderLabel();}}}else render();}
 };
 window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){go(returnCal?'calendar':'notes');returnCal=false;return true;}if(view!=='today'){go('today');return true;}return false;};

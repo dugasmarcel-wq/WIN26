@@ -83,7 +83,7 @@ public final class Smoke extends Instrumentation {
             Tracker updated=new Tracker(db,jan,jan.plusMonths(1),today);
             check(updated.on(jan.plusDays(4)).status().equals("partial"),"mixed-result day dot");
         }finally{sql.endTransaction();}
-        tap("#jumpTracker"); tap("[data-mode=year]");
+        tap("#jumpTracker"); tap("[data-scale=year]");
         check("12".equals(js("document.querySelectorAll('[data-month]').length")),"twelve monthly summary buttons");
         tap("[data-month]:not(:disabled)");tap("[data-date]:not(:disabled)");
         check(js("document.querySelector('#dayCounts').textContent").length()>5,"selected day detail");
@@ -143,7 +143,7 @@ public final class Smoke extends Instrumentation {
         db.getWritableDatabase().execSQL("INSERT INTO goals VALUES(?,?,?,'9999-12-31','Daily',1)",new Object[]{id,"Test holding",now.minusDays(1).toString()});
         db.getWritableDatabase().execSQL("INSERT INTO marks VALUES(?,?)",new Object[]{id,now.minusDays(1).toString()});
         js("go('today')");
-        check("true".equals(js("document.querySelector('#dailyBody').getBoundingClientRect().top<innerHeight/2 && document.querySelector('.four-grid').offsetHeight<105")),"compact goals leave journal visible");
+        check("true".equals(js("document.querySelector('.goal-group.daily').nextElementSibling.matches('.daily-pad') && !document.querySelector('#trackerPanel') && document.querySelector('.four-grid').offsetHeight<105")),"daily pad follows Daily goals and tracker lives on Calendar");
         holdGoal(id);check(findGoal(db,id).getInt("done")==0,"holding does not check goal");
         tap("#menuEditGoal");js("document.querySelector('#aim').value='Edited by hold'");tap("#confirm");
         check(findGoal(db,id).getString("name").equals("Edited by hold"),"hold and edit");
@@ -211,7 +211,7 @@ public final class Smoke extends Instrumentation {
             runOnMainSync(()->views[0].findViewById(R.id.row).performClick());
             until(()->{try{return findGoal(db,"four-spiritual").getInt("done")==1;}catch(Exception e){return false;}},"interactive widget bubble");
             runOnMainSync(()->views[0].findViewById(R.id.tracker).performClick());
-            until(()->"true".equals(js("(()=>{const p=document.querySelector('#trackerPanel');return !!p && p.getBoundingClientRect().top<innerHeight;})()")),"widget opens tracker");
+            until(()->"true".equals(js("(()=>{const p=document.querySelector('#trackerPanel');return view==='calendar' && !!p && p.getBoundingClientRect().top<innerHeight;})()")),"widget opens tracker");
             until(()->{
                 AtomicReference<String> rate=new AtomicReference<>();
                 runOnMainSync(()->rate.set(((android.widget.TextView)views[0].findViewById(R.id.trackRate)).getText().toString()));

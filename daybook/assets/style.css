@@ -147,3 +147,8 @@ nav button.active{background:var(--tint);color:var(--accent);box-shadow:inset 0 
 .goal-group,.goal-group.long{padding-block:1px}.group-head .inline-add,.long .inline-add{min-height:27px}
 .daily-pad{margin:6px 0 9px}.daily-pad>div{min-height:30px}.daily-pad button{min-height:30px}
 #dailyBody{height:clamp(155px,26dvh,260px)}.sheet-history{display:block;width:100%;text-align:left;padding:7px 12px}
+
+#trackerPanel .scheduled{--dot:#8064a1}.track-day sup{font-size:11px;line-height:1;align-self:flex-start;margin-top:6px;color:var(--green)}
+#dayAgenda{margin:14px 0}#dayAgenda .agenda-head h2{font-size:22px}#dayAgenda h3{margin-top:8px}#dayAgenda>small{color:var(--muted)}
+
+.month-agenda{margin-top:12px}.month-agenda button{display:block;width:100%;min-height:38px;text-align:left;font-weight:400}.month-agenda b{margin-right:6px}

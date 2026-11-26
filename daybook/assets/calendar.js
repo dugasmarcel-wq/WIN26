@@ -29,22 +29,47 @@ function calendarPage(){
  $('#calNow').onclick=()=>{calDay=state.today;scale='day';paint();};
  screen.querySelectorAll('[data-scale]').forEach(b=>b.onclick=()=>{scale=b.dataset.scale;paint();});
  const content=$('#calContent');
+ const start=iso(y,scale==='year'?0:m,1);
+ const stats=api('tracker',{start,year:scale==='year'});
+ content.innerHTML='<section id="trackerPanel" aria-label="Completion tracker">'+calendarScore(stats,scale==='year'?'Year':'Month')+'<div id="trackerGrid"></div><div id="chartKey"></div></section><section id="dayAgenda"></section>';
+ const grid=$('#trackerGrid');
+ const chooseMonth=b=>{calDay=b.dataset.month;scale='month';paint();};
+ const chooseDay=d=>{calDay=d;scale='day';paint();};
  if(scale==='year'){
-   content.className='year-months';content.innerHTML=Array.from({length:12},(_,i)=>'<button data-month="'+iso(y,i,1)+'">'+esc(pretty(iso(y,i,1),{month:'long'}))+'</button>').join('');
-   content.querySelectorAll('button').forEach(b=>b.onclick=()=>{calDay=b.dataset.month;scale='month';paint();});return;
+   grid.className='year-months';grid.innerHTML=stats.buckets.map(n=>'<button data-month="'+n.date+'"><span>'+esc(pretty(n.date,{month:'short'}))+'</span><b>'+(n.percent<0?'—':n.percent+'%')+'</b></button>').join('');
+   grid.querySelectorAll('[data-month]').forEach(b=>b.onclick=()=>chooseMonth(b));
+   return;
  }
  if(scale==='month'){
-   const scheduled=api('calendarGoals',{day:iso(y,m,1)});
+   const schedule=api('calendarGoals',{day:start});
    const marked=new Set(state.notes.flatMap(n=>n.alarm?[n.written,dayOfTime(n.alarm)]:[n.written]));
-   content.className='month-days';content.innerHTML=['M','T','W','T','F','S','S'].map(t=>'<small>'+t+'</small>').join('')+'<i></i>'.repeat((new Date(utc(iso(y,m,1))).getUTCDay()+6)%7)+Array.from({length:new Date(Date.UTC(y,m+1,0)).getUTCDate()},(_,i)=>{let d=iso(y,m,i+1);return '<button data-date="'+d+'" class="'+(d===state.today?'cal-today':'')+'">'+(i+1)+(scheduled[d]?'<i class="calendar-dot '+(d>state.today?'future':scheduled[d].done===scheduled[d].due?'done':scheduled[d].done?'partial':d===state.today?'open':'missed')+'" aria-label="'+scheduled[d].done+' of '+scheduled[d].due+' goals complete"></i>':'')+(marked.has(d)||occasions(d).length?'<sup>•</sup>':'')+'</button>';}).join('');
-   content.querySelectorAll('button').forEach(b=>b.onclick=()=>{calDay=b.dataset.date;scale='day';paint();});return;
+   grid.className='month-days';
+   grid.innerHTML=['M','T','W','T','F','S','S'].map(k=>'<small>'+k+'</small>').join('')+'<i></i>'.repeat((new Date(utc(start)).getUTCDay()+6)%7)+stats.buckets.map(n=>{
+     const d=n.date,planned=schedule[d]?.due||0,entry=marked.has(d)||occasions(d).length>0;
+     const status=d>state.today&&planned?'scheduled':n.status;
+     const label=pretty(d,{dateStyle:'full'})+', '+(d>state.today?planned+' goals scheduled':trackerCaption(n))+(entry?', journal or event':'');
+     return '<button class="track-day '+status+'" aria-pressed="'+(d===calDay)+'" data-date="'+d+'" aria-label="'+esc(label)+'"><i></i>'+Number(d.slice(8))+(entry?'<sup aria-hidden="true">•</sup>':'')+'</button>';
+   }).join('');
+   grid.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>chooseDay(b.dataset.date));
+   $('#chartKey').innerHTML=trackerLegend();
+   const timed=state.notes.filter(n=>n.alarm&&dayOfTime(n.alarm).slice(0,7)===start.slice(0,7));
+   const upcoming=stats.buckets.flatMap(n=>{
+     const entries=occasions(n.date).map(e=>e.name).concat(timed.filter(note=>dayOfTime(note.alarm)===n.date).map(note=>'Reminder · '+(note.title||'Untitled note')));
+     return entries.map(title=>'<button data-agenda-date="'+n.date+'"><b>'+esc(pretty(n.date,{month:'short',day:'numeric'}))+'</b> '+esc(title)+'</button>');
+   });
+   if(upcoming.length){
+     $('#chartKey').insertAdjacentHTML('beforeend','<section class="month-agenda"><h3>Dates and reminders</h3>'+upcoming.join('')+'</section>');
+     $('#chartKey').querySelectorAll('[data-agenda-date]').forEach(b=>b.onclick=()=>chooseDay(b.dataset.agendaDate));
+   }
  }
- const d=calDay;content.className='';
+ const d=calDay,counts=stats.buckets.find(n=>n.date===d);
+ const agenda=$('#dayAgenda');
+ agenda.innerHTML='<div class="agenda-head"><h2>'+esc(pretty(d,{weekday:'short',month:'short',day:'numeric'}))+'</h2></div><p id="dayCounts">'+(d>state.today?'Scheduled goals':trackerCaption(counts))+'</p>';
  const noteRows=state.notes.filter(n=>n.written===d),alarms=state.notes.filter(n=>n.alarm&&dayOfTime(n.alarm)===d);
  const noteLink=(n,label)=>'<button class="item card" data-open="'+esc(n.id)+'">'+esc(label)+'</button>';
- content.innerHTML='<h2>Journal</h2>'+(noteRows.map(n=>noteLink(n,n.title||'Untitled note')).join('')||'<p class="meta">No notes for this date.</p>')+daySummary(d)+reflectionList(d)+'<div class="section"><h2>Important dates</h2><button id="addDate">Add date</button></div>'+
+ agenda.insertAdjacentHTML('beforeend','<h3>Journal</h3>'+(noteRows.map(n=>noteLink(n,n.title||'Untitled note')).join('')||'<p class="meta">No notes for this date.</p>')+daySummary(d)+reflectionList(d)+'<div class="section"><h2>Important dates</h2><button id="addDate">Add date</button></div>'+
  occasions(d).map(e=>'<div class="card setting"><span>'+esc(e.name)+(e.annual?' · Yearly':'')+'</span><button data-remove="'+esc(e.id)+'">Remove</button></div>').join('')+
- '<h2>Reminders</h2>'+(alarms.map(n=>noteLink(n,(n.title||'Untitled note')+' · '+stamp(n.alarm))).join('')||'<small>No scheduled reminders</small>');
+ '<h2>Reminders</h2>'+(alarms.map(n=>noteLink(n,(n.title||'Untitled note')+' · '+stamp(n.alarm))).join('')||'<small>No scheduled reminders</small>'));
  content.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{returnCal=true;openNote(b.dataset.open);});
  $('#addDate').onclick=()=>modal('Important date','<label for="eventName">Name</label><input id="eventName" required maxlength="200"><label for="eventDay">Date</label><input id="eventDay" type="date" required value="'+d+'"><label><input type="checkbox" id="annual"> Repeat yearly</label>','Save',()=>{calDay=$('#eventDay').value;api('event',{name:$('#eventName').value,day:calDay,annual:$('#annual').checked});render();});
  content.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>modal('Remove this date?','','Remove',()=>{api('removeEvent',{id:b.dataset.remove});render();}));
