@@ -48,6 +48,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
+      - name: Get the published Daybook widget provider for host tests
+        run: |
+          curl -fsSL --retry 3 "https://github.com/$GITHUB_REPOSITORY/releases/download/win26-update-100141/Daybook-7.apk" -o "$RUNNER_TEMP/Daybook.apk"
+          echo "517236ebb0d406e508ae54c793c79fe19a1aff0617a62f6692534521a8e72c36  $RUNNER_TEMP/Daybook.apk" | sha256sum -c
       - name: Check native layout, menus, storage and reminder notifications
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -56,7 +60,9 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=rocks.gorjan.gokixp.NotepadRegressionTest
+            adb install "$RUNNER_TEMP/Daybook.apk"
+            adb shell am start -W -n com.marcel.daybook/.Main
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=rocks.gorjan.gokixp.NotepadRegressionTest,rocks.gorjan.gokixp.DaybookWidgetConnectionTest
       - name: Upload Notepad verification results and rendered layouts
         if: always()
         uses: actions/upload-artifact@v4
