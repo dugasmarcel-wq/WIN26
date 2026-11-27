@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.marcel.daybookstandalone.test"><uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35"/><application android:label="Daybook Standalone Tests"/><instrumentation android:name="com.marcel.daybook.StandaloneSmoke" android:targetPackage="com.marcel.daybookstandalone"/></manifest>
