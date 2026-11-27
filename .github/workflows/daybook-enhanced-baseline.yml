@@ -1,0 +1,37 @@
+name: Inspect Daybook 1.13 baseline
+on:
+  push:
+    branches: [daybook-1-13-enhanced]
+    paths: [".github/workflows/daybook-enhanced-baseline.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify original 1.13 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-all-errors https://github.com/dugasmarcel-wq/WIN26/releases/download/win26-update-100141/Dayboox-14.apk -o "$RUNNER_TEMP/Dayboox-14.apk"
+          echo "d42f3f48800ac75edfdd433dce8f06b778cb971782cf564fe820b82b7cd9faf0  $RUNNER_TEMP/Dayboox-14.apk" | sha256sum -c
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$bt/apksigner" verify --print-certs "$RUNNER_TEMP/Dayboox-14.apk" | tee "$RUNNER_TEMP/signer.txt"
+          grep -F '78f942aa7b29f5cc057401bfa61029b0e7affb5ac50c06136b2edd0ae09e0510' "$RUNNER_TEMP/signer.txt"
+          "$bt/aapt" dump badging "$RUNNER_TEMP/Dayboox-14.apk" | tee "$RUNNER_TEMP/package.txt"
+          grep -F "package: name='com.marcel.dayboox' versionCode='14' versionName='1.13'" "$RUNNER_TEMP/package.txt"
+      - name: Extract released assets and compare with checked-in source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/daybook-baseline"
+          unzip -q "$RUNNER_TEMP/Dayboox-14.apk" 'assets/*' -d "$RUNNER_TEMP/daybook-baseline"
+          diff -qr daybook/assets "$RUNNER_TEMP/daybook-baseline/assets" || test "$?" = 1
+          find "$RUNNER_TEMP/daybook-baseline/assets" -type f -print
+          cp "$RUNNER_TEMP/signer.txt" "$RUNNER_TEMP/package.txt" "$RUNNER_TEMP/daybook-baseline/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daybook-1-13-verified-baseline
+          path: ${{ runner.temp }}/daybook-baseline
