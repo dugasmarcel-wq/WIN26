@@ -1,9 +1,7 @@
 # Separate Daybook update channel
 
-Package com.marcel.dayboox, separate from original Daybook. Updates are checked on launch approximately every 24 hours or manually under Settings. Android requests approval to install. Existing original package and daybook-update.json are unchanged.
+Package com.marcel.dayboox. Updates are checked on launch or manually in Settings. The original app and daybook-update.json remain unchanged. Android requires installation approval.
 
-Version 1.11 (code 12): default Quick Notes and separate combined dated Journal, inline notes in the four modules and reading history, month-first calendar and separate Statistics. Journal views reuse the previous native note records and their stable IDs, including book-specific records. No database migration or native changes. Browser interaction regression checks passed. On-device Android testing is not yet performed.
+Version 1.12 (code 13): personal journal stays open, category cards expand on demand, Bible and spiritual pads use the same note ID when possible; older independent entries remain accessible. Accountability calendar displays five slots, distinguishing completed, partial, missed, pending and not applicable. Selected date displays daily habit names and time totals. Calendar reminders support one-time notifications and annual calendar dates, not recurring notifications. Reminder metadata is stored in the existing backed-up note store; cancelling preserves the associated quick note. Browser interaction tests passed; actual-device testing remains outstanding.
 
-The signed APK is reconstructed exactly from the previous signed release and public delta, then checked for SHA-256, certificate, package and version before publication. Source web assets are contained in the verified APK; the prior native classes.dex is unchanged.
-
-For later releases, build the separate package, bump versionCode, retain the same certificate, provider authority and feed, sign offline and commit the full signed APK and matching JSON. Remove bootstrap.delta.b64 when switching to a full signed APK. Do not commit signing keys.
+The signed APK is reconstructed exactly from the previous signed release and public delta, then checked for SHA-256, certificate, package and version before publication. The previous native classes.dex is unchanged. Future releases must retain the same signer and separate feed; never commit signing keys.
