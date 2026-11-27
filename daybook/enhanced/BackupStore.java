@@ -27,10 +27,13 @@ final class BackupStore {
         if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("Cannot create backup directory.");
         return dir;
     }
-    static synchronized void request(Context c){
+    private static final Object queueLock=new Object();
+    static void request(Context c){
         Context app=c.getApplicationContext();
-        if(queued!=null)queued.cancel(false);
-        queued=worker.schedule(()->run(app,false),4,TimeUnit.SECONDS);
+        synchronized(queueLock){
+            if(queued!=null)queued.cancel(false);
+            queued=worker.schedule(()->run(app,false),4,TimeUnit.SECONDS);
+        }
     }
     static void now(Context c){
         Context app=c.getApplicationContext();worker.execute(()->run(app,true));

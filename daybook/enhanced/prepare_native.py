@@ -137,6 +137,7 @@ change("Investment.java",'return new JSONObject().put("areas",totals).put("total
         }
         return new JSONObject().put("areas",totals).put("areaTargets",areaTargets).put("plannedTargets",plannedTargets).put("plannedTarget",planned).put("total",total).put("extra",extra).put("balanced",balanced).put("target",totalTarget)''')
 
+change("Main.java",'case "reflections":res=journal.rows','case "allReflections":res=journal.rows("SELECT goal,day,body FROM reflections ORDER BY day DESC");break;\n                case "reflections":res=journal.rows')
 change("Main.java",'case "methodStop":Investment.stop','case "methodPause":Investment.pause(journal,a.getString("id"));Widget.refresh(Main.this);break;\n                case "methodResume":Investment.resume(journal,a.getString("id"));Widget.refresh(Main.this);break;\n                case "targetConfig":res=new Targets(journal).config(LocalDate.parse(a.getString("day")));break;\n                case "targetEdit":Targets.edit(journal,a);Widget.refresh(Main.this);break;\n                case "methodStop":Investment.stop')
 # Standalone app must never access the previous updater.
 change("Main.java",'updates.onResume();','BackupStore.request(this);BackupStore.schedule(this);')

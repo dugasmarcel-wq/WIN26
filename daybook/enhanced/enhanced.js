@@ -11,11 +11,19 @@
   function durationDelta(previous,next) {
     return ((next-previous+90)%60)-30;
   }
+  function editLegacyReflection(row){
+    const d=row.day;openJournal(d);
+    modal(focusNames[row.goal]+' · '+pretty(d,{dateStyle:'medium'}),
+      '<label for="legacyReflection">Earlier category reflection</label><textarea id="legacyReflection" rows="6">'+esc(row.body)+'</textarea>',
+      'Save',()=>{api('reflect',{id:row.goal,day:d,body:$('#legacyReflection').value});render();});
+  }
   function journalSearch() {
     let month=(journalDay||state.today).slice(0,7)+'-01';
     let mode='keyword';
     const notes=state.notes.filter(n=>!hiddenModuleNote(n));
+    const legacy=api('allReflections').filter(r=>r.body.trim());
     const dated=new Set(notes.filter(n=>journalDate(n)&&api('note',{id:n.id})?.body?.trim()).map(journalDate));
+    for(const r of legacy)dated.add(r.day);
     modal('Find Journal Entry',
       '<div class="notebook-tabs"><button type="button" id="findKeyword" aria-pressed="true">Keyword</button><button type="button" id="findCalendar" aria-pressed="false">Calendar</button></div><div id="findContents"></div>',
       'Close',()=>true);
@@ -23,7 +31,7 @@
     function select(n) {
       dialog.close();
       // Open the exact stored note, including older spiritual entries.
-      openNote(n.id,n.folder);
+      if(n.legacy)editLegacyReflection(n.legacy);else openNote(n.id,n.folder);
     }
     function keyword() {
       contents.innerHTML='<label for="findQuery">Word or phrase</label><input type="search" id="findQuery" autocomplete="off"><div id="findResults" class="find-results"></div>';
@@ -32,7 +40,7 @@
       function paint() {
         const q=query.value.trim().toLocaleLowerCase();
         if(!q){results.textContent='Enter a word or phrase.';return;}
-        if(!cached)cached=notes.map(n=>({n,body:api('note',{id:n.id})?.body||''}));
+        if(!cached)cached=notes.map(n=>({n,body:api('note',{id:n.id})?.body||''})).concat(legacy.map(r=>({n:{id:'legacy-reflection-'+r.goal+'-'+r.day,title:(focusNames[r.goal]||'Category')+' reflection',written:r.day,legacy:r},body:r.body})));
         const hits=cached.filter(({n,body})=>(n.title||'').toLocaleLowerCase().includes(q)||body.toLocaleLowerCase().includes(q));
         hits.sort((a,b)=>(journalDate(b.n)||b.n.written||'').localeCompare(journalDate(a.n)||a.n.written||''));
         results.replaceChildren();
@@ -65,6 +73,11 @@
   }
   journalPage=function(){
     originalJournal();
+    const legacy=api('reflections',{day:journalDay||state.today}).filter(r=>r.body.trim());
+    screen.querySelectorAll('.reflections article').forEach((article,i)=>{
+      const row=legacy[i];if(!row)return;
+      const edit=document.createElement('button');edit.type='button';edit.textContent='Edit reflection';edit.onclick=()=>editLegacyReflection({...row,day:journalDay||state.today});article.append(edit);
+    });
     const b=document.createElement('button');b.id='findJournal';b.className='find-journal';b.textContent='Find Journal Entry';b.onclick=journalSearch;screen.append(b);
   };
   timeEntry=function(id) {

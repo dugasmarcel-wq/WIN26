@@ -70,6 +70,7 @@ public final class EnhancedSmoke extends Instrumentation {
             check(!Investment.timer(db).has("goal"),"finished stopwatch cleared");
             db.saveNote("day-"+today,"daily","Personal journal","Unique search phrase from original record");
             db.saveNote("search-fixture","daily","Quick note","Another unique search phrase");
+            db.getWritableDatabase().execSQL("INSERT OR REPLACE INTO reflections VALUES(?,?,?)",new Object[]{id,yesterday.toString(),"Earlier unique search phrase"});
             js("window.nativeEvent('route','today')");
             expect("!!document.querySelector('.four-grid')&&!!document.querySelector('#dailyBody')","original Today and journal");
             js("showModule('four-spiritual');document.querySelector('#moduleLog').click()");
@@ -85,8 +86,12 @@ public final class EnhancedSmoke extends Instrumentation {
             js("document.querySelector('#timerAction').click();document.querySelector('#finishTimer').click()");
             expect("!state.timer.goal","finish clears timer");
             js("openJournal(state.today);document.querySelector('#findJournal').click();document.querySelector('#findQuery').value='unique search phrase';document.querySelector('#findQuery').dispatchEvent(new Event('input'))");
-            expect("document.querySelectorAll('.find-hit').length===2","keyword searches journal and quick notes");
-            js("document.querySelector('.find-hit').click()");
+            expect("document.querySelectorAll('.find-hit').length===3","keyword searches journal, quick notes and legacy reflections");
+            js("Array.from(document.querySelectorAll('.find-hit')).find(b=>b.textContent.includes('reflection')).click()");
+            expect("!!document.querySelector('#legacyReflection')&&document.querySelector('#legacyReflection').value.includes('Earlier unique')","open legacy reflection");
+            js("document.querySelector('#legacyReflection').value='Updated legacy reflection';document.querySelector('#confirm').click()");
+            check(db.rows("SELECT body FROM reflections WHERE goal=? AND day=?",id,yesterday.toString()).getJSONObject(0).getString("body").equals("Updated legacy reflection"),"legacy reflection edited in place");
+            js("openJournal(state.today);document.querySelector('#findJournal').click();document.querySelector('#findQuery').value='unique search phrase';document.querySelector('#findQuery').dispatchEvent(new Event('input'));document.querySelector('.find-hit').click()");
             expect("view==='edit'&&document.querySelector('#body').value.toLowerCase().includes('unique search phrase')","open original matching record");
             js("openJournal(state.today);document.querySelector('#findJournal').click();document.querySelector('#findCalendar').click()");
             expect("!!document.querySelector('.has-journal[data-find-date=\"'+state.today+'\"]')","calendar marks written day");
