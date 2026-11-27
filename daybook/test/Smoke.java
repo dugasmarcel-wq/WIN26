@@ -48,8 +48,8 @@ public final class Smoke extends Instrumentation {
             check("true".equals(js("!!document.querySelector('."+kind+" [data-mark]')")),"goal in "+kind+" group");
         }
         LocalDate now=LocalDate.now(),week=Journal.monday(now),start=week.minusWeeks(2).plusDays(2);
-        String id=db.rows("SELECT id FROM goals WHERE period='Weekly'").getJSONObject(0).getString("id");
-        db.getWritableDatabase().execSQL("UPDATE goals SET start=? WHERE id=?",new Object[]{start.toString(),id});
+        String id="legacy-weekly-fixture";
+        db.getWritableDatabase().execSQL("INSERT INTO goals VALUES(?,?,?,'9999-12-31','Weekly',1)",new Object[]{id,"Legacy weekly",start.toString()});
         db.mark(id,now.toString(),true);db.mark(id,now.toString(),true);
         check(db.rows("SELECT * FROM marks WHERE goal=?",id).length()==1,"one mark per week");
         check(db.rows("SELECT day FROM weekly_taps WHERE goal=? AND day=?",id,now.toString()).length()==1,"journal records actual weekly tap date");
@@ -137,6 +137,38 @@ public final class Smoke extends Instrumentation {
         touch("[data-mark='"+id+"']",750);
         until(()->"true".equals(js("!!document.querySelector('#menuDeleteGoal') && dialog.open")),"Android long press opens goal options");
     }
+    void testInvestment(Journal db)throws Exception{
+        String today=LocalDate.now().toString(),id="four-mental";
+        js("go('today')");tap("[data-mark='four-mental']");tap("[data-add-minutes='45']");
+        check(findGoal(db,id).getInt("seconds")==2700&&findGoal(db,id).getInt("done")==0,"partial time saved");
+        tap("[data-mark='four-mental']");tap("[data-add-minutes='30']");
+        check(findGoal(db,id).getInt("seconds")==4500&&findGoal(db,id).getInt("done")==1,"overtime retained");
+        check(!db.mark(id,today,false),"binary method action rejected");
+        Investment.start(db,id,today);check(Investment.timer(db).getString("goal").equals(id),"persistent stopwatch");
+        try{Investment.start(db,"four-financial",today);throw new AssertionError("overlapping timer");}catch(IllegalArgumentException expected){}
+        Investment.stop(db,id,true);
+        Investment.start(db,"four-financial",today);
+        // Simulate a 90-second session without waiting for the full duration.
+        db.getWritableDatabase().execSQL("UPDATE method_timer SET started=?",new Object[]{System.currentTimeMillis()-90000});
+        Investment.stop(db,"four-financial",false);check(findGoal(db,"four-financial").getInt("seconds")>=90,"stopwatch records elapsed time");
+        db.addGoal("Persistent weekly","Weekly","","");
+        String task=db.rows("SELECT id FROM goals WHERE name='Persistent weekly'").getJSONObject(0).getString("id");
+        check(db.mark(task,today,true),"task completion");
+        GoalBook.Goal g=new GoalBook(db).goals.get(task);check(g.done(LocalDate.now().plusWeeks(1))&&g.active(LocalDate.now().plusWeeks(1))&&!g.due(LocalDate.now()),"persistent task does not reset");
+        db.removeGoal(task);g=new GoalBook(db).goals.get(task);
+        check(g.achieved(LocalDate.now())&&!g.active(LocalDate.now()),"archived achievement retained");
+        JSONObject before=db.backup();db.restore(before);
+        check(findGoal(db,id).getInt("seconds")==4500&&new GoalBook(db).goals.get(task).achieved(LocalDate.now()),"backup preserves time and archived completion");
+        JSONObject stats=Investment.stats(db,today,LocalDate.now().plusDays(1).toString());
+        check(stats.getLong("extra")>=900&&stats.getInt("weekly")>=1,"independent statistics");
+        JSONObject old=new JSONObject(before.toString());old.remove("tracking_epoch");old.remove("method_time");old.remove("task_state");
+        db.restore(old);check(findGoal(db,id).getInt("seconds")==0,"legacy backup does not invent hours");
+        check(db.rows("SELECT * FROM notes").length()>0,"legacy backup preserves journal");
+        db.restore(before);check(findGoal(db,id).getInt("seconds")==4500,"new backup restores exact time");
+        js("go('calendar');document.querySelector('#calNow').click()");
+        check(js("document.querySelector('#dayAgenda').innerText").contains("Persistent weekly"),"calendar shows archived task on actual date");
+        js("go('today')");
+    }
     void testGoalActions(Journal db)throws Exception{
         LocalDate now=LocalDate.now();
         String id="hold-test";
@@ -152,10 +184,9 @@ public final class Smoke extends Instrumentation {
         GoalBook.Goal goal=new GoalBook(db).goals.get(id);
         check(!goal.active(now)&&!goal.due(now)&&!goal.active(now.plusDays(1))&&goal.due(now.minusDays(1))&&goal.marks.contains(now.minusDays(1).toString()),"delete preserves history and stops future obligations");
         check(!db.mark(id,now.toString(),true),"stale widget cannot check deleted goal");
-        String area="four-mental";db.mark(area,now.toString(),true);db.removeGoal(area);js("go('today')");
-        check(findGoal(db,area).getInt("done")==1&&findGoal(db,area).getBoolean("due"),"completed day survives removal");
-        tap("[data-restore='four-mental']");js("document.querySelector('#aim').value='Restore my aim'");tap("#confirm");
-        check(findGoal(db,area).getBoolean("active"),"can set method aim after removal");
+        String area="four-mental";check(!db.mark(area,now.toString(),true),"method cannot be checked without time");
+        try{db.removeGoal(area);throw new AssertionError("permanent category removed");}catch(IllegalArgumentException expected){}
+        check(findGoal(db,area).getBoolean("active"),"method category stays active");
         db.restore(db.backup());check(findGoal(db,id).getBoolean("deleted"),"backup preserves removal");
     }
     JSONObject findGoal(Journal db,String id)throws Exception{
@@ -181,7 +212,7 @@ public final class Smoke extends Instrumentation {
             String d=LocalDate.now().toString(),id=db.rows("SELECT id FROM goals WHERE name='Read 20 minutes'").getJSONObject(0).getString("id");
             tap("[data-mark='"+id+"']");check(findGoal(db,id).getInt("done")==1,"goal bubble persisted");
             tap("[data-mark='"+id+"']");check(findGoal(db,id).getInt("done")==0,"undo today");
-            LocalDate past=LocalDate.now().minusDays(2);db.getWritableDatabase().execSQL("UPDATE goals SET start=?,end=? WHERE id=?",new Object[]{past.toString(),past.plusWeeks(1).toString(),id});
+            LocalDate past=LocalDate.now().minusDays(2);db.getWritableDatabase().execSQL("DELETE FROM task_state WHERE goal=?",new Object[]{id});db.getWritableDatabase().execSQL("UPDATE goals SET period='Week',start=?,end=? WHERE id=?",new Object[]{past.toString(),past.plusWeeks(1).toString(),id});
             check(!db.mark(id,past.toString(),true),"no backfill");db.mark(id,d,true);db.mark(id,d,true);
             JSONObject g=findGoal(db,id);check(g.getInt("missed")==2&&g.getInt("done")==1,"permanent missed count");
             check(Journal.end(LocalDate.of(2024,2,29),"Year").equals(LocalDate.of(2025,2,28)),"leap horizon");
@@ -209,7 +240,8 @@ public final class Smoke extends Instrumentation {
             runOnMainSync(()->{host.startListening();views[0]=host.createView(activity,wid,m.getAppWidgetInfo(wid));activity.addContentView(views[0],new ViewGroup.LayoutParams(620,480));Widget.refresh(c);});
             until(()->{AtomicBoolean found=new AtomicBoolean();runOnMainSync(()->found.set(views[0].findViewById(R.id.row)!=null));return found.get();},"widget row inflated");
             runOnMainSync(()->views[0].findViewById(R.id.row).performClick());
-            until(()->{try{return findGoal(db,"four-spiritual").getInt("done")==1;}catch(Exception e){return false;}},"interactive widget bubble");
+            until(()->"true".equals(js("dialog.open && !!document.querySelector('#manualMinutes')")),"widget opens time entry");
+            tap("[data-add-minutes='60']");check(findGoal(db,"four-spiritual").getInt("done")==1,"time completes bubble");
             runOnMainSync(()->views[0].findViewById(R.id.tracker).performClick());
             until(()->"true".equals(js("(()=>{const p=document.querySelector('#trackerPanel');return view==='calendar' && !!p && p.getBoundingClientRect().top<innerHeight;})()")),"widget opens tracker");
             until(()->{
@@ -228,7 +260,7 @@ public final class Smoke extends Instrumentation {
             });
             until(()->{AtomicBoolean present=new AtomicBoolean();runOnMainSync(()->present.set(lock[0].findViewById(R.id.row)!=null&&lock[0].findViewById(R.id.openNote)==null));return present.get();},"goals-only widget has bubble and no note button");
             runOnMainSync(()->lock[0].findViewById(R.id.row).performClick());
-            until(()->{try{return findGoal(db,"four-spiritual").getInt("done")==0;}catch(Exception e){return false;}},"goals-only widget checks goal");
+            until(()->"true".equals(js("dialog.open && !!document.querySelector('#manualMinutes')")),"goals-only widget opens time entry");tap("#cancel");
             js("window.nativeEvent('route','notes')");
             check(js("document.querySelector('.active-reminders').innerText").contains("Test note"),"snoozed reminder visible above notes");
             runOnMainSync(()->{
@@ -238,6 +270,7 @@ public final class Smoke extends Instrumentation {
             });
             testGoalGroups(db);
             testTracker(db);
+            testInvestment(db);
             tap("#calendar");tap("[data-scale=year]");tap("[data-month]");tap("#calNow");tap("#addDate");
             js("document.querySelector('#eventName').value='Birthday';document.querySelector('#annual').checked=true");tap("#confirm");
             check(js("document.body.innerText").contains("Birthday"),"annual date shown");

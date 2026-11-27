@@ -63,12 +63,19 @@ public class Widget extends AppWidgetProvider {
         views.setContentDescription(R.id.tracker,description.toString());
         views.setOnClickPendingIntent(R.id.tracker,open(c,"tracker"));
     }
-    static android.graphics.Bitmap bubble(String color,boolean done){
+    static android.graphics.Bitmap bubble(String color,boolean done){return bubble(color,done,-1);}
+    static android.graphics.Bitmap bubble(String color,boolean done,int seconds){
         android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(64,64,android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);
         android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
         int ink=android.graphics.Color.parseColor(color);
         if(android.graphics.Color.luminance(ink)>.62f)ink=android.graphics.Color.rgb(android.graphics.Color.red(ink)*2/3,android.graphics.Color.green(ink)*2/3,android.graphics.Color.blue(ink)*2/3);
+        if(seconds>=0){
+            paint.setColor(ink);paint.setAlpha(35);canvas.drawCircle(32,32,27,paint);paint.setAlpha(255);
+            canvas.save();android.graphics.Path circle=new android.graphics.Path();circle.addCircle(32,32,27,android.graphics.Path.Direction.CW);canvas.clipPath(circle);
+            canvas.drawRect(5,59-54*Math.min(1f,seconds/3600f),59,59,paint);canvas.restore();
+            paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setStrokeWidth(3);canvas.drawCircle(32,32,27,paint);return bitmap;
+        }
         paint.setColor(ink);paint.setStyle(done?android.graphics.Paint.Style.FILL:android.graphics.Paint.Style.STROKE);paint.setStrokeWidth(4);
         canvas.drawCircle(32,32,27,paint);
         if(done){
@@ -120,15 +127,16 @@ public class Widget extends AppWidgetProvider {
                     label=Character.toUpperCase(area.charAt(0))+area.substring(1)+" · "+label;
                 }
                 row.setTextViewText(R.id.name,label);
-                row.setTextViewText(R.id.missed,g.getInt("missed")+" missed");
+                boolean timed=g.optBoolean("timed"),task=g.optBoolean("task");int seconds=g.optInt("seconds");
+                row.setTextViewText(R.id.missed,timed?(seconds/60)+" / 60 min":task?(done?"Completed":g.optString("deadline").isEmpty()?"Open":"Due "+g.optString("deadline")):g.getInt("missed")+" missed");
                 String period=g.getString("period");
                 String key=gid.startsWith("four-")?gid:period.equals("Weekly")?"weekly":period.equals("Daily")?"daily":"long";
-                row.setImageViewBitmap(R.id.bubble,bubble(colors.getOrDefault(key,"#245748"),done));
+                row.setImageViewBitmap(R.id.bubble,bubble(colors.getOrDefault(key,"#245748"),done,timed?seconds:-1));
                 String group=period.equals("Weekly")?"Weekly":period.equals("Daily")?"Daily":"Long-term";
-                row.setContentDescription(R.id.row,group+" goal, "+g.getString("name")+(done?", checked":", unchecked"));
+                row.setContentDescription(R.id.row,group+" goal, "+g.getString("name")+(timed?", "+seconds/60+" minutes recorded":done?", checked":", unchecked"));
                 Intent tap=new Intent(c,Widget.class).setAction("MARK").setData(Uri.parse("daybook://mark/"+gid+"/"+day+"/"+!done))
                     .putExtra("goal",gid).putExtra("day",day.toString()).putExtra("done",!done);
-                row.setOnClickPendingIntent(R.id.row,PendingIntent.getBroadcast(c,0,tap,FLAGS));v.addView(R.id.rows,row);
+                row.setOnClickPendingIntent(R.id.row,timed?open(c,"method/"+gid):PendingIntent.getBroadcast(c,0,tap,FLAGS));v.addView(R.id.rows,row);
             }
             m.updateAppWidget(id,v);
         } catch(JSONException e){ throw new IllegalStateException(e); }

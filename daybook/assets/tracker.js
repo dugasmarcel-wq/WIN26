@@ -8,6 +8,6 @@ function calendarScore(stats,period){
 }
 function trackerLegend(){
  return '<div class="tracker-legend"><span class="done">Done</span><span class="partial">Partial</span><span class="missed">Missed</span><span class="open">Open</span><span class="scheduled">Scheduled</span><span class="none">No goals due</span></div>'+
- '<details class="tracker-help"><summary>How it’s counted</summary><p>Completion is done ÷ (done + missed). Open check-ins are left out. Weekly goals count on Sunday, or on their last valid day if they end earlier.</p></details>';
+ '<details class="tracker-help"><summary>How it’s counted</summary><p>Completion is done ÷ (done + missed). Open check-ins are left out. Historical check-ins retain their original rules. Since time tracking began, this tracker excludes time-based categories and one-time tasks; their results appear separately below.</p></details>';
 }
 function jumpToTracker(){calDay=api('state').today;scale='month';returnCal=false;go('calendar');}

@@ -82,6 +82,10 @@ public final class Main extends Activity {
                     res=new Tracker(journal,first,year?first.plusYears(1):first.plusMonths(1),LocalDate.now()).json(year);
                     break;
                 }
+                case "methodLog":Investment.log(journal,a);Widget.refresh(Main.this);break;
+                case "methodStart":Investment.start(journal,a.getString("id"),a.getString("day"));Widget.refresh(Main.this);break;
+                case "methodStop":Investment.stop(journal,a.getString("id"),a.optBoolean("discard"));Widget.refresh(Main.this);break;
+                case "investmentStats":res=Investment.stats(journal,a.getString("from"),a.getString("until"));break;
                 case "removeGoal":journal.removeGoal(a.getString("id"));Widget.refresh(Main.this);break;
                 case "goalEdit":journal.editGoal(a);Widget.refresh(Main.this);break;
                 case "goalHistory":res=new GoalBook(journal).history(a.getString("id"),LocalDate.now());break;
@@ -104,7 +108,7 @@ public final class Main extends Activity {
                 case "removeEvent":journal.getWritableDatabase().delete("events","id=?",new String[]{a.getString("id")});break;
                 case "state": res=journal.snapshot().put("notifications",Reminders.allowed(Main.this)).put("exact",Reminders.exact(Main.this)).put("version",getPackageManager().getPackageInfo(getPackageName(),0).versionName);break;
                 case "goal":journal.addGoal(a.getString("name"),a.getString("period"),a.optString("from"),a.optString("through"));Widget.refresh(Main.this);break;
-                case "mark":journal.mark(a.getString("id"),a.getString("day"),a.getBoolean("done"));Widget.refresh(Main.this);break;
+                case "mark":res=journal.mark(a.getString("id"),a.getString("day"),a.getBoolean("done"));Widget.refresh(Main.this);break;
                 case "pin":journal.pin(a.getString("id"),a.getBoolean("on"));Widget.refresh(Main.this);break;
                 case "history":res=journal.rows("SELECT day FROM marks WHERE goal=? ORDER BY day DESC",a.getString("id"));break;
                 case "folder":journal.addFolder(a.getString("name"));break;
@@ -125,7 +129,7 @@ public final class Main extends Activity {
                 case "permissions":runOnUiThread(()->notificationSettings());break;
                 case "exact":if(Build.VERSION.SDK_INT>=31)runOnUiThread(()->startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName()))));break;
                 case "check":runOnUiThread(()->updates.check(true));break;
-                case "backup":runOnUiThread(()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"Daybook-"+LocalDate.now()+".json"),10));break;
+                case "backup":if(Investment.timer(journal).has("goal"))throw new IllegalArgumentException("Stop and save the stopwatch before backing up.");runOnUiThread(()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"Daybook-"+LocalDate.now()+".json"),10));break;
                 case "restore":runOnUiThread(()->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),11));break;
                 default:throw new Exception("Unknown command.");
                 }
@@ -138,7 +142,7 @@ public final class Main extends Activity {
         Uri uri=data.getData(); if(r==10){new Thread(()->{
             try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")){out.write(journal.backup().toString().getBytes(StandardCharsets.UTF_8));tell("Backup saved.");}
             catch(Exception e){tell("Backup failed: "+e.getMessage());}
-        }).start();} else if(r==11)new AlertDialog.Builder(this).setTitle("Replace this journal?").setMessage("Restoring replaces your current notes, goals and check-ins with the selected backup.").setNegativeButton("Cancel",null).setPositiveButton("Restore",(d,w)->new Thread(()->{
+        }).start();} else if(r==11)new AlertDialog.Builder(this).setTitle("Replace this journal?").setMessage("Restoring replaces your current notes, goals, check-ins and recorded time with the selected backup. Any running stopwatch is discarded.").setNegativeButton("Cancel",null).setPositiveButton("Restore",(d,w)->new Thread(()->{
             try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream buf=new ByteArrayOutputStream()){
                 byte[] bytes=new byte[8192];int n;while((n=in.read(bytes))!=-1){if(buf.size()+n>64*1024*1024)throw new IOException("Backup exceeds 64 MB.");buf.write(bytes,0,n);}
                 JSONArray old=journal.rows("SELECT id FROM notes WHERE alarm>0");

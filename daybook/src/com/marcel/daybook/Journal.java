@@ -17,7 +17,7 @@ final class Journal extends SQLiteOpenHelper {
         if (instance == null) instance = new Journal(c.getApplicationContext());
         return instance;
     }
-    private Journal(Context c) { super(c, "daybook.db", null, 4); }
+    private Journal(Context c) { super(c, "daybook.db", null, 5); }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE folders(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE)");
@@ -25,13 +25,14 @@ final class Journal extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE marks(goal TEXT REFERENCES goals(id),day TEXT NOT NULL,PRIMARY KEY(goal,day))");
         db.execSQL("CREATE TABLE notes(id TEXT PRIMARY KEY,folder TEXT NOT NULL REFERENCES folders(id),title TEXT NOT NULL,body TEXT NOT NULL,changed INTEGER NOT NULL,alarm INTEGER NOT NULL)");
         db.execSQL("INSERT INTO folders VALUES('daily','Daily'),('long','Long Term')");
-        upgradeCalendar(db);upgradeMethod(db);upgradeVisibility(db);
+        upgradeCalendar(db);upgradeMethod(db);upgradeVisibility(db);Investment.schema(db);Investment.initialize(db);
     }
-    @Override public void onUpgrade(SQLiteDatabase db,int old,int next) { if(old<2)upgradeCalendar(db);if(old<3)upgradeMethod(db);if(old<4)upgradeVisibility(db); }
+    @Override public void onUpgrade(SQLiteDatabase db,int old,int next) { if(old<2)upgradeCalendar(db);if(old<3)upgradeMethod(db);if(old<4)upgradeVisibility(db);if(old<5){Investment.schema(db);Investment.initialize(db);} }
     private void upgradeVisibility(SQLiteDatabase db){
         db.execSQL("CREATE TABLE goal_visibility(goal TEXT NOT NULL REFERENCES goals(id),day TEXT NOT NULL,hidden INTEGER NOT NULL CHECK(hidden IN (0,1)),PRIMARY KEY(goal,day))");
     }
     void removeGoal(String id){
+        if(Investment.area(id))throw new IllegalArgumentException("Change the aim instead of removing a permanent category.");
         getWritableDatabase().execSQL("INSERT OR REPLACE INTO goal_visibility VALUES(?,?,1)",new Object[]{id,LocalDate.now().toString()});
     }
     private void upgradeMethod(SQLiteDatabase db){
@@ -44,6 +45,18 @@ final class Journal extends SQLiteOpenHelper {
         String id=a.getString("id"),name=title(a.getString("name"));
         LocalDate today=LocalDate.now();GoalBook.Goal g=new GoalBook(this).goals.get(id);
         if(g==null)throw new IllegalArgumentException("Goal missing");
+        if(Investment.area(id)||g.task(today)){
+            if(g.hidden(today)&&!Investment.area(id))throw new IllegalArgumentException("This task was archived.");
+            SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+            try{
+                String start=g.at(today.toString()).getString("start");
+                db.execSQL("INSERT OR REPLACE INTO goal_edits VALUES(?,?,?,?,?)",new Object[]{id,today.toString(),name,start,"9999-12-31"});
+                if(Investment.area(id))db.execSQL("INSERT OR REPLACE INTO goal_visibility VALUES(?,?,0)",new Object[]{id,today.toString()});
+                else db.execSQL("UPDATE task_state SET deadline=? WHERE goal=?",new Object[]{Investment.deadline(a.optString("deadline")),id});
+                db.setTransactionSuccessful();
+            }finally{db.endTransaction();}
+            return;
+        }
         LocalDate start=LocalDate.parse(a.getString("start")),end=LocalDate.parse(a.getString("end"));
         if(!end.isAfter(start))throw new IllegalArgumentException("End date must be on or after the start date.");
         if(start.isBefore(g.first()))throw new IllegalArgumentException("A goal cannot start before it was created.");
@@ -100,6 +113,17 @@ final class Journal extends SQLiteOpenHelper {
         addGoal(name,period,"","");
     }
     void addGoal(String name,String period,String from,String through){
+        if(!period.equals("Daily")){
+            LocalDate now=LocalDate.now();String id=uuid(),label=title(name),deadline=Investment.deadline(through);
+            if(!deadline.isEmpty()&&deadline.compareTo(now.toString())<0)throw new IllegalArgumentException("Choose today or a later deadline.");
+            SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+            try{
+                db.execSQL("INSERT INTO goals VALUES(?,?,?,?,?,1)",new Object[]{id,label,now.toString(),end(now,period).toString(),period});
+                db.execSQL("INSERT INTO task_state VALUES(?,?,?,'','')",new Object[]{id,now.toString(),deadline});
+                db.setTransactionSuccessful();
+            }finally{db.endTransaction();}
+            return;
+        }
         LocalDate created=LocalDate.now(), start=from.isEmpty()?created:LocalDate.parse(from);
         LocalDate end=through.isEmpty()?end(start,period):LocalDate.parse(through).plusDays(1);
         if(start.isBefore(created)||!end.isAfter(start))throw new IllegalArgumentException("Choose an available date range.");
@@ -120,6 +144,15 @@ final class Journal extends SQLiteOpenHelper {
         try {
             GoalBook.Goal goal=new GoalBook(this).goals.get(id);
             if(goal==null||!goal.active(LocalDate.parse(today)))return false;
+            if(Investment.area(id)&&Investment.tracked(this,LocalDate.parse(today)))return false;
+            if(goal.task(LocalDate.parse(today))){
+                if(done&&goal.completed.isEmpty())db.execSQL("UPDATE task_state SET completed=?,completed_name=? WHERE goal=?",new Object[]{today,goal.at(today).getString("name"),id});
+                else if(!done&&!goal.completed.isEmpty()){
+                    if(!goal.completed.equals(today))return false;
+                    db.execSQL("UPDATE task_state SET completed='',completed_name='' WHERE goal=?",new Object[]{id});
+                }
+                db.setTransactionSuccessful();return true;
+            }
             String[] key={id,goal.key(LocalDate.parse(today))};
             if(done){
                 db.execSQL("INSERT OR IGNORE INTO marks VALUES(?,?)",key);
@@ -156,7 +189,7 @@ final class Journal extends SQLiteOpenHelper {
         LocalDate d=LocalDate.now();
         String dailyId=ensureDailyNote(d);
         return new JSONObject().put("dailyId",dailyId).put("today",d.toString()).put("goals",goals(d))
-            .put("colors",rows("SELECT * FROM colors")).put("events",rows("SELECT * FROM events ORDER BY day,name")).put("folders",rows("SELECT * FROM folders ORDER BY rowid"))
+            .put("trackingSince",Investment.epoch(this)).put("timer",Investment.timer(this)).put("colors",rows("SELECT * FROM colors")).put("events",rows("SELECT * FROM events ORDER BY day,name")).put("folders",rows("SELECT * FROM folders ORDER BY rowid"))
             .put("notes",rows("SELECT id,folder,title,substr(body,1,180) AS excerpt,changed,alarm,written,slot FROM notes ORDER BY changed DESC"));
     }
     JSONObject note(String id) throws JSONException {return rows("SELECT * FROM notes WHERE id=?",id).optJSONObject(0);}
@@ -179,7 +212,7 @@ final class Journal extends SQLiteOpenHelper {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {
             JSONObject result=new JSONObject().put("format","com.marcel.daybook/1");
-            for(String table:new String[]{"folders","goals","marks","notes","events","goal_edits","reflections","colors","weekly_taps","goal_visibility"}) result.put(table,rows("SELECT * FROM "+table+" ORDER BY rowid"));
+            for(String table:new String[]{"folders","goals","marks","notes","events","goal_edits","reflections","colors","weekly_taps","goal_visibility","tracking_epoch","method_time","task_state"}) result.put(table,rows("SELECT * FROM "+table+" ORDER BY rowid"));
             db.setTransactionSuccessful(); return result;
         } finally {db.endTransaction();}
     }
@@ -188,7 +221,7 @@ final class Journal extends SQLiteOpenHelper {
         if(!"com.marcel.daybook/1".equals(b.getString("format"))) throw new JSONException("Choose a Daybook backup.");
         SQLiteDatabase db=getWritableDatabase(); db.beginTransaction();
         try {
-            for(String t:new String[]{"goal_visibility","weekly_taps","colors","reflections","goal_edits","events","marks","notes","goals","folders"}) db.delete(t,null,null);
+            for(String t:new String[]{"method_timer","method_time","task_state","tracking_epoch","goal_visibility","weekly_taps","colors","reflections","goal_edits","events","marks","notes","goals","folders"}) db.delete(t,null,null);
             String[][] schema={{"folders","id","name"},{"goals","id","name","start","end","period","pinned"},{"marks","goal","day"},{"notes","id","folder","title","body","changed","alarm"}};
             for(String[] fields:schema) {
                 JSONArray list=b.getJSONArray(fields[0]);
@@ -209,11 +242,16 @@ final class Journal extends SQLiteOpenHelper {
                 JSONObject e=events.getJSONObject(i);
                 db.execSQL("INSERT INTO events VALUES(?,?,?,?)",new Object[]{e.getString("id"),title(e.getString("name")),LocalDate.parse(e.getString("day")).toString(),e.getInt("annual")});
             }
-            String[][] optional={{"goal_visibility","goal","day","hidden"},{"weekly_taps","goal","week","day"},{"goal_edits","goal","since","name","start","end"},{"reflections","goal","day","body"},{"colors","target","value"}};
+            String[][] optional={{"goal_visibility","goal","day","hidden"},{"weekly_taps","goal","week","day"},{"goal_edits","goal","since","name","start","end"},{"reflections","goal","day","body"},{"colors","target","value"},{"tracking_epoch","day"},{"method_time","goal","day","seconds"},{"task_state","goal","since","deadline","completed","completed_name"}};
             for(String[] t:optional)if(b.has(t[0]))for(JSONObject row:GoalBook.items(b.getJSONArray(t[0]))){
-                ContentValues v=new ContentValues();for(int i=1;i<t.length;i++)v.put(t[i],row.getString(t[i]));db.insertOrThrow(t[0],null,v);
+                ContentValues v=new ContentValues();for(int i=1;i<t.length;i++)v.put(t[i],row.getString(t[i]));if(t[0].equals("tracking_epoch"))LocalDate.parse(row.getString("day"));
+                if(t[0].equals("method_time")){if(!Investment.area(row.getString("goal")))throw new JSONException("Invalid time category.");LocalDate.parse(row.getString("day"));row.getInt("seconds");}
+                if(t[0].equals("task_state")){LocalDate.parse(row.getString("since"));Investment.deadline(row.getString("deadline"));Investment.deadline(row.getString("completed"));if(Investment.area(row.getString("goal")))throw new JSONException("Invalid task category.");}
+                db.insertOrThrow(t[0],null,v);
             }
-            fillDates(db);seedFour(db);
+            fillDates(db);seedFour(db);Investment.initialize(db);
+            if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM tracking_epoch",null)!=1)throw new JSONException("Invalid tracking start.");
+            if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM task_state t JOIN goals g ON t.goal=g.id WHERE g.period='Daily'",null)!=0)throw new JSONException("Invalid task type.");
             if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM folders WHERE id IN ('daily','long')",null)!=2) throw new JSONException("Missing default folders.");
             if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM marks JOIN goals ON goal=id WHERE day<start",null)!=0) throw new JSONException("Invalid check-in date.");
             db.setTransactionSuccessful();

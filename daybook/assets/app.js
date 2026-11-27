@@ -20,15 +20,15 @@ function render(){
  if(view==='calendar')calendarPage();else if(view==='today')today();else if(view==='notes')notes();else if(view==='edit')editor();else if(view==='goal')detail();else settings();applyColors();
 }
 const groups = [
- {id:'long', label:'Long-term', hint:'Check in daily'},
- {id:'weekly', label:'Weekly', hint:'Once each week'},
+ {id:'long', label:'Objectives', hint:'Larger ambitions'},
+ {id:'weekly', label:'Weekly', hint:'Persistent tasks'},
  {id:'daily', label:'Daily', hint:'Every day'}
 ];
 function groupOf(g){return g.period==='Daily'?'daily':g.period==='Weekly'?'weekly':'long';}
 function today(){
  const active=state.goals.filter(g=>g.active), ended=state.goals.filter(g=>!g.active&&!g.deleted&&!focusNames[g.id]);
  screen.innerHTML='<div class="day-heading"><div><p class="eyebrow">'+esc(pretty(state.today,{weekday:'long'}))+'</p><h1>'+esc(pretty(state.today,{month:'long',day:'numeric'}))+'</h1></div><div class="goal-actions"><button id="jumpTracker">Calendar</button><button class="primary" id="addGoal">Add goal</button></div></div>'+
- '<section class="four-section"><h2>The Method of 4</h2><div class="four-grid">'+areaIds.map(id=>state.goals.find(g=>g.id===id)).filter(Boolean).map(goalBubble).join('')+'</div></section>'+groups.map(group=>{
+ '<section class="four-section"><div class="method-head"><h2>The Method of 4</h2><span>'+methodToday()+'</span></div><div class="four-grid">'+areaIds.map(id=>state.goals.find(g=>g.id===id)).filter(Boolean).map(goalBubble).join('')+'</div></section>'+groups.map(group=>{
    const items=active.filter(g=>!focusNames[g.id]&&groupOf(g)===group.id);
    return '<section class="goal-group '+group.id+'" data-color-key="'+group.id+'"><div class="group-head"><h2>'+group.label+'</h2><span class="count">'+items.filter(g=>g.done).length+'/'+items.length+'</span><button class="inline-add" data-new="'+group.id+'" aria-label="Add '+group.label+' goal">+</button></div>'+
      (items.length?'<div class="bubbles">'+items.map(goalBubble).join('')+'</div>':'')+'</section>';
@@ -45,7 +45,8 @@ function today(){
  screen.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{
    const g=state.goals.find(g=>g.id===b.dataset.mark);
    if(!g.active)return;
-   api('mark',{id:g.id,day:state.today,done:!g.done});render();
+   if(g.timed){timeEntry(g.id);return;}
+   if(!api('mark',{id:g.id,day:state.today,done:!g.done})){msg('Historical completion is locked. Remove the task or create a new one.');return;}render();
  });
  screen.querySelectorAll('[data-menu-goal]').forEach(el=>bindGoalActions(el,el.dataset.menuGoal));
  screen.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>editGoal(state.goals.find(g=>g.id===b.dataset.restore)));
@@ -55,15 +56,15 @@ function goalBubble(g){
  const unit=groupOf(g)==='weekly'?'this week':'today';
  const area=focusNames[g.id],id=esc(g.id);
  if(g.deleted)return '<button class="empty-aim" data-color-key="'+id+'" data-restore="'+id+'"><b>'+esc(area)+'</b> Set aim</button>';
- const schedule=g.active?'':state.today<g.start?'Starts '+pretty(g.start,{month:'short',day:'numeric'}):'Ended';
- return '<div class="goal-tile" data-menu-goal="'+id+'" data-color-key="'+esc(area?g.id:groupOf(g))+'"><button class="goal-check" '+(g.active?'':'aria-disabled="true"')+' data-mark="'+id+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+(schedule||unit))+'"><span class="orb" aria-hidden="true">'+(g.done?'✓':'')+'</span><span class="goal-name">'+(area?'<b>'+area+'</b>':'')+'<span>'+esc(g.name)+'</span>'+(schedule?'<small>'+esc(schedule)+'</small>':'')+'</span></button><button class="goal-more" data-goal="'+id+'" aria-label="'+esc('Options for '+g.name)+'" aria-haspopup="dialog">⋯</button></div>';
+ const schedule=g.task?(g.done?'Completed':g.deadline?(g.deadline<state.today?'Overdue · ':'Due ')+pretty(g.deadline,{month:'short',day:'numeric'}):''):g.active?'':state.today<g.start?'Starts '+pretty(g.start,{month:'short',day:'numeric'}):'Ended';
+ return '<div class="goal-tile" data-menu-goal="'+id+'" data-color-key="'+esc(area?g.id:groupOf(g))+'"><button class="goal-check" '+(g.active?'':'aria-disabled="true"')+' data-mark="'+id+'" aria-pressed="'+Boolean(g.done)+'" aria-label="'+esc(g.name+', '+(g.timed?timeLabel(g.seconds)+' recorded':schedule||unit))+'"><span class="orb '+(g.timed?'time-orb':'')+'" aria-hidden="true">'+(g.timed?'<i data-seconds="'+g.seconds+'"></i>':g.done?'✓':'')+'</span><span class="goal-name">'+(area?'<b>'+area+'</b>':'')+'<span>'+esc(g.name)+'</span>'+(g.timed?'<small>'+esc(timeLabel(g.seconds))+' / 60m'+(g.seconds>3600?' · +'+timeLabel(g.seconds-3600):'')+(state.timer?.goal===g.id?' · Running':'')+'</small>':schedule?'<small>'+esc(schedule)+'</small>':'')+'</span></button><button class="goal-more" data-goal="'+id+'" aria-label="'+esc('Options for '+g.name)+'" aria-haspopup="dialog">⋯</button></div>';
 }
 function newGoal(group){
  modal('New goal','<label for="gname">Goal name</label><input id="gname" required maxlength="200" placeholder="Read for 20 minutes">'+
  '<label for="kind">Goal type</label><select id="kind">'+groups.map(g=>'<option value="'+g.id+'" '+(g.id===group?'selected':'')+'>'+g.label+'</option>').join('')+'</select>'+
- '<div id="horizon"><label for="period">Check in daily for</label><select id="period">'+['Week','Month','6 months','Year'].map(p=>'<option>'+p+'</option>').join('')+'</select></div><p class="meta" id="scheduleHint"></p>'+dateFields('','',state.today),
- 'Create goal',()=>{const kind=$('#kind').value;api('goal',{from:$('#validFrom').value,through:$('#validThrough').value,name:$('#gname').value,period:kind==='long'?$('#period').value:kind==='weekly'?'Weekly':'Daily'});render();});
- function schedule(){const k=$('#kind').value;$('#horizon').hidden=k!=='long';$('#scheduleHint').textContent=k==='weekly'?'Check in once each Monday–Sunday week.':k==='daily'?'A fresh check-in opens every day.':'';}
+ '<div id="taskDeadline"><label for="deadline">Deadline (optional)</label><input type="date" id="deadline" min="'+state.today+'"></div><p class="meta" id="scheduleHint"></p><div id="dailyDates">'+dateFields('','',state.today)+'</div>',
+ 'Create goal',()=>{const kind=$('#kind').value;api('goal',{from:kind==='daily'?$('#validFrom').value:'',through:kind==='daily'?$('#validThrough').value:$('#deadline').value,name:$('#gname').value,period:kind==='long'?'Year':kind==='weekly'?'Weekly':'Daily'});render();});
+ function schedule(){const k=$('#kind').value;$('#taskDeadline').hidden=k==='daily';$('#dailyDates').hidden=k!=='daily';$('#scheduleHint').textContent=k==='daily'?'A fresh check-in opens every day.':'Stays visible and checked until you remove it.';}
  $('#kind').onchange=schedule;schedule();
 }
 function showGoal(id){goalId=id;view='goal';setRoute('goal/'+id);render();window.scrollTo(0,0);}
@@ -71,13 +72,13 @@ function detail(){
  const g=state.goals.find(x=>x.id===goalId);if(!g){go('today');return;}
  const area=focusNames[g.id],weekly=g.period==='Weekly',day=state.today;
  const history=api('goalHistory',{id:g.id});
- const cells=history.map(row=>{const open=row.day===day&&!row.done;return '<div class="'+(row.done?'yes':open?'':'no')+'">'+esc(pretty(row.day,{month:'short',day:'numeric'}))+'<span>'+(row.done?'Done':open?'Open':'Missed')+'</span></div>';}).join('');
- const end=g.end==='9999-12-31'?'':' – '+pretty(dayAt(utc(g.end)-86400000),{dateStyle:'medium'});
+ const cells=history.map(row=>{const open=row.day===day&&!row.done;return '<div class="'+(row.done?'yes':open?'':'no')+'">'+esc(pretty(row.day,{month:'short',day:'numeric'}))+'<span>'+(row.timed?esc(timeLabel(row.seconds)+(row.legacyDone?' · Legacy check-in':'')):row.done?'Done':open?'Open':'Missed')+'</span></div>';}).join('');
+ const end=g.task?(g.deadline?' · Deadline '+pretty(g.deadline,{dateStyle:'medium'}):''):g.end==='9999-12-31'?'':' – '+pretty(dayAt(utc(g.end)-86400000),{dateStyle:'medium'});
  screen.innerHTML='<button class="back goal-back" id="back">‹ Today</button><section class="goal-detail" data-color-key="'+esc(area?g.id:groupOf(g))+'"><div class="section"><h1>'+esc(area||g.name)+'</h1><button class="edit-aim" id="editGoal">Edit '+(area?'aim':'goal')+'</button></div>'+(area?'<p class="aim-text">'+esc(g.name)+'</p>':'')+'<p class="detail">'+esc(pretty(g.start,{dateStyle:'medium'})+end)+'</p>'+
  (area?'<label for="reflection">'+esc(pretty(day,{weekday:'long'}))+' reflection</label><textarea id="reflection" placeholder="Write about '+esc(area.toLowerCase())+' today…"></textarea>':'')+'</section>'+
- '<div class="summary"><strong>'+g.missed+'</strong> missed '+(weekly?'weeks':'days')+' · '+history.filter(r=>r.done).length+' completed</div><div class="section"><h2>Check-in history</h2></div><div class="history">'+cells+'</div>';
+ (area?methodDetail(g):g.task?'<div class="summary">'+(g.completedOn?'Completed '+esc(pretty(g.completedOn,{dateStyle:'medium'})):'Not completed')+'</div>':'<div class="summary"><strong>'+g.missed+'</strong> missed '+(weekly?'weeks':'days')+' · '+history.filter(r=>r.done).length+' completed</div>')+'<div class="section"><h2>'+(area?'Investment history':'Check-in history')+'</h2></div><div class="history">'+cells+'</div>';
  $('#back').onclick=()=>go('today');$('#editGoal').onclick=()=>editGoal(g);
- if(area){const field=$('#reflection');field.value=api('reflections',{day}).find(r=>r.goal===g.id)?.body||'';field.oninput=()=>api('reflect',{id:g.id,day,body:field.value});}
+ if(area){$('#detailTime').onclick=()=>timeEntry(g.id);const field=$('#reflection');field.value=api('reflections',{day}).find(r=>r.goal===g.id)?.body||'';field.oninput=()=>api('reflect',{id:g.id,day,body:field.value});}
 }
 function reminderSection(){
  const alarms=state.notes.filter(n=>n.alarm>0).sort((a,b)=>a.alarm-b.alarm);
@@ -130,7 +131,7 @@ function settings(){screen.innerHTML='<h1>Settings</h1><div class="settings-list
 function setting(title,desc,label,id){return '<div class="card setting"><div><h3>'+title+'</h3><small class="meta">'+desc+'</small></div><button id="'+id+'">'+label+'</button></div>';}
 $('#today').onclick=()=>go('today');$('#notebook').onclick=()=>go('notes');$('#settings').onclick=()=>go('settings');
 window.nativeEvent=(type,value)=>{
- if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','calendar','settings'].includes(value)?value:'today');}
+ if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('method/')){go('today');timeEntry(value.slice(7));}else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','calendar','settings'].includes(value)?value:'today');}
  else if(type==='refresh'&&!dialog.open){if(view==='edit'){if(!draft){let n=api('note',{id:entry.id});if(n){entry.alarm=n.alarm;state.today=dayOfTime(Date.now());$('#noteCheckins').innerHTML=daySummary(n.written,true);applyColors();reminderLabel();}}}else render();}
 };
 window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){go(returnCal?'calendar':'notes');returnCal=false;return true;}if(view!=='today'){go('today');return true;}return false;};

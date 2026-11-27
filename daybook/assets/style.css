@@ -152,3 +152,9 @@ nav button.active{background:var(--tint);color:var(--accent);box-shadow:inset 0 
 #dayAgenda{margin:14px 0}#dayAgenda .agenda-head h2{font-size:22px}#dayAgenda h3{margin-top:8px}#dayAgenda>small{color:var(--muted)}
 
 .month-agenda{margin-top:12px}.month-agenda button{display:block;width:100%;min-height:38px;text-align:left;font-weight:400}.month-agenda b{margin-right:6px}
+
+.method-head{display:flex;align-items:center;justify-content:space-between;gap:6px}.method-head>span{font-size:12px;color:var(--muted);white-space:nowrap}
+.goal-check .time-orb{position:relative;overflow:hidden;background:var(--tint)!important}.time-orb i{position:absolute;bottom:0;left:0;right:0;background:var(--accent);opacity:.82}
+.quick-times,.timer-controls{display:flex;flex-wrap:wrap;gap:5px;align-items:center}.quick-times button{flex:1;background:var(--tint,#e6ede3);border:1px solid var(--line)}.timer-controls{margin-top:12px}.timer-controls b{flex:1}
+.time-total{font-size:15px}.time-total b{font-size:24px}.method-detail{padding:8px 0}.method-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.method-stats>div{padding:6px;border:1px solid var(--line);border-radius:6px}.method-stats small,.method-stats b{display:block}.method-stats small{font-size:11px;color:var(--muted)}.method-stats b{font-size:16px;color:var(--accent)}
+.dated-investment,.dated-achievements,.investment-period{margin:8px 0;padding:8px;border:1px solid var(--line);border-radius:8px}.dated-investment>div{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:4px 0}.dated-investment>div strong{white-space:nowrap;color:var(--accent)}.dated-achievements>div{font-size:13px;padding:4px 0}.calendar-note{white-space:pre-wrap;overflow-wrap:anywhere;padding:8px;margin:0 0 8px;background:var(--tint,#f4f1e8);border-radius:6px}

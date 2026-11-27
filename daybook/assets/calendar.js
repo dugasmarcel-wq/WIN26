@@ -4,8 +4,8 @@ let calDay='',scale='month',returnCal=false;
 const dayOfTime=t=>{const d=new Date(t);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const occasions=d=>state.events.filter(e=>e.day===d||(e.annual&&d>=e.day&&d.slice(5)===e.day.slice(5)));
 function daySummary(d,compact=false){
- const dated=api('dayGoals',{day:d}),goals=dated.filter(g=>g.due);
- const early=dated.filter(g=>g.tapped&&!g.due);
+ const dated=api('dayGoals',{day:d}),goals=dated.filter(g=>g.due&&!g.timed);
+ const early=dated.filter(g=>g.tapped&&!g.due&&!g.task&&!g.achieved);
  goals.sort((a,b)=>(areaIds.includes(a.id)?areaIds.indexOf(a.id):4)-(areaIds.includes(b.id)?areaIds.indexOf(b.id):4));
  const done=goals.filter(g=>g.done&&d<=state.today).length;
  const chips=goals.concat(early).map(g=>{
@@ -14,7 +14,7 @@ function daySummary(d,compact=false){
    const earlyLabel=g.tapped&&!g.due?'Weekly · ':'';
    return '<span class="result-chip" data-status="'+status+'" data-color-key="'+esc(focusNames[g.id]?g.id:groupOf(g))+'" aria-label="'+esc(label+', '+g.name+', '+status)+'" title="'+esc(g.name+' · '+status)+'"><i aria-hidden="true">'+(status==='Done'?'✓':status==='Missed'?'×':'')+'</i>'+esc(earlyLabel+(compact?label:(focusNames[g.id]?label+' · ':'')+g.name))+'</span>';
  }).join('');
- return '<section class="result-strip '+(compact?'compact':'')+'" aria-label="Check-ins for '+esc(d)+'"><b>Check-ins <span title="Completed out of goals due">'+done+'/'+goals.length+'</span></b><div class="result-chips">'+(chips||'<small>No goals due</small>')+'</div></section>';
+ return '<section class="result-strip '+(compact?'compact':'')+'" aria-label="Check-ins for '+esc(d)+'"><b>Check-ins <span title="Completed out of goals due">'+done+'/'+goals.length+'</span></b><div class="result-chips">'+(chips||'<small>No goals due</small>')+'</div></section>'+investmentDay(d,dated,compact);
 }
 function calendarPage(){
  if(!calDay)calDay=state.today;
@@ -31,7 +31,9 @@ function calendarPage(){
  const content=$('#calContent');
  const start=iso(y,scale==='year'?0:m,1);
  const stats=api('tracker',{start,year:scale==='year'});
- content.innerHTML='<section id="trackerPanel" aria-label="Completion tracker">'+calendarScore(stats,scale==='year'?'Year':'Month')+'<div id="trackerGrid"></div><div id="chartKey"></div></section><section id="dayAgenda"></section>';
+ content.innerHTML='<section id="trackerPanel" aria-label="Completion tracker">'+calendarScore(stats,scale==='year'?'Year':'Month')+'<div id="trackerGrid"></div><div id="chartKey"></div></section><section class="investment-period"><div class="section"><h2>Personal investment</h2><select id="investmentRange" aria-label="Investment statistics range">'+['day','week','month','year','life'].map(k=>'<option value="'+k+'" '+(k===scale?'selected':'')+'>'+({day:'Day',week:'Week',month:'Month',year:'Year',life:'Lifetime'}[k])+'</option>').join('')+'</select></div><div id="investmentTotals"></div></section><section id="dayAgenda"></section>';
+ const paintInvestment=()=>{const kind=$('#investmentRange').value,day=calDay,weekStart=dayAt(utc(day)-((new Date(utc(day)).getUTCDay()+6)%7)*86400000);const ranges={day:[day,dayAt(utc(day)+86400000)],week:[weekStart,dayAt(utc(weekStart)+7*86400000)],month:[iso(y,m,1),iso(y,m+1,1)],year:[iso(y,0,1),iso(y+1,0,1)],life:['0001-01-01',dayAt(utc(state.today)+86400000)]};$('#investmentTotals').innerHTML=investmentPeriod(...ranges[kind]);applyColors();};
+ $('#investmentRange').onchange=paintInvestment;paintInvestment();
  const grid=$('#trackerGrid');
  const chooseMonth=b=>{calDay=b.dataset.month;scale='month';paint();};
  const chooseDay=d=>{calDay=d;scale='day';paint();};
@@ -45,9 +47,9 @@ function calendarPage(){
    const marked=new Set(state.notes.flatMap(n=>n.alarm?[n.written,dayOfTime(n.alarm)]:[n.written]));
    grid.className='month-days';
    grid.innerHTML=['M','T','W','T','F','S','S'].map(k=>'<small>'+k+'</small>').join('')+'<i></i>'.repeat((new Date(utc(start)).getUTCDay()+6)%7)+stats.buckets.map(n=>{
-     const d=n.date,planned=schedule[d]?.due||0,entry=marked.has(d)||occasions(d).length>0;
+     const d=n.date,planned=schedule[d]?.due||0,entry=marked.has(d)||occasions(d).length>0||schedule[d]?.seconds>0||schedule[d]?.achievements>0||schedule[d]?.removed>0||schedule[d]?.taps>0;
      const status=d>state.today&&planned?'scheduled':n.status;
-     const label=pretty(d,{dateStyle:'full'})+', '+(d>state.today?planned+' goals scheduled':trackerCaption(n))+(entry?', journal or event':'');
+     const label=pretty(d,{dateStyle:'full'})+', '+(d>state.today?planned+' goals scheduled':trackerCaption(n))+(entry?', journal, investment, achievement or event':'');
      return '<button class="track-day '+status+'" aria-pressed="'+(d===calDay)+'" data-date="'+d+'" aria-label="'+esc(label)+'"><i></i>'+Number(d.slice(8))+(entry?'<sup aria-hidden="true">•</sup>':'')+'</button>';
    }).join('');
    grid.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>chooseDay(b.dataset.date));
@@ -67,7 +69,7 @@ function calendarPage(){
  agenda.innerHTML='<div class="agenda-head"><h2>'+esc(pretty(d,{weekday:'short',month:'short',day:'numeric'}))+'</h2></div><p id="dayCounts">'+(d>state.today?'Scheduled goals':trackerCaption(counts))+'</p>';
  const noteRows=state.notes.filter(n=>n.written===d),alarms=state.notes.filter(n=>n.alarm&&dayOfTime(n.alarm)===d);
  const noteLink=(n,label)=>'<button class="item card" data-open="'+esc(n.id)+'">'+esc(label)+'</button>';
- agenda.insertAdjacentHTML('beforeend','<h3>Journal</h3>'+(noteRows.map(n=>noteLink(n,n.title||'Untitled note')).join('')||'<p class="meta">No notes for this date.</p>')+daySummary(d)+reflectionList(d)+'<div class="section"><h2>Important dates</h2><button id="addDate">Add date</button></div>'+
+ agenda.insertAdjacentHTML('beforeend','<h3>Journal</h3>'+(noteRows.map(n=>noteLink(n,n.title||'Untitled note')+(n.id==='day-'+d?'<p class="calendar-note">'+esc(api('note',{id:n.id})?.body||'')+'</p>':'')).join('')||'<p class="meta">No notes for this date.</p>')+daySummary(d)+reflectionList(d)+'<div class="section"><h2>Important dates</h2><button id="addDate">Add date</button></div>'+
  occasions(d).map(e=>'<div class="card setting"><span>'+esc(e.name)+(e.annual?' · Yearly':'')+'</span><button data-remove="'+esc(e.id)+'">Remove</button></div>').join('')+
  '<h2>Reminders</h2>'+(alarms.map(n=>noteLink(n,(n.title||'Untitled note')+' · '+stamp(n.alarm))).join('')||'<small>No scheduled reminders</small>'));
  content.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{returnCal=true;openNote(b.dataset.open);});
@@ -98,3 +100,17 @@ function bindNoteRows(){
  });
 }
 $('#calendar').onclick=()=>{returnCal=false;go('calendar');};
+
+function investmentDay(d,dated,compact){
+ const four=dated.filter(g=>g.timed&&d<=state.today),tasks=dated.filter(g=>g.achieved),removed=dated.filter(g=>g.task&&g.deleted&&g.archivedOn===d&&!g.completedOn);
+ const section=(title,items)=>items.length?'<section class="dated-achievements"><b>'+title+'</b>'+items.map(g=>'<div>'+esc(g.completedName||g.name)+'</div>').join('')+'</section>':'';
+ const times=four.length?'<section class="dated-investment"><b>The Method of 4 · '+esc(timeLabel(four.reduce((n,g)=>n+g.seconds,0)))+'</b>'+four.map(g=>'<div data-color-key="'+esc(g.id)+'"><span>'+esc(focusNames[g.id]+(compact?'':' · '+g.name))+'</span><strong>'+esc(timeLabel(g.seconds))+(g.legacyDone?' · legacy check-in':'')+'</strong></div>').join('')+'</section>':'';
+ return times+section('Weekly tasks completed',tasks.filter(g=>g.period==='Weekly'))+section('Objectives achieved',tasks.filter(g=>g.period!=='Weekly'))+section('Removed unfinished',removed);
+}
+function investmentPeriod(from,until){
+ const n=api('investmentStats',{from,until}),den=n.dailyDone+n.dailyMissed;
+ return '<p><b>'+esc(timeLabel(n.total))+'</b> / '+esc(timeLabel(n.target))+' · '+esc(timeLabel(n.extra))+' extra</p>'+
+ '<div class="method-stats">'+areaIds.map(id=>'<div data-color-key="'+esc(id)+'"><small>'+esc(focusNames[id])+'</small><b>'+esc(timeLabel(n.areas[id]))+'</b></div>').join('')+'</div>'+
+ '<p class="meta">Balanced investment: '+esc(timeLabel(n.balanced))+' / '+esc(timeLabel(n.target))+'</p>'+
+ '<div class="method-stats"><div><small>Daily adherence</small><b>'+(den?Math.round(n.dailyDone*100/den)+'%':'—')+'</b></div><div><small>Weekly tasks completed</small><b>'+n.weekly+'</b></div><div><small>Objectives achieved</small><b>'+n.objectives+'</b></div></div>';
+}

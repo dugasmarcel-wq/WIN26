@@ -39,8 +39,8 @@ final class Tracker {
             GoalBook book=new GoalBook(journal);
             for(LocalDate d=start;d.isBefore(cutoff);d=d.plusDays(1)){
                 Counts n=on(d);
-                for(GoalBook.Goal g:book.goals.values())if(g.due(d)){
-                    if(g.marks.contains(g.key(d)))n.done++;else if(d.equals(today))n.open++;else n.missed++;
+                for(GoalBook.Goal g:book.goals.values())if(g.due(d)&&!g.timed(d)){
+                    if(g.done(d))n.done++;else if(d.equals(today))n.open++;else n.missed++;
                 }
             }
         }catch(JSONException e){throw new IllegalStateException(e);}
