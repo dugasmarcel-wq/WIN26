@@ -14,7 +14,7 @@ function daySummary(d,compact=false){
    const earlyLabel=g.tapped&&!g.due?'Weekly · ':'';
    return '<span class="result-chip" data-status="'+status+'" data-color-key="'+esc(focusNames[g.id]?g.id:groupOf(g))+'" aria-label="'+esc(label+', '+g.name+', '+status)+'" title="'+esc(g.name+' · '+status)+'"><i aria-hidden="true">'+(status==='Done'?'✓':status==='Missed'?'×':'')+'</i>'+esc(earlyLabel+(compact?label:(focusNames[g.id]?label+' · ':'')+g.name))+'</span>';
  }).join('');
- return '<section class="result-strip '+(compact?'compact':'')+'" aria-label="Check-ins for '+esc(d)+'"><b>Check-ins <span title="Completed out of goals due">'+done+'/'+goals.length+'</span></b><div class="result-chips">'+(chips||'<small>No goals due</small>')+'</div></section>'+investmentDay(d,dated,compact);
+ return '<section class="result-strip '+(compact?'compact':'')+'" aria-label="Check-ins for '+esc(d)+'"><b>Check-ins <span title="Completed out of goals due">'+done+'/'+goals.length+'</span></b><div class="result-chips">'+(chips||(!compact?'<small>No goals due</small>':''))+(compact?investmentDay(d,dated,true):'')+'</div></section>'+(compact?'':investmentDay(d,dated,false));
 }
 function calendarPage(){
  if(!calDay)calDay=state.today;
@@ -103,6 +103,10 @@ $('#calendar').onclick=()=>{returnCal=false;go('calendar');};
 
 function investmentDay(d,dated,compact){
  const four=dated.filter(g=>g.timed&&d<=state.today),tasks=dated.filter(g=>g.achieved),removed=dated.filter(g=>g.task&&g.deleted&&g.archivedOn===d&&!g.completedOn);
+ if(compact){
+   return four.map(g=>'<span class="result-chip" data-color-key="'+esc(g.id)+'">'+esc(focusNames[g.id])+' · '+esc(timeLabel(g.seconds))+(g.legacyDone?' · legacy check-in':'')+'</span>').join('')+
+     tasks.concat(removed).map(g=>'<span class="result-chip">'+(g.achieved?'✓ ':'Removed · ')+esc(g.completedName||g.name)+'</span>').join('');
+ }
  const section=(title,items)=>items.length?'<section class="dated-achievements"><b>'+title+'</b>'+items.map(g=>'<div>'+esc(g.completedName||g.name)+'</div>').join('')+'</section>':'';
  const times=four.length?'<section class="dated-investment"><b>The Method of 4 · '+esc(timeLabel(four.reduce((n,g)=>n+g.seconds,0)))+'</b>'+four.map(g=>'<div data-color-key="'+esc(g.id)+'"><span>'+esc(focusNames[g.id]+(compact?'':' · '+g.name))+'</span><strong>'+esc(timeLabel(g.seconds))+(g.legacyDone?' · legacy check-in':'')+'</strong></div>').join('')+'</section>':'';
  return times+section('Weekly tasks completed',tasks.filter(g=>g.period==='Weekly'))+section('Objectives achieved',tasks.filter(g=>g.period!=='Weekly'))+section('Removed unfinished',removed);

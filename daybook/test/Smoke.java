@@ -194,6 +194,39 @@ public final class Smoke extends Instrumentation {
         for(int i=0;i<goals.length();i++)if(id.equals(goals.getJSONObject(i).getString("id")))return goals.getJSONObject(i);
         throw new AssertionError(id);
     }
+    void testWidgetPanel(Context c,Journal db,AppWidgetHostView view)throws Exception{
+        for(int i=0;i<12;i++)db.addGoal("Widget responsibility "+i,"Daily");
+        Widget.refresh(c);
+        int count=WidgetTasks.active(db.goals(LocalDate.now())).size();
+        until(()->{
+            AtomicBoolean ok=new AtomicBoolean();
+            runOnMainSync(()->{android.widget.GridView grid=view.findViewById(R.id.tasks);
+                ok.set(grid!=null&&grid.getCount()==count&&grid.getChildCount()>0);
+            });return ok.get();
+        },"one widget contains the full responsibility list");
+        runOnMainSync(()->{
+            android.widget.GridView grid=view.findViewById(R.id.tasks);
+            grid.setSelection(count-1);
+        });
+        until(()->{AtomicBoolean scrolled=new AtomicBoolean();runOnMainSync(()->{
+            android.widget.GridView grid=view.findViewById(R.id.tasks);scrolled.set(grid.getLastVisiblePosition()==count-1);
+        });return scrolled.get();},"widget scroll reaches the final responsibility");
+        AtomicReference<String> label=new AtomicReference<>();
+        runOnMainSync(()->{
+            android.widget.GridView grid=view.findViewById(R.id.tasks);
+            for(int i=0;i<grid.getChildCount();i++){
+                View item=grid.getChildAt(i);
+                String name=((android.widget.TextView)item.findViewById(R.id.taskName)).getText().toString();
+                if(name.startsWith("Widget responsibility ")){
+                    label.set(name);int position=grid.getFirstVisiblePosition()+i;
+                    grid.performItemClick(item,position,grid.getItemIdAtPosition(position));break;
+                }
+            }
+        });
+        check(label.get()!=null,"scrolled responsibility present");
+        String id=db.rows("SELECT id FROM goals WHERE name=?",label.get()).getJSONObject(0).getString("id");
+        until(()->{try{return findGoal(db,id).getInt("done")==1;}catch(Exception e){return false;}},"scrollable widget checks the intended goal");
+    }
     @Override public void onStart(){
         Bundle result=new Bundle();
         try {
@@ -251,6 +284,7 @@ public final class Smoke extends Instrumentation {
             },"matching widget and app rates");
             runOnMainSync(()->views[0].findViewById(R.id.openNote).performClick());
             until(()->"true".equals(js("document.querySelector('#ntitle')?.value===api('note',{id:state.dailyId}).title")),"widget opens dated note");
+            testWidgetPanel(c,db,views[0]);
             int lockId=host.allocateAppWidgetId();
             check(m.bindAppWidgetIdIfAllowed(lockId,new ComponentName(c,LockGoals.class)),"bind goals-only provider");
             AppWidgetHostView[] lock=new AppWidgetHostView[1];

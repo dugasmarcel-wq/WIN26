@@ -8,7 +8,8 @@ import android.view.View;
 import android.widget.RemoteViews;
 import org.json.*;
 import java.time.LocalDate;
-import java.util.ArrayList;
+import java.util.*;
+import android.os.Build;
 
 public class Widget extends AppWidgetProvider {
     static final int FLAGS=PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE;
@@ -23,15 +24,10 @@ public class Widget extends AppWidgetProvider {
             for(int id:m.getAppWidgetIds(new ComponentName(c,provider))) draw(c,m,id);
     }
     @Override public void onUpdate(Context c,AppWidgetManager m,int[] ids) {for(int id:ids) draw(c,m,id);}
-    @Override public void onDeleted(Context c,int[] ids) {for(int id:ids)c.getSharedPreferences("widget",0).edit().remove("page"+id).apply();}
     @Override public void onAppWidgetOptionsChanged(Context c,AppWidgetManager m,int id,android.os.Bundle options) {draw(c,m,id);}
     @Override public void onReceive(Context c,Intent i) {
         super.onReceive(c,i);
-        if("PAGE".equals(i.getAction())) {
-            int id=i.getIntExtra("widget",0);
-            c.getSharedPreferences("widget",0).edit().putInt("page"+id,i.getIntExtra("page",0)).apply();
-            draw(c,AppWidgetManager.getInstance(c),id);
-        } else if("MARK".equals(i.getAction())) {
+        if("MARK".equals(i.getAction())&&i.hasExtra("goal")&&i.hasExtra("day")&&i.hasExtra("done")) {
             Journal.get(c).mark(i.getStringExtra("goal"),i.getStringExtra("day"),i.getBooleanExtra("done",false));refresh(c);
         }
     }
@@ -83,62 +79,76 @@ public class Widget extends AppWidgetProvider {
             android.graphics.Path mark=new android.graphics.Path();mark.moveTo(18,33);mark.lineTo(28,43);mark.lineTo(46,22);canvas.drawPath(mark,paint);
         }return bitmap;
     }
-    static void draw(Context c,AppWidgetManager m,int id) {
-        try {
-            AppWidgetProviderInfo info=m.getAppWidgetInfo(id);
-            boolean locked=(info!=null && info.provider.equals(new ComponentName(c,LockGoals.class))) ||
-                m.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY)==AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD;
-            RemoteViews v=new RemoteViews(c.getPackageName(),locked?R.layout.lock_goals:R.layout.widget);
-            if(!locked)v.setOnClickPendingIntent(R.id.heading,open(c,"today"));
-            if(!locked)v.setOnClickPendingIntent(R.id.openNote,open(c,"daily-note"));
-            v.removeAllViews(R.id.rows);
-            LocalDate day=LocalDate.now(); JSONArray data=Journal.get(c).goals(day);
-            if(!locked)drawTracker(c,v,day);
-            ArrayList<JSONObject> goals=new ArrayList<>();
-            for(int i=0;i<data.length();i++) {
-                JSONObject g=data.getJSONObject(i);if(g.getBoolean("active"))goals.add(g);
+    static Map<String,String> colors(Journal journal)throws JSONException{
+        Map<String,String> colors=new HashMap<>();
+        String[][] defaults={{"four-spiritual","#79569b"},{"four-financial","#32725c"},{"four-physical","#a24d38"},{"four-mental","#326998"},{"long","#775286"},{"weekly","#396b94"},{"daily","#28755c"}};
+        for(String[] pair:defaults)colors.put(pair[0],pair[1]);
+        for(JSONObject option:GoalBook.items(journal.rows("SELECT * FROM colors")))
+            if(option.optString("value").matches("#[0-9a-fA-F]{6}"))colors.put(option.getString("target"),option.getString("value"));
+        return colors;
+    }
+    static void draw(Context c,AppWidgetManager manager,int id){
+        try{
+            AppWidgetProviderInfo info=manager.getAppWidgetInfo(id);
+            android.os.Bundle options=manager.getAppWidgetOptions(id);
+            boolean locked=(info!=null&&info.provider.equals(new ComponentName(c,LockGoals.class)))||
+                options.getInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY)==AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD;
+            LocalDate day=LocalDate.now();
+            Journal journal=Journal.get(c);
+            JSONArray data=journal.goals(day);
+            Map<String,String> colors=colors(journal);
+            RemoteViews panel=new RemoteViews(c.getPackageName(),locked?R.layout.lock_goals:R.layout.widget);
+            String date=day.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",Locale.getDefault()));
+            panel.setTextViewText(R.id.heading,date);
+            if(!locked){
+                panel.setOnClickPendingIntent(R.id.heading,open(c,"today"));
+                panel.setOnClickPendingIntent(R.id.openNote,open(c,"daily-note"));
+                drawTracker(c,panel,day);
             }
-            goals.sort((a,b)->Boolean.compare(!a.optString("id").startsWith("four-"),!b.optString("id").startsWith("four-")));
-            int height=m.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,220);
-            int count=Math.max(1,Math.min(16,(height-(locked?54:90))/44));
-            int pages=Math.max(1,(goals.size()+count-1)/count);
-            int page=Math.floorMod(c.getSharedPreferences("widget",0).getInt("page"+id,0),pages);
-            v.setViewVisibility(R.id.next,pages>1?View.VISIBLE:View.GONE);
-            if(pages>1) {
-                v.setTextViewText(R.id.next,(page+1)+"/"+pages+"  ›");
-                Intent next=new Intent(c,Widget.class).setAction("PAGE").setData(Uri.parse("daybook://page/"+id+"/"+page)).putExtra("widget",id).putExtra("page",(page+1)%pages);
-                v.setOnClickPendingIntent(R.id.next,PendingIntent.getBroadcast(c,0,next,FLAGS));
-            }
-            if(goals.isEmpty()){
-                RemoteViews row=new RemoteViews(c.getPackageName(),R.layout.goal);
-                row.setViewVisibility(R.id.bubble,View.GONE);row.setTextViewText(R.id.name,"Choose goals in Daybook");
-                if(!locked)row.setOnClickPendingIntent(R.id.row,open(c,"today"));v.addView(R.id.rows,row);
-            }
-            java.util.Map<String,String> colors=new java.util.HashMap<>();
-            String[][] defaults={{"four-spiritual","#79569b"},{"four-financial","#32725c"},{"four-physical","#a24d38"},{"four-mental","#326998"},{"long","#775286"},{"weekly","#396b94"},{"daily","#28755c"}};
-            for(String[] pair:defaults)colors.put(pair[0],pair[1]);
-            for(JSONObject option:GoalBook.items(Journal.get(c).rows("SELECT * FROM colors")))if(option.optString("value").matches("#[0-9a-fA-F]{6}"))colors.put(option.getString("target"),option.getString("value"));
-            for(int n=page*count;n<Math.min((page+1)*count,goals.size());n++) {
-                JSONObject g=goals.get(n);boolean done=g.getInt("done")==1;
-                String gid=g.getString("id");RemoteViews row=new RemoteViews(c.getPackageName(),R.layout.goal);
-                String label=g.getString("name");
-                if(gid.startsWith("four-")){
-                    String area=gid.substring(5);
-                    label=Character.toUpperCase(area.charAt(0))+area.substring(1)+" · "+label;
+            panel.removeAllViews(R.id.rows);
+            Map<String,JSONObject> areas=new HashMap<>();
+            for(JSONObject goal:GoalBook.items(data))if(goal.optBoolean("active")&&Investment.area(goal.optString("id")))areas.put(goal.getString("id"),goal);
+            String timer=Investment.timer(journal).optString("goal");
+            String[][] pairs={{"four-spiritual","four-financial"},{"four-physical","four-mental"}};
+            for(String[] pair:pairs){
+                RemoteViews line=new RemoteViews(c.getPackageName(),R.layout.area_pair);
+                for(int column=0;column<pair.length;column++){
+                    String gid=pair[column];JSONObject goal=areas.get(gid);if(goal==null)continue;
+                    String name=gid.substring(5),area=Character.toUpperCase(name.charAt(0))+name.substring(1);
+                    int seconds=goal.optInt("seconds");
+                    RemoteViews cell=new RemoteViews(c.getPackageName(),R.layout.goal);
+                    String progress=timer.equals(gid)?"Timing":seconds/60+"/60m";
+                    cell.setTextViewText(R.id.name,area+" · "+progress);
+                    cell.setTextViewText(R.id.progressLabel,goal.optString("name"));
+                    cell.setImageViewBitmap(R.id.bubble,bubble(colors.get(gid),seconds>=3600,seconds));
+                    cell.setContentDescription(R.id.row,area+", "+goal.optString("name")+", "+seconds/60+" minutes recorded. Tap to log time.");
+                    cell.setOnClickPendingIntent(R.id.row,open(c,"method/"+gid));
+                    line.addView(column==0?R.id.firstArea:R.id.secondArea,cell);
                 }
-                row.setTextViewText(R.id.name,label);
-                boolean timed=g.optBoolean("timed"),task=g.optBoolean("task");int seconds=g.optInt("seconds");
-                row.setTextViewText(R.id.missed,timed?(seconds/60)+" / 60 min":task?(done?"Completed":g.optString("deadline").isEmpty()?"Open":"Due "+g.optString("deadline")):g.getInt("missed")+" missed");
-                String period=g.getString("period");
-                String key=gid.startsWith("four-")?gid:period.equals("Weekly")?"weekly":period.equals("Daily")?"daily":"long";
-                row.setImageViewBitmap(R.id.bubble,bubble(colors.getOrDefault(key,"#245748"),done,timed?seconds:-1));
-                String group=period.equals("Weekly")?"Weekly":period.equals("Daily")?"Daily":"Long-term";
-                row.setContentDescription(R.id.row,group+" goal, "+g.getString("name")+(timed?", "+seconds/60+" minutes recorded":done?", checked":", unchecked"));
-                Intent tap=new Intent(c,Widget.class).setAction("MARK").setData(Uri.parse("daybook://mark/"+gid+"/"+day+"/"+!done))
-                    .putExtra("goal",gid).putExtra("day",day.toString()).putExtra("done",!done);
-                row.setOnClickPendingIntent(R.id.row,timed?open(c,"method/"+gid):PendingIntent.getBroadcast(c,0,tap,FLAGS));v.addView(R.id.rows,row);
+                panel.addView(R.id.rows,line);
             }
-            m.updateAppWidget(id,v);
-        } catch(JSONException e){ throw new IllegalStateException(e); }
+            List<JSONObject> tasks=WidgetTasks.active(data);
+            int completed=0;for(JSONObject task:tasks)completed+=task.optInt("done");
+            panel.setTextViewText(R.id.taskHeading,"Responsibilities · "+completed+"/"+tasks.size());
+            panel.setViewVisibility(R.id.taskHeading,tasks.isEmpty()?View.GONE:View.VISIBLE);
+            panel.setViewVisibility(R.id.tasks,tasks.isEmpty()?View.GONE:View.VISIBLE);
+            Intent template=new Intent(c,Widget.class).setAction("MARK").setData(Uri.parse("daybook://tasks/"+id));
+            int flags=PendingIntent.FLAG_UPDATE_CURRENT;
+            if(Build.VERSION.SDK_INT>=31)flags|=PendingIntent.FLAG_MUTABLE;
+            panel.setPendingIntentTemplate(R.id.tasks,PendingIntent.getBroadcast(c,id,template,flags));
+            if(Build.VERSION.SDK_INT>=31){
+                RemoteViews.RemoteCollectionItems.Builder items=new RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(1);
+                for(int i=0;i<tasks.size();i++)items.addItem(i,WidgetTasks.cell(c,tasks.get(i),day,colors));
+                panel.setRemoteAdapter(R.id.tasks,items.build());
+                int room=options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,240)-(locked?148:176);
+                int height=Math.max(38,Math.min(Math.max(76,room),((tasks.size()+1)/2)*39));
+                panel.setViewLayoutHeight(R.id.tasks,height,android.util.TypedValue.COMPLEX_UNIT_DIP);
+            }else{
+                Intent adapter=new Intent(c,WidgetTasks.class).setData(Uri.parse("daybook://adapter/"+id));
+                panel.setRemoteAdapter(R.id.tasks,adapter);
+            }
+            manager.updateAppWidget(id,panel);
+            if(Build.VERSION.SDK_INT<31)manager.notifyAppWidgetViewDataChanged(id,R.id.tasks);
+        }catch(JSONException e){throw new IllegalStateException(e);}
     }
 }
