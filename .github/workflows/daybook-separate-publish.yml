@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Obtain previous signed release
         if: ${{ hashFiles('daybook/separate-release/bootstrap.delta.b64') != '' }}
-        run: curl -fsSL --retry 5 --retry-all-errors https://github.com/dugasmarcel-wq/WIN26/releases/download/win26-update-100141/Dayboox-12.apk -o "$RUNNER_TEMP/daybook-base.apk"
+        run: curl -fsSL --retry 5 --retry-all-errors https://github.com/dugasmarcel-wq/WIN26/releases/download/win26-update-100141/Dayboox-13.apk -o "$RUNNER_TEMP/daybook-base.apk"
       - name: Reconstruct exact signed APK
         if: ${{ hashFiles('daybook/separate-release/bootstrap.delta.b64') != '' }}
         run: python3 daybook/separate-release/reconstruct.py "$RUNNER_TEMP/daybook-base.apk"
