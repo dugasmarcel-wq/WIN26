@@ -1,0 +1,32 @@
+name: Publish separate Daybook
+on:
+  push:
+    branches: [daybook-separate-updates]
+    paths: ["daybook/separate-release/**", ".github/workflows/daybook-separate-publish.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: daybook-separate-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obtain original verified build for bootstrap reconstruction
+        if: ${{ hashFiles('daybook/separate-release/bootstrap.delta.b64') != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45926568183
+          name: daybook-unsigned
+          path: ${{ runner.temp }}/daybook-base
+      - name: Reconstruct signed bootstrap APK if required
+        if: ${{ hashFiles('daybook/separate-release/bootstrap.delta.b64') != '' }}
+        run: python3 daybook/separate-release/reconstruct.py "$RUNNER_TEMP/daybook-base/Daybook-unsigned.apk"
+      - name: Validate and publish separate feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash daybook/separate-release/publish.sh
