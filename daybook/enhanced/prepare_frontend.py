@@ -15,7 +15,7 @@ change("method.js","Math.min(100,Number(el.dataset.seconds)/36)","(Number(el.dat
 change("method.js","done=rows.filter(g=>g.seconds>=3600).length","target=rows.reduce((n,g)=>n+g.target,0),applicable=rows.filter(g=>g.target>0),done=applicable.filter(g=>g.seconds>=g.target).length")
 change("method.js","timeLabel(seconds)+' / 4h · '+done+'/4'","timeLabel(seconds)+' / '+timeLabel(target)+' · '+done+'/'+applicable.length")
 change("method.js","const day=state.today,running=state.timer||{},own=running.goal===id;","const day=state.today,running=api('state').timer||{},own=running.goal===id,observed=Date.now();")
-change("method.js","' / 60 min'+(g.seconds>3600?' · '+esc(timeLabel(g.seconds-3600))+' extra':'')","' / '+esc(timeLabel(g.target))+(g.seconds>g.target?' · '+esc(timeLabel(g.seconds-g.target))+' extra':'')")
+change("method.js","'</b> / 60 min'+(g.seconds>3600?' · '+esc(timeLabel(g.seconds-3600))+' extra':'')","'</b> / '+esc(timeLabel(g.target))+(g.seconds>g.target?' · '+esc(timeLabel(g.seconds-g.target))+' extra':'')")
 change("method.js","(own?'Stop and save':'Start')","(own?(running.paused?'Resume':'Pause'):'Start')")
 change("method.js","(own?'<button type=\"button\" id=\"discardTimer\">Discard</button>':'')","(own?'<button type=\"button\" id=\"finishTimer\">Finish</button><button type=\"button\" id=\"discardTimer\">Discard</button>':'')")
 change("method.js","if(own)api('methodStop',{id});else api('methodStart',{id,day});dialog.close();render();","if(own)api(running.paused?'methodResume':'methodPause',{id});else api('methodStart',{id,day});dialog.close();render();timeEntry(id);")
@@ -51,7 +51,8 @@ p.write_text(p.read_text()+r'''
      const config=api('targetConfig',{day:date});
      $('#targetValues').innerHTML=areaIds.map(id=>{const c=config[id];return '<fieldset class="target-field" data-color-key="'+id+'"><legend>'+esc(focusNames[id])+'</legend>'+
        (kind==='schedule'?'<label>Weekdays (minutes)<input type="number" required min="0" max="1440" id="targetW-'+id+'" value="'+c.weekday+'"></label><label>Weekends (minutes)<input type="number" required min="0" max="1440" id="targetE-'+id+'" value="'+c.weekend+'"></label>':
-       '<label>Minutes<input type="number" required min="0" max="1440" id="targetD-'+id+'" value="'+c.minutes+'"></label><label><input type="checkbox" id="targetReset-'+id+'" '+(!c.overridden?'':'')+'> Use regular target</label>')+'</fieldset>';}).join('');
+       '<label>Minutes<input type="number" required min="0" max="1440" id="targetD-'+id+'" value="'+c.minutes+'"></label><label><input type="checkbox" id="targetReset-'+id+'" '+(!c.overridden?'checked':'')+'> Use regular target</label>')+'</fieldset>';}).join('');
+     if(kind==='date')for(const id of areaIds)$('#targetD-'+id).oninput=()=>{$('#targetReset-'+id).checked=false;};
    }
    $('#targetDay').onchange=paint;paint();
  }
