@@ -70,7 +70,10 @@ class DaybookWidgetHost(private val activity: MainActivity, page: Int) : FrameLa
         if (info?.provider == provider) {
             if (displayed == id) return
             removeAllViews()
-            val content = host.createView(activity, id, info)
+            // The AppCompat activity inflater replaces framework widget classes.
+            // RemoteViews requires the original platform methods on those classes.
+            val widgetContext = android.view.ContextThemeWrapper(activity.applicationContext, android.R.style.Theme_Material_Light)
+            val content = host.createView(widgetContext, id, info)
             addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             content.updateAppWidgetSize(Bundle(), 250, 240, 330, 280)
             displayed = id
