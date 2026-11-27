@@ -1,0 +1,44 @@
+name: Build isolated Daybook Enhanced candidate
+on:
+  push:
+    branches: [daybook-1-13-enhanced]
+    paths: ["daybook/enhanced/**", ".github/workflows/daybook-enhanced-build.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: daybook-enhanced-candidate
+  cancel-in-progress: true
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Restore exact 1.13 assets and apply targeted changes
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-all-errors https://github.com/dugasmarcel-wq/WIN26/releases/download/win26-update-100141/Dayboox-14.apk -o "$RUNNER_TEMP/base.apk"
+          python3 daybook/enhanced/prepare.py "$RUNNER_TEMP/base.apk" daybook/assets
+          python3 daybook/enhanced/prepare_frontend.py daybook/assets
+          python3 daybook/enhanced/prepare_native.py daybook
+          for f in daybook/assets/*.js; do node --check "$f"; done
+          bash daybook/build.sh
+      - name: Verify isolated package and prepare local signing utility
+        run: |
+          set -euo pipefail
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$bt/aapt" dump badging daybook/build/Daybook-unsigned.apk | tee "$RUNNER_TEMP/enhanced-package.txt"
+          grep -F "package: name='com.marcel.daybookenhanced' versionCode='15' versionName='1.14'" "$RUNNER_TEMP/enhanced-package.txt"
+          cp "$bt/lib/apksigner.jar" "$RUNNER_TEMP/apksigner.jar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: enhanced-build-candidate
+          path: |
+            daybook/build/Daybook-unsigned.apk
+            ${{ runner.temp }}/apksigner.jar
+            ${{ runner.temp }}/enhanced-package.txt
+          retention-days: 7
