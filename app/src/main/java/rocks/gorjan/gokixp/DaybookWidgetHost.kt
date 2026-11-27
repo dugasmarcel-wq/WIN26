@@ -87,6 +87,7 @@ class DaybookWidgetHost(private val activity: MainActivity, page: Int) : FrameLa
         button.text = if (manager.installedProviders.any { it.provider == provider }) "Connect Daybook widget" else "Install Daybook"
     }
     private fun connect() {
+        android.util.Log.d("DaybookWidgetHost","Connect pressed on $key")
         val launcher = approval ?: return
         val info = manager.installedProviders.firstOrNull { it.provider == provider }
         if (info == null) {
@@ -110,6 +111,7 @@ class DaybookWidgetHost(private val activity: MainActivity, page: Int) : FrameLa
                 accept(id)
                 refresh()
             } else {
+                android.util.Log.d("DaybookWidgetHost","Requesting Android consent for $id")
                 launcher.launch(Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                     .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                     .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider)
