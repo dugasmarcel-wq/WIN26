@@ -12,6 +12,9 @@ final class GoalBook {
         final boolean weekly;
         final TreeMap<String,JSONObject> edits=new TreeMap<>();
         final TreeMap<String,Boolean> visibility=new TreeMap<>();
+        final TreeMap<String,JSONObject> schedules=new TreeMap<>();
+        JSONObject schedule(LocalDate d){Map.Entry<String,JSONObject> e=schedules.floorEntry(d.toString());return e==null?null:e.getValue();}
+        boolean habitDay(LocalDate d){JSONObject s=schedule(d);return s==null||(s.optInt("mask",127)&(1<<(d.getDayOfWeek().getValue()-1)))!=0||marks.contains(key(d));}
         final Set<String> taps=new HashSet<>();
         final Set<String> marks=new HashSet<>();
         final Map<String,Integer> time=new HashMap<>();
@@ -27,12 +30,12 @@ final class GoalBook {
         int seconds(LocalDate d){return time.getOrDefault(d.toString(),0);}
         boolean done(LocalDate d){if(task(d))return !completed.isEmpty()&&completed.compareTo(d.toString())<=0;if(timed(d))return seconds(d)>=3600;return marks.contains(key(d));}
         boolean achieved(LocalDate d){return !taskSince.isEmpty()&&completed.equals(d.toString());}
-        boolean active(LocalDate d){if(task(d))return !hidden(d)&&d.toString().compareTo(at(d.toString()).optString("start"))>=0;return scheduled(d)&&!hidden(d);}
+        boolean active(LocalDate d){if(task(d))return !hidden(d)&&d.toString().compareTo(at(d.toString()).optString("start"))>=0;return scheduled(d)&&!hidden(d)&&habitDay(d);}
         boolean scheduled(LocalDate d){String key=d.toString();JSONObject g=at(key);return key.compareTo(g.optString("start"))>=0&&key.compareTo(g.optString("end"))<0;}
         String key(LocalDate d){String k=weekly?Journal.monday(d).toString():d.toString();String first=original.optString("start");return k.compareTo(first)<0?first:k;}
         boolean due(LocalDate d){
             if(task(d))return false;
-            if(!scheduled(d))return false;
+            if(!scheduled(d)||!habitDay(d))return false;
             // A completed period still counts after the goal is removed.
             if(hidden(d)&&!done(d))return false;
             if(!weekly)return true;
@@ -48,6 +51,7 @@ final class GoalBook {
         for(JSONObject edit:items(db.rows("SELECT * FROM goal_edits ORDER BY since")))goals.get(edit.getString("goal")).edits.put(edit.getString("since"),edit);
         for(JSONObject tap:items(db.rows("SELECT goal,day FROM weekly_taps")))goals.get(tap.getString("goal")).taps.add(tap.getString("day"));
         for(JSONObject mark:items(db.rows("SELECT goal,day FROM marks")))goals.get(mark.getString("goal")).marks.add(mark.getString("day"));
+        for(JSONObject row:items(db.rows("SELECT * FROM habit_schedule")))goals.get(row.getString("goal")).schedules.put(row.getString("since"),row);
         String epoch=Investment.epoch(db);for(Goal g:goals.values())g.epoch=epoch;
         for(JSONObject t:items(db.rows("SELECT * FROM method_time")))goals.get(t.getString("goal")).time.put(t.getString("day"),t.getInt("seconds"));
         for(JSONObject t:items(db.rows("SELECT * FROM task_state"))){Goal g=goals.get(t.getString("goal"));g.taskSince=t.getString("since");g.deadline=t.getString("deadline");g.completed=t.getString("completed");g.completedName=t.getString("completed_name");}
@@ -65,6 +69,7 @@ final class GoalBook {
                 if(!g.due(d))continue;
                 if(g.done(d))prior++;else missed++;
             }
+            JSONObject schedule=g.schedule(now);v.put("habitMask",schedule==null?127:schedule.optInt("mask",127)).put("habitPart",schedule==null?"Anytime":schedule.optString("part","Anytime"));
             v.put("deleted",g.hidden(now)).put("tapped",g.taps.contains(now.toString())).put("active",active).put("done",done?1:0).put("due",g.due(now)).put("prior",prior).put("missed",missed).put("timed",g.timed(now)).put("seconds",g.seconds(now)).put("legacyDone",g.marks.contains(key)).put("task",g.task(now)).put("deadline",g.task(now)?g.deadline:"").put("completedOn",g.task(now)?g.completed:"").put("achieved",g.achieved(now)).put("completedName",g.completedName).put("archivedOn",g.hidden(now)?g.visibility.floorKey(now.toString()):"");
             out.put(v);
         }return out;

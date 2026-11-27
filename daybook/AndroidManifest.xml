@@ -1,26 +1,24 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.marcel.daybook" android:versionCode="9" android:versionName="1.8">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.marcel.daybookstandalone" android:versionCode="1" android:versionName="2.0">
   <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35"/>
-  <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
-  <application android:label="Daybook" android:icon="@drawable/book" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="false">
-    <activity android:name=".Main" android:exported="true" android:launchMode="singleTop" android:windowSoftInputMode="adjustResize">
+  <application android:label="Daybook Standalone" android:icon="@drawable/book" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="false">
+    <activity android:name="com.marcel.daybook.Main" android:exported="true" android:launchMode="singleTop" android:windowSoftInputMode="adjustResize">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
     </activity>
-    <service android:name=".WidgetTasks" android:permission="android.permission.BIND_REMOTEVIEWS" android:exported="false"/>
-    <receiver android:name=".Widget" android:exported="false" android:label="Daybook">
+    <service android:name="com.marcel.daybook.WidgetTasks" android:permission="android.permission.BIND_REMOTEVIEWS" android:exported="false"/>
+    <receiver android:name="com.marcel.daybook.Widget" android:exported="false" android:label="Daybook">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget"/>
     </receiver>
-    <receiver android:name=".LockGoals" android:exported="false" android:label="Daybook Goals">
+    <receiver android:name="com.marcel.daybook.LockGoals" android:exported="false" android:label="Standalone Goals">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/lock_goals"/>
     </receiver>
-    <receiver android:name=".Reminders" android:exported="false">
+    <receiver android:name="com.marcel.daybook.Reminders" android:exported="false">
       <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/><action android:name="android.intent.action.TIME_SET"/><action android:name="android.intent.action.TIMEZONE_CHANGED"/><action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"/></intent-filter>
     </receiver>
-    <provider android:name=".InstallerFile" android:authorities="com.marcel.daybook.installer" android:exported="false" android:grantUriPermissions="true"/>
+    <provider android:name="com.marcel.daybook.InstallerFile" android:authorities="com.marcel.daybookstandalone.installer" android:exported="false" android:grantUriPermissions="true"/>
   </application>
 </manifest>

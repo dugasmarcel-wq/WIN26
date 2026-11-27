@@ -59,33 +59,48 @@ final class Investment {
     }
     static JSONObject timer(Journal j)throws JSONException{
         JSONObject t=j.rows("SELECT goal,started,zone FROM method_timer WHERE slot=1").optJSONObject(0);
-        return t==null?new JSONObject():t;
+        if(t==null)return new JSONObject();JSONObject p=Extras.timerParts(j);return t.put("paused",p.optInt("paused")==1).put("elapsed",p.optLong("elapsed"));
     }
     static void start(Journal j,String id,String day){
         today(day);if(!area(id))throw new IllegalArgumentException("Choose a Method of 4 category.");
         SQLiteDatabase db=j.getWritableDatabase();db.beginTransaction();
         try{
             if(DatabaseUtils.longForQuery(db,"SELECT count(*) FROM method_timer",null)>0)throw new IllegalArgumentException("Stop the running stopwatch first.");
-            db.execSQL("INSERT INTO method_timer VALUES(1,?,?,?)",new Object[]{id,System.currentTimeMillis(),ZoneId.systemDefault().getId()});
+            db.execSQL("INSERT INTO method_timer VALUES(1,?,?,?)",new Object[]{id,System.currentTimeMillis(),ZoneId.systemDefault().getId()});db.execSQL("INSERT OR REPLACE INTO timer_parts VALUES(1,0,0,'[]')");
             db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
+    static JSONArray segment(Journal j,JSONObject t,JSONObject p,long now)throws JSONException{
+        JSONArray list=new JSONArray(p.optString("segments","[]"));long start=t.getLong("started");
+        if(now<start||now-start>7L*86400000)throw new IllegalArgumentException("Invalid stopwatch duration. Discard and enter the time manually.");
+        if(!t.optBoolean("paused"))list.put(new JSONObject().put("start",start).put("end",now).put("zone",t.getString("zone")));
+        return list;
+    }
+    static void pause(Journal j,String id)throws JSONException{
+        SQLiteDatabase db=j.getWritableDatabase();db.beginTransaction();try{
+            JSONObject t=timer(j),p=Extras.timerParts(j);if(!id.equals(t.optString("goal"))||t.optBoolean("paused"))throw new IllegalArgumentException("Stopwatch is not running.");
+            long now=System.currentTimeMillis();JSONArray list=segment(j,t,p,now);
+            db.execSQL("INSERT OR REPLACE INTO timer_parts VALUES(1,1,?,?)",new Object[]{p.optLong("elapsed")+now-t.getLong("started"),list.toString()});db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
+    static void resume(Journal j,String id)throws JSONException{
+        SQLiteDatabase db=j.getWritableDatabase();db.beginTransaction();try{
+            JSONObject t=timer(j);if(!id.equals(t.optString("goal"))||!t.optBoolean("paused"))throw new IllegalArgumentException("Stopwatch is not paused.");
+            db.execSQL("UPDATE method_timer SET started=?,zone=? WHERE slot=1",new Object[]{System.currentTimeMillis(),ZoneId.systemDefault().getId()});db.execSQL("UPDATE timer_parts SET paused=0 WHERE slot=1");db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
     static void stop(Journal j,String id,boolean discard)throws JSONException{
         SQLiteDatabase db=j.getWritableDatabase();db.beginTransaction();
         try{
             JSONObject t=timer(j);if(!id.equals(t.optString("goal")))throw new IllegalArgumentException("This stopwatch is not running.");
-            long start=t.getLong("started"),end=System.currentTimeMillis();
             if(!discard){
-                if(end<start||end-start>7L*86400000)throw new IllegalArgumentException("Invalid stopwatch duration. Discard and enter the time manually.");
-                ZoneId zone=ZoneId.of(t.getString("zone"));long cursor=start,remaining=(end-start)/1000;
-                while(cursor<end){
-                    LocalDate date=Instant.ofEpochMilli(cursor).atZone(zone).toLocalDate();
-                    long next=Math.min(end,date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli());
-                    int count=(int)(next==end?remaining:(next-cursor)/1000);remaining-=count;
-                    if(count>0)write(db,id,date.toString(),seconds(db,id,date.toString())+count);cursor=next;
+                JSONObject p=Extras.timerParts(j);JSONArray list=t.optBoolean("paused")?new JSONArray(p.optString("segments","[]")):segment(j,t,p,System.currentTimeMillis());
+                for(JSONObject seg:GoalBook.items(list)){
+                    long cursor=seg.getLong("start"),end=seg.getLong("end"),remaining=(end-cursor)/1000;ZoneId zone=ZoneId.of(seg.getString("zone"));
+                    while(cursor<end){LocalDate date=Instant.ofEpochMilli(cursor).atZone(zone).toLocalDate();long next=Math.min(end,date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli());int count=(int)(next==end?remaining:(next-cursor)/1000);remaining-=count;if(count>0)write(db,id,date.toString(),seconds(db,id,date.toString())+count);cursor=next;}
                 }
             }
-            db.delete("method_timer","slot=1",null);db.setTransactionSuccessful();
+            db.delete("timer_parts","slot=1",null);db.delete("method_timer","slot=1",null);db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
     static JSONObject stats(Journal j,String a,String b)throws JSONException{

@@ -53,7 +53,7 @@ public final class Reminders extends BroadcastReceiver {
                     .setContentTitle(title.isEmpty()?"Daybook reminder":title).setContentText(body.isEmpty()?"Open note":body)
                     .setContentIntent(Widget.open(c,"note/"+id)).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE)
                     .addAction(new Notification.Action.Builder(null,"Snooze 10 min",snooze).build()).build();
-                c.getSystemService(NotificationManager.class).notify(id,1,notice);db.clearIfDue(id,at);
+                c.getSystemService(NotificationManager.class).notify(id,1,notice);if(db.clearIfDue(id,at)){long next=Extras.nextAlarm(db,id,System.currentTimeMillis());if(next>0){db.setAlarm(id,next);plan(c,id,next);}}
             } else {all(c);Widget.refresh(c);}
         } catch(JSONException e) {throw new IllegalStateException(e);}
     }

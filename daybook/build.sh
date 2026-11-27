@@ -8,7 +8,7 @@ out=build
 rm -rf "$out"
 mkdir -p "$out"/{gen,classes,dex}
 "$bt/aapt2" compile --dir res -o "$out/res.zip"
-"$bt/aapt2" link --manifest AndroidManifest.xml -I "$platform" --java "$out/gen" -A assets -o "$out/packed.apk" "$out/res.zip"
+"$bt/aapt2" link --manifest AndroidManifest.xml --custom-package com.marcel.daybook -I "$platform" --java "$out/gen" -A assets -o "$out/packed.apk" "$out/res.zip"
 find src "$out/gen" -name '*.java' > "$out/sources"
 javac -encoding UTF-8 -source 8 -target 8 -classpath "$platform" -d "$out/classes" @"$out/sources"
 jar cf "$out/classes.jar" -C "$out/classes" .

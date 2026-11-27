@@ -27,6 +27,7 @@ public class Widget extends AppWidgetProvider {
     @Override public void onAppWidgetOptionsChanged(Context c,AppWidgetManager m,int id,android.os.Bundle options) {draw(c,m,id);}
     @Override public void onReceive(Context c,Intent i) {
         super.onReceive(c,i);
+        if("TIMER".equals(i.getAction())){try{Journal j=Journal.get(c);String gid=i.getStringExtra("goal");JSONObject t=Investment.timer(j);if(t.optString("goal").equals(gid)){if(t.optBoolean("paused"))Investment.resume(j,gid);else Investment.pause(j,gid);}else if(!t.has("goal"))Investment.start(j,gid,LocalDate.now().toString());else{open(c,"method/"+gid).send();}refresh(c);}catch(Exception ignored){android.widget.Toast.makeText(c,"Open Daybook to manage the stopwatch.",android.widget.Toast.LENGTH_SHORT).show();}}
         if("MARK".equals(i.getAction())&&i.hasExtra("goal")&&i.hasExtra("day")&&i.hasExtra("done")) {
             Journal.get(c).mark(i.getStringExtra("goal"),i.getStringExtra("day"),i.getBooleanExtra("done",false));refresh(c);
         }
@@ -95,7 +96,7 @@ public class Widget extends AppWidgetProvider {
                 options.getInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY)==AppWidgetProviderInfo.WIDGET_CATEGORY_KEYGUARD;
             LocalDate day=LocalDate.now();
             Journal journal=Journal.get(c);
-            JSONArray data=journal.goals(day);
+            Extras.generate(journal);JSONArray data=journal.goals(day);
             Map<String,String> colors=colors(journal);
             RemoteViews panel=new RemoteViews(c.getPackageName(),locked?R.layout.lock_goals:R.layout.widget);
             String date=day.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d",Locale.getDefault()));
@@ -123,6 +124,7 @@ public class Widget extends AppWidgetProvider {
                     cell.setImageViewBitmap(R.id.bubble,bubble(colors.get(gid),seconds>=3600,seconds));
                     cell.setContentDescription(R.id.row,area+", "+goal.optString("name")+", "+seconds/60+" minutes recorded. Tap to log time.");
                     cell.setOnClickPendingIntent(R.id.row,open(c,"method/"+gid));
+                    Intent ti=new Intent(c,Widget.class).setAction("TIMER").setData(Uri.parse("daybook://widgettimer/"+gid)).putExtra("goal",gid);cell.setTextViewText(R.id.widgetTimer,timer.equals(gid)?(Investment.timer(journal).optBoolean("paused")?"Resume":"Pause"):"Start");cell.setOnClickPendingIntent(R.id.widgetTimer,PendingIntent.getBroadcast(c,0,ti,FLAGS));
                     line.addView(column==0?R.id.firstArea:R.id.secondArea,cell);
                 }
                 panel.addView(R.id.rows,line);
