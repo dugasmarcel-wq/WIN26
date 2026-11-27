@@ -1,0 +1,36 @@
+name: Build isolated Daybook Preview
+on:
+  push:
+    branches: [daybook-preview]
+    paths: ['daybook-preview/**', '.github/workflows/daybook-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: daybook-preview-build
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/daybook-preview'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Inspect current release and build independently signed preview
+        run: bash daybook-preview/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Daybook-Preview
+          path: daybook-preview/dist/
+      - name: Publish a separate preview release (never touch production)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="daybook-preview-${GITHUB_RUN_ID}"
+          gh release create "$tag" --target "$GITHUB_SHA" --prerelease --title "Daybook Preview 0.1" --notes-file daybook-preview/README.md daybook-preview/dist/Daybook-Preview.apk daybook-preview/dist/SHA256SUMS daybook-preview/dist/signing.txt daybook-preview/dist/package.txt
+          gh release download "$tag" -p Daybook-Preview.apk -D "$RUNNER_TEMP/preview-live"
+          cmp daybook-preview/dist/Daybook-Preview.apk "$RUNNER_TEMP/preview-live/Daybook-Preview.apk"
