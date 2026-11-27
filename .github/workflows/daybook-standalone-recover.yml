@@ -1,0 +1,26 @@
+name: Daybook standalone source recovery
+on:
+  push:
+    branches: [daybook-standalone]
+    paths: ['.github/workflows/daybook-standalone-recover.yml']
+permissions:
+  contents: write
+jobs:
+  recover:
+    if: github.ref == 'refs/heads/daybook-standalone'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://github.com/dugasmarcel-wq/WIN26/releases/download/win26-update-100141/Dayboox-14.apk -o /tmp/base.apk
+          echo 'd42f3f48800ac75edfdd433dce8f06b778cb971782cf564fe820b82b7cd9faf0  /tmp/base.apk' | sha256sum -c
+          mkdir -p /tmp/released
+          unzip -q /tmp/base.apk 'assets/*' -d /tmp/released
+          mkdir -p daybook/assets
+          cp -a /tmp/released/assets/. daybook/assets/
+          git config user.name 'Daybook standalone build'
+          git config user.email 'actions@users.noreply.github.com'
+          git add daybook/assets
+          git commit -m 'Recover exact verified Daybook 1.13 frontend assets'
+          git push origin HEAD:daybook-standalone
