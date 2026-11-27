@@ -44,7 +44,7 @@ function calendarPage(){
  }
  if(scale==='month'){
    const schedule=api('calendarGoals',{day:start});
-   const marked=new Set(state.notes.flatMap(n=>n.alarm?[n.written,dayOfTime(n.alarm)]:[n.written]));
+   const marked=new Set([...state.notes.flatMap(n=>n.alarm?[n.written,dayOfTime(n.alarm)]:[n.written]),...state.moduleRecordDates]);
    grid.className='month-days';
    grid.innerHTML=['M','T','W','T','F','S','S'].map(k=>'<small>'+k+'</small>').join('')+'<i></i>'.repeat((new Date(utc(start)).getUTCDay()+6)%7)+stats.buckets.map(n=>{
      const d=n.date,planned=schedule[d]?.due||0,entry=marked.has(d)||occasions(d).length>0||schedule[d]?.seconds>0||schedule[d]?.achievements>0||schedule[d]?.removed>0||schedule[d]?.taps>0;
@@ -69,7 +69,7 @@ function calendarPage(){
  agenda.innerHTML='<div class="agenda-head"><h2>'+esc(pretty(d,{weekday:'short',month:'short',day:'numeric'}))+'</h2></div><p id="dayCounts">'+(d>state.today?'Scheduled goals':trackerCaption(counts))+'</p>';
  const noteRows=state.notes.filter(n=>n.written===d),alarms=state.notes.filter(n=>n.alarm&&dayOfTime(n.alarm)===d);
  const noteLink=(n,label)=>'<button class="item card" data-open="'+esc(n.id)+'">'+esc(label)+'</button>';
- agenda.insertAdjacentHTML('beforeend','<h3>Journal</h3>'+(noteRows.map(n=>noteLink(n,n.title||'Untitled note')+(n.id==='day-'+d?'<p class="calendar-note">'+esc(api('note',{id:n.id})?.body||'')+'</p>':'')).join('')||'<p class="meta">No notes for this date.</p>')+daySummary(d)+reflectionList(d)+'<div class="section"><h2>Important dates</h2><button id="addDate">Add date</button></div>'+
+ agenda.insertAdjacentHTML('beforeend','<h3>Journal</h3>'+(noteRows.map(n=>noteLink(n,n.title||'Untitled note')+(n.id==='day-'+d?'<p class="calendar-note">'+esc(api('note',{id:n.id})?.body||'')+'</p>':'')).join('')||'<p class="meta">No notes for this date.</p>')+daySummary(d)+moduleCalendar(d)+reflectionList(d)+'<div class="section"><h2>Important dates</h2><button id="addDate">Add date</button></div>'+
  occasions(d).map(e=>'<div class="card setting"><span>'+esc(e.name)+(e.annual?' · Yearly':'')+'</span><button data-remove="'+esc(e.id)+'">Remove</button></div>').join('')+
  '<h2>Reminders</h2>'+(alarms.map(n=>noteLink(n,(n.title||'Untitled note')+' · '+stamp(n.alarm))).join('')||'<small>No scheduled reminders</small>'));
  content.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{returnCal=true;openNote(b.dataset.open);});

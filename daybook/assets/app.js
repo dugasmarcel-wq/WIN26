@@ -9,15 +9,15 @@ const stamp=t=>new Date(t).toLocaleString(undefined,{dateStyle:'medium',timeStyl
 const utc=s=>Date.parse(s+'T00:00:00Z');
 const dayAt=n=>new Date(n).toISOString().slice(0,10);
 function setRoute(r){api('location',{route:r});}
-function go(v){view=v;entry=null;setRoute(v);render();window.scrollTo(0,0);}
+function go(v){moduleReturn=null;view=v;entry=null;setRoute(v);render();window.scrollTo(0,0);}
 function modal(title,html,confirm,callback){dialog.className='';$('#fields').innerHTML='<h2>'+esc(title)+'</h2>'+html;$('#confirm').textContent=confirm;submitForm=callback;dialog.showModal();}
 $('#cancel').onclick=()=>dialog.close();
 $('#form').onsubmit=e=>{e.preventDefault();if(submitForm()!==false)dialog.close();};
 function render(){
  document.body.classList.toggle('writing',view==='edit');
- state=api('state');$('#today').className=['today','goal'].includes(view)?'active':'';$('#notebook').className=['notes','edit'].includes(view)?'active':'';
- $('#calendar').className=view==='calendar'?'active':'';
- if(view==='calendar')calendarPage();else if(view==='today')today();else if(view==='notes')notes();else if(view==='edit')editor();else if(view==='goal')detail();else settings();applyColors();
+ state=api('state');prepareLibraries();$('#today').className=['today','goal','module'].includes(view)?'active':'';$('#notebook').className=['notes','edit','journal'].includes(view)?'active':'';
+ $('#calendar').className=['calendar','statistics'].includes(view)?'active':'';
+ if(view==='calendar')calendarPage();else if(view==='today')today();else if(view==='notes')notes();else if(view==='journal')journalPage();else if(view==='statistics')statisticsPage();else if(view==='edit')editor();else if(view==='goal')detail();else if(view==='module')modulePage();else settings();applyColors();
 }
 const groups = [
  {id:'long', label:'Objectives', hint:'Larger ambitions'},
@@ -38,14 +38,14 @@ function today(){
  $('.goal-group.daily').insertAdjacentHTML('afterend','<section class="daily-pad"><div><h2>'+esc(daily.title)+'</h2><button id="expandDaily">Open note</button></div><textarea id="dailyBody" aria-label="Today’s note" placeholder="Write today’s note…"></textarea></section>');
  const pad=$('#dailyBody');pad.value=daily.body;
  pad.oninput=()=>{daily.body=pad.value;api('save',daily);};
- $('#expandDaily').onclick=()=>openNote(daily.id);
+ $('#expandDaily').onclick=()=>openJournal(state.today);
  $('#jumpTracker').onclick=jumpToTracker;
  $('#addGoal').onclick=()=>newGoal('long');
  screen.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>newGoal(b.dataset.new));
  screen.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{
    const g=state.goals.find(g=>g.id===b.dataset.mark);
    if(!g.active)return;
-   if(g.timed){timeEntry(g.id);return;}
+   if(g.timed){showModule(g.id);return;}
    if(!api('mark',{id:g.id,day:state.today,done:!g.done})){msg('Historical completion is locked. Remove the task or create a new one.');return;}render();
  });
  screen.querySelectorAll('[data-menu-goal]').forEach(el=>bindGoalActions(el,el.dataset.menuGoal));
@@ -103,11 +103,11 @@ function save(force=false){entry.title=$('#ntitle').value;entry.body=$('#body').
  if(draft&&!force&&!entry.title.trim()&&!entry.body.trim())return;
  api('save',entry);if(draft)setRoute('note/'+entry.id);draft=false;$('#manageNote').hidden=false;$('#saved').textContent='Saved';}
 function editor(){
- screen.innerHTML='<div class="editor-head"><button class="back" id="back"><span aria-hidden="true">‹</span> '+(returnCal?'Calendar':'Notebook')+'</button><span id="saved" class="meta">'+(draft?'New note':'Saved')+'</span><button id="remind" aria-label="Set or change reminder"></button><button id="manageNote" aria-label="Note options">More</button></div>'+
+ screen.innerHTML='<div class="editor-head"><button class="back" id="back"><span aria-hidden="true">‹</span> '+(returnCal?'Calendar':moduleReturn?'Category':'Notebook')+'</button><span id="saved" class="meta">'+(draft?'New note':'Saved')+'</span><button id="remind" aria-label="Set or change reminder"></button><button id="manageNote" aria-label="Note options">More</button></div>'+
  '<div class="note-meta"><input id="ntitle" aria-label="Note title" placeholder="Untitled note" maxlength="300"><select id="nfolder" aria-label="Folder">'+state.folders.map(f=>'<option value="'+esc(f.id)+'" '+(f.id===entry.folder?'selected':'')+'>'+esc(f.name)+'</option>').join('')+'</select></div>'+
- '<div id="noteCheckins">'+daySummary(entry.written||state.today,true)+'</div><textarea id="body" aria-label="Note text" placeholder="Start writing…" spellcheck="true"></textarea>';
- $('#nfolder').disabled=entry.id.startsWith('day-');$('#ntitle').value=entry.title;$('#body').value=entry.body;
- $('#back').onclick=()=>{go(returnCal?'calendar':'notes');returnCal=false;};$('#body').oninput=()=>save();$('#ntitle').oninput=()=>save();$('#nfolder').onchange=()=>save();$('#remind').onclick=remind;
+ '<div id="noteCheckins">'+(journalDate(entry)?daySummary(journalDate(entry),true):'')+'</div><textarea id="body" aria-label="Note text" placeholder="Start writing…" spellcheck="true"></textarea>';
+ $('#nfolder').disabled=entry.id.startsWith('day-')||entry.id.startsWith(moduleNotePrefix);$('#ntitle').value=entry.title;$('#body').value=entry.body;
+ $('#back').onclick=()=>{if(moduleReturn){const m=moduleReturn;moduleReturn=null;showModule(m.area,m.day,m.book);}else{go(returnCal?'calendar':'notes');returnCal=false;}};$('#body').oninput=()=>save();$('#ntitle').oninput=()=>save();$('#nfolder').onchange=()=>save();$('#remind').onclick=remind;
  $('#manageNote').hidden=draft;$('#manageNote').onclick=()=>noteMenu(entry.id);
  applyColors();
  reminderLabel();
@@ -124,14 +124,14 @@ function remind(){const dt=new Date(entry.alarm||Date.now()+3600000);const local
 }
 function settings(){screen.innerHTML='<h1>Settings</h1><div class="settings-list">'+setting('Reminders',state.notifications?'Notifications enabled':'Notifications disabled','Manage','perms')+
  setting('Reminder timing',state.exact?'Exact alarms enabled':'Android may delay reminders','Timing','timing')+
- setting('App updates','Daybook '+esc(state.version),'Check now','updates')+setting('Back up journal','Save notes, goals and check-ins.','Export','export')+
+ setting('App updates','Daybook '+esc(state.version),'Check now','updates')+setting('Back up journal','Save notes, journal, plans and recorded time.','Export','export')+
  setting('Restore journal','Replace this journal from a backup.','Restore','import')+'</div>';
  for(const [id,op] of [['perms','permissions'],['timing','exact'],['updates','check'],['export','backup'],['import','restore']])$('#'+id).onclick=()=>api(op);
  if(state.exact)$('#timing').hidden=true;colorSettings();}
 function setting(title,desc,label,id){return '<div class="card setting"><div><h3>'+title+'</h3><small class="meta">'+desc+'</small></div><button id="'+id+'">'+label+'</button></div>';}
-$('#today').onclick=()=>go('today');$('#notebook').onclick=()=>go('notes');$('#settings').onclick=()=>go('settings');
+$('#today').onclick=()=>go('today');$('#notebook').onclick=()=>{returnCal=false;go('notes');};$('#settings').onclick=()=>go('settings');
 window.nativeEvent=(type,value)=>{
- if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){jumpToTracker();}else if(value==='daily-note')openNote(api('state').dailyId);else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('method/')){go('today');timeEntry(value.slice(7));}else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','calendar','settings'].includes(value)?value:'today');}
- else if(type==='refresh'&&!dialog.open){if(view==='edit'){if(!draft){let n=api('note',{id:entry.id});if(n){entry.alarm=n.alarm;state.today=dayOfTime(Date.now());$('#noteCheckins').innerHTML=daySummary(n.written,true);applyColors();reminderLabel();}}}else render();}
+ if(type==='route'){if(dialog.open)dialog.close();if(value==='tracker'){jumpToTracker();}else if(value==='daily-note')openJournal(api('state').today);else if(value.startsWith('journal/'))openJournal(value.slice(8));else if(value==='statistics')go('statistics');else if(value==='new')openNote(null,'daily');else if(value.startsWith('note/'))openNote(value.slice(5));else if(value.startsWith('method/')){go('today');timeEntry(value.slice(7));}else if(value.startsWith('module/')){const [,a,d,b]=value.split('/');showModule(a,d||api('state').today,b||'');}else if(value.startsWith('goal/'))showGoal(value.slice(5));else go(['notes','calendar','settings'].includes(value)?value:'today');}
+ else if(type==='refresh'&&!dialog.open){if(view==='edit'){if(!draft){let n=api('note',{id:entry.id});if(n){entry.alarm=n.alarm;state.today=dayOfTime(Date.now());$('#noteCheckins').innerHTML=journalDate(n)?daySummary(journalDate(n),true):'';applyColors();reminderLabel();}}}else render();}
 };
-window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){go(returnCal?'calendar':'notes');returnCal=false;return true;}if(view!=='today'){go('today');return true;}return false;};
+window.goBack=()=>{if(dialog.open){dialog.close();return true;}if(view==='edit'){if(moduleReturn){const m=moduleReturn;moduleReturn=null;showModule(m.area,m.day,m.book);}else{go(returnCal?'calendar':'notes');returnCal=false;}return true;}if(view==='statistics'){go('calendar');return true;}if(view==='journal'){go('notes');return true;}if(view==='module'&&moduleBook){showModule(moduleArea,moduleDay);return true;}if(view!=='today'){go('today');return true;}return false;};
