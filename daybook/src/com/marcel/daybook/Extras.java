@@ -48,7 +48,7 @@ final class Extras {
                 String base=a.optString("deadline",g.deadline);if(base.isEmpty())base=scheduled;if(base.isEmpty())base=day();
                 LocalDate anchor=LocalDate.parse(base),n=next(anchor,anchor,cad);while(!n.isAfter(LocalDate.now()))n=next(n,anchor,cad);
                 String rule=member==null?Journal.uuid():member.getString("rule");
-                db.execSQL("INSERT INTO repeat_rules VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET cadence=excluded.cadence,next_day=excluded.next_day,template=excluded.template,anchor=excluded.anchor",new Object[]{rule,cad,n.toString(),id,anchor.toString()});
+                if(member==null)db.execSQL("INSERT INTO repeat_rules VALUES(?,?,?,?,?)",new Object[]{rule,cad,n.toString(),id,anchor.toString()});else db.execSQL("UPDATE repeat_rules SET cadence=?,next_day=?,template=?,anchor=? WHERE id=?",new Object[]{cad,n.toString(),id,anchor.toString(),rule});
                 db.execSQL("INSERT OR REPLACE INTO repeat_members VALUES(?,?)",new Object[]{id,rule});
             }
             db.setTransactionSuccessful();

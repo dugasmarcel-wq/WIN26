@@ -124,9 +124,9 @@ function remind(){const dt=new Date(entry.alarm||Date.now()+3600000);const local
 }
 function settings(){screen.innerHTML='<h1>Settings</h1><div class="settings-list">'+setting('Reminders',state.notifications?'Notifications enabled':'Notifications disabled','Manage','perms')+
  setting('Reminder timing',state.exact?'Exact alarms enabled':'Android may delay reminders','Timing','timing')+
- setting('App updates','Daybook '+esc(state.version),'Check now','updates')+setting('Back up journal','Save notes, journal, plans and recorded time.','Export','export')+
+ setting('Back up journal','Save notes, journal, plans and recorded time.','Export','export')+
  setting('Restore journal','Replace this journal from a backup.','Restore','import')+'</div>';
- for(const [id,op] of [['perms','permissions'],['timing','exact'],['updates','check'],['export','backup'],['import','restore']])$('#'+id).onclick=()=>api(op);
+ for(const [id,op] of [['perms','permissions'],['timing','exact'],['export','backup'],['import','restore']])$('#'+id).onclick=()=>api(op);
  if(state.exact)$('#timing').hidden=true;colorSettings();}
 function setting(title,desc,label,id){return '<div class="card setting"><div><h3>'+title+'</h3><small class="meta">'+desc+'</small></div><button id="'+id+'">'+label+'</button></div>';}
 $('#today').onclick=()=>go('today');$('#notebook').onclick=()=>{returnCal=false;go('notes');};$('#settings').onclick=()=>go('settings');

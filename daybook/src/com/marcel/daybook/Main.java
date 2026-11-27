@@ -62,7 +62,7 @@ public final class Main extends Activity {
     void tell(String message){runOnUiThread(()->Toast.makeText(this,message,Toast.LENGTH_LONG).show());}
     @Override protected void onResume(){super.onResume();clock.removeCallbacks(tick);tick.run();event("refresh","");new Thread(()->Extras.backup(this,journal,false)).start();
         try{if(Reminders.allowed(this))Reminders.all(this);}catch(JSONException e){tell("Could not restore reminders.");}}
-    @Override protected void onPause(){clock.removeCallbacks(tick);super.onPause();}
+    @Override protected void onPause(){clock.removeCallbacks(tick);new Thread(()->Extras.backup(this,journal,true)).start();super.onPause();}
     @Override public void onBackPressed(){web.evaluateJavascript("window.goBack()",r->{if(!"true".equals(r))super.onBackPressed();});}
     @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);event("refresh","");if(r==7 && !Reminders.allowed(this))tell("Notifications are off. Your reminder is saved.");}
     void notificationSettings(){
