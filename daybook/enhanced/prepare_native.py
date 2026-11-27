@@ -176,8 +176,14 @@ s=s.replace('android:label="Daybook"','android:label="Daybook Enhanced"')
 s=s.replace('    <provider','    <service android:name=".BackupJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false"/>\n    <provider')
 s=s.replace('  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>','')
 manifest.write_text(s)
+shutil.copyfile(extras/"EnhancedSmoke.java",root/"test/EnhancedSmoke.java")
 for p in (root/"test").glob("*"):
     if p.is_file() and p.suffix in (".java",".xml",".sh"):
         s=p.read_text().replace("com.marcel.daybook","com.marcel.daybookenhanced")
         s=s.replace("com.marcel.daybookenhanced/1","com.marcel.daybook/1")
         p.write_text(s)
+
+for name in ("run.sh","AndroidManifest.xml"):
+    p=root/"test"/name
+    s=p.read_text().replace("test/Smoke.java","test/EnhancedSmoke.java").replace("com.marcel.daybookenhanced.Smoke","com.marcel.daybookenhanced.EnhancedSmoke")
+    p.write_text(s)
