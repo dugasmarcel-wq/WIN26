@@ -1,0 +1,18 @@
+/* Compact, inherited 1.13 colors and typography. */
+.find-journal {display:block;margin:1rem auto .5rem;font-size:.85rem}
+.find-results {display:grid;gap:.4rem;max-height:48vh;overflow-y:auto;margin-top:.65rem}
+.find-hit {display:grid;text-align:left;gap:.2rem;white-space:normal;overflow-wrap:anywhere}
+.find-hit small {opacity:.75}
+.find-grid .account-day {min-height:2.3rem;justify-content:center}
+.find-grid .has-journal {background:#e4d7c5;border:1px solid #895d42;color:#533a2b;font-weight:bold}
+.duration-dial {position:relative;width:168px;height:168px;margin:.8rem auto;border:1px solid #c8c3b7;border-radius:50%;background:#f8f6ef;touch-action:none;user-select:none;color:var(--accent,#245748)}
+.duration-face {position:absolute;inset:16px;border:1px solid currentColor;opacity:.32;border-radius:50%;pointer-events:none}
+.duration-hand {position:absolute;left:calc(50% - 1px);top:12px;width:2px;height:calc(50% - 12px);background:currentColor;transform-origin:50% 100%;pointer-events:none}
+.duration-label {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#f8f6ef;padding:.25rem .45rem;border-radius:8px;white-space:nowrap;pointer-events:none}
+.duration-tick {position:absolute;font-size:.7rem;pointer-events:none}
+.duration-tick.top {top:2px;left:50%;transform:translateX(-50%)}
+.duration-tick.bottom {bottom:2px;left:50%;transform:translateX(-50%)}
+.duration-tick.left {left:2px;top:50%;transform:translateY(-50%)}
+.duration-tick.right {right:2px;top:50%;transform:translateY(-50%)}
+.review-row {display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;border-bottom:1px solid #ddd8cc;color:var(--accent,inherit)}
+#reviewBody section {margin:.6rem 0}
