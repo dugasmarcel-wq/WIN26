@@ -1,9 +1,9 @@
 # Separate Daybook update channel
 
-Package: com.marcel.dayboox. The original com.marcel.daybook application, its signing certificate, and daybook-update.json are unchanged.
+Package com.marcel.dayboox, separate from original Daybook. Updates are checked on launch approximately every 24 hours or manually under Settings. Android requests approval to install. Existing original package and daybook-update.json are unchanged.
 
-The separate app checks dayboox-update.json in release win26-update-100141 on launch (about every 24 hours), and on Settings > App updates > Check now. Android requires confirmation to install updates. Version 1.10 (code 11) enables this feed, uses the certificate of the separate 1.8 and 1.9 installers, and retains existing app data.
+Version 1.11 (code 12): default Quick Notes and separate combined dated Journal, inline notes in the four modules and reading history, month-first calendar and separate Statistics. Journal views reuse the previous native note records and their stable IDs, including book-specific records. No database migration or native changes. Browser interaction regression checks passed. On-device Android testing is not yet performed.
 
-Bootstrap publication reconstructs the exact already-signed APK from the verified Android build and a public binary delta, then verifies SHA-256, package, version and signing certificate before publishing. No private key is stored in GitHub.
+The signed APK is reconstructed exactly from the previous signed release and public delta, then checked for SHA-256, certificate, package and version before publication. Source web assets are contained in the verified APK; the prior native classes.dex is unchanged.
 
-Future releases: build with the same separate package, provider authority and update endpoint, increment versionCode, sign with the existing separate release key offline, and commit Dayboox-<code>.apk and matching dayboox-update.json together on this branch. Remove bootstrap.delta.b64 when committing a new full signed APK. The publication job checks the package and certificate and refuses downgrades or a changed APK for the same version. Keep the signing key and password backed up privately.
+For later releases, build the separate package, bump versionCode, retain the same certificate, provider authority and feed, sign offline and commit the full signed APK and matching JSON. Remove bootstrap.delta.b64 when switching to a full signed APK. Do not commit signing keys.
